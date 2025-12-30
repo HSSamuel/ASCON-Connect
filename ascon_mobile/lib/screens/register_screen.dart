@@ -161,9 +161,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     // 2. Prepare the Data
-    // Note: If testing on Android Emulator, use 'http://10.0.2.2:5000/api/auth/register'
+    // Note: If testing on Android Emulator, use 'https://ascon.onrender.com/api/auth/register'
     // Since you are on Chrome/Web, localhost is fine.
-    final url = Uri.parse('http://localhost:5000/api/auth/register');
+    final url = Uri.parse('https://ascon.onrender.com/api/auth/register');
     
     try {
       final response = await http.post(

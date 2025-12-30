@@ -12,8 +12,10 @@ function AdminDashboard() {
 
   const fetchPendingUsers = async () => {
     try {
-      // Connect to your Backend to get pending users
-      const res = await axios.get("http://localhost:5000/api/admin/pending");
+      // UPDATED: Now points to your Cloud Backend
+      const res = await axios.get(
+        "https://ascon.onrender.com/api/admin/pending"
+      );
       setPendingUsers(res.data);
     } catch (err) {
       console.error(err);
@@ -24,7 +26,8 @@ function AdminDashboard() {
   // 2. The Logic to Approve a User
   const approveUser = async (id, name) => {
     try {
-      await axios.put(`http://localhost:5000/api/admin/verify/${id}`);
+      // UPDATED: Now points to your Cloud Backend
+      await axios.put(`https://ascon.onrender.com/api/admin/verify/${id}`);
       setMessage(`Success! ${name} is now verified.`);
 
       // Refresh the list automatically to show they are gone

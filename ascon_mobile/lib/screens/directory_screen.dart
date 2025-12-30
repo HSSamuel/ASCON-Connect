@@ -44,7 +44,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   }
 
   Future<void> fetchAlumni() async {
-    final url = Uri.parse('http://localhost:5000/api/directory');
+    final url = Uri.parse('https://ascon.onrender.com/api/directory');
 
     try {
       final response = await http.get(url);

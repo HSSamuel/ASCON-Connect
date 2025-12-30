@@ -20,8 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // 2. MOVE THE FUNCTION HERE (Inside the class)
   Future<void> loginUser() async {
-    // Note: If testing on Android Emulator, use 'http://10.0.2.2:5000/api/auth/login'
-    final url = Uri.parse('http://localhost:5000/api/auth/login');
+    // Note: If testing on Android Emulator, use 'https://ascon.onrender.com/api/auth/login'
+    final url = Uri.parse('https://ascon.onrender.com/api/auth/login');
 
     try {
       final response = await http.post(
