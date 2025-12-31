@@ -1,4 +1,5 @@
 import 'register_screen.dart';
+import 'forgot_password_screen.dart'; // <--- NEW IMPORT
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
@@ -19,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   
   bool _isLoading = false;
-  bool _obscurePassword = true; // <--- NEW: Tracks password visibility
+  bool _obscurePassword = true; 
 
   Future<void> loginUser() async {
     setState(() {
@@ -90,14 +91,11 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // LOGO REPLACEMENT (If you added the asset in previous steps)
                 Image.asset(
                   'assets/logo.png',
                   height: 80,
                   width: 80,
                 ), 
-                // If you haven't added the logo file yet, use this icon instead:
-                // const Icon(Icons.school, size: 80, color: Color(0xFF006400)),
                 
                 const SizedBox(height: 20),
                 Text(
@@ -105,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.inter(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF006400),
+                    color: const Color(0xFF1B5E3A),
                   ),
                 ),
                 Text(
@@ -127,15 +125,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // PASSWORD FIELD WITH EYE ICON
+                // PASSWORD FIELD
                 TextFormField(
                   controller: _passwordController,
-                  obscureText: _obscurePassword, // Use the variable here
+                  obscureText: _obscurePassword, 
                   decoration: InputDecoration(
                     labelText: 'Password',
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.lock_outline),
-                    // THE EYE ICON LOGIC:
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword ? Icons.visibility_off : Icons.visibility,
@@ -149,7 +146,26 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 30),
+                
+                // --- 🔽 NEW: FORGOT PASSWORD BUTTON HERE 🔽 ---
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context, 
+                        MaterialPageRoute(builder: (context) => const ForgotPasswordScreen())
+                      );
+                    },
+                    child: const Text(
+                      "Forgot Password?", 
+                      style: TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold)
+                    ),
+                  ),
+                ),
+                // ----------------------------------------------
+
+                const SizedBox(height: 10), // Reduced slightly since button adds space
 
                 SizedBox(
                   width: double.infinity,
@@ -157,9 +173,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : loginUser,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF006400),
+                      backgroundColor: const Color(0xFF1B5E3A),
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF006400).withOpacity(0.6),
+                      disabledBackgroundColor: const Color(0xFF1B5E3A).withOpacity(0.6),
                     ),
                     child: _isLoading
                         ? const SizedBox(

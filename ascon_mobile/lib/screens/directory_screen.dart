@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'alumni_detail_screen.dart'; // Import the detail screen
+import 'alumni_detail_screen.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
+import 'dart:typed_data'; // Required for Base64 Images
 import 'package:http/http.dart' as http;
 import '../config.dart';
 
@@ -13,9 +14,9 @@ class DirectoryScreen extends StatefulWidget {
 }
 
 class _DirectoryScreenState extends State<DirectoryScreen> {
-  List<dynamic> allAlumni = [];      // Stores the master list from DB
-  List<dynamic> filteredAlumni = []; // Stores the list shown on screen (filtered)
-  bool isLoading = true;             // Tracks if we are fetching data
+  List<dynamic> allAlumni = [];      
+  List<dynamic> filteredAlumni = []; 
+  bool isLoading = true;             
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -24,22 +25,28 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     fetchAlumni();
   }
 
-  // Function to filter the list when user types
+  // ✅ UPGRADED SEARCH: Now searches Organization and Job Title too!
   void _runFilter(String enteredKeyword) {
     List<dynamic> results = [];
     if (enteredKeyword.isEmpty) {
-      // If search is empty, show everyone
       results = allAlumni;
     } else {
-      // Check if Name OR Year matches the search query (Case Insensitive)
       results = allAlumni
-          .where((user) =>
-              user['fullName'].toString().toLowerCase().contains(enteredKeyword.toLowerCase()) ||
-              user['yearOfAttendance'].toString().contains(enteredKeyword))
+          .where((user) {
+            final name = user['fullName'].toString().toLowerCase();
+            final year = user['yearOfAttendance'].toString();
+            final org = (user['organization'] ?? '').toString().toLowerCase();
+            final job = (user['jobTitle'] ?? '').toString().toLowerCase();
+            final query = enteredKeyword.toLowerCase();
+
+            return name.contains(query) || 
+                   year.contains(query) || 
+                   org.contains(query) || 
+                   job.contains(query);
+          })
           .toList();
     }
 
-    // Update the UI
     setState(() {
       filteredAlumni = results;
     });
@@ -54,11 +61,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       if (response.statusCode == 200) {
         setState(() {
           allAlumni = jsonDecode(response.body);
-          filteredAlumni = allAlumni; // Initially, show everyone
+          filteredAlumni = allAlumni; 
           isLoading = false;
         });
       } else {
-        // Handle server errors silently
         setState(() { isLoading = false; });
       }
     } catch (error) {
@@ -72,23 +78,23 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Alumni Directory"),
-        backgroundColor: const Color(0xFF006400),
+        backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
-        automaticallyImplyLeading: false, // Removes back button
+        automaticallyImplyLeading: false, 
       ),
       backgroundColor: Colors.grey[100],
       body: Column(
         children: [
-          // 1. THE SEARCH BAR
+          // 1. SEARCH BAR
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.white,
             child: TextField(
               controller: _searchController,
-              onChanged: (value) => _runFilter(value), // Filter as you type
+              onChanged: (value) => _runFilter(value),
               decoration: InputDecoration(
-                labelText: 'Search by Name or Year',
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF006400)),
+                labelText: 'Search Name, Company, or Year', // ✅ Updated Label
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF1B5E3A)),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -100,16 +106,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           // 2. THE LIST
           Expanded(
             child: isLoading
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: Color(0xFF006400)),
-                        SizedBox(height: 16),
-                        Text("Fetching Alumni Records..."),
-                      ],
-                    ),
-                  )
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)))
                 : filteredAlumni.isEmpty
                     ? const Center(child: Text("No alumni found."))
                     : ListView.builder(
@@ -118,9 +115,14 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         itemBuilder: (context, index) {
                           final user = filteredAlumni[index];
 
+                          // Helper to get subtitle text (Job @ Org OR Programme)
+                          String subtitle = user['programmeTitle'] ?? 'Alumnus';
+                          if (user['jobTitle'] != null && user['jobTitle'].toString().isNotEmpty) {
+                            subtitle = "${user['jobTitle']} at ${user['organization'] ?? 'Unknown'}";
+                          }
+
                           return GestureDetector(
                             onTap: () {
-                              // Navigate to Detail Screen
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -133,35 +135,50 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                               margin: const EdgeInsets.only(bottom: 15),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                padding: const EdgeInsets.all(12.0),
+                                child: Row(
                                   children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
+                                    // ✅ NEW: AVATAR IN LIST
+                                    CircleAvatar(
+                                      radius: 30,
+                                      backgroundColor: Colors.grey[200],
+                                      backgroundImage: (user['profilePicture'] != null && user['profilePicture'].toString().isNotEmpty)
+                                          ? MemoryImage(base64Decode(user['profilePicture']))
+                                          : null,
+                                      child: (user['profilePicture'] == null || user['profilePicture'].toString().isEmpty)
+                                          ? const Icon(Icons.person, color: Colors.grey)
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 15),
+                                    
+                                    // TEXT INFO
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
                                             user['fullName'] ?? 'Unknown',
                                             style: GoogleFonts.inter(
-                                                fontSize: 18,
+                                                fontSize: 16,
                                                 fontWeight: FontWeight.bold,
-                                                color: const Color(0xFF006400)),
+                                                color: const Color(0xFF1B5E3A)),
                                           ),
-                                        ),
-                                        const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            subtitle, // ✅ Shows Job Title now
+                                            style: TextStyle(color: Colors.grey[800], fontSize: 13),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            "Class of ${user['yearOfAttendance']}",
+                                            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      user['programmeTitle'] ?? 'N/A',
-                                      style: TextStyle(color: Colors.grey[800]),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      "Class of ${user['yearOfAttendance']}",
-                                      style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic),
-                                    ),
+                                    const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
                                   ],
                                 ),
                               ),

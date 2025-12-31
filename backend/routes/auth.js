@@ -51,7 +51,7 @@ router.post("/register", async (req, res) => {
 // @route   POST /api/auth/login
 // @desc    Login User & Get Token
 // @access  Public
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     // 1. Get the data from the App
     const { email, password } = req.body;
@@ -72,29 +72,61 @@ router.post('/login', async (req, res) => {
     // 4. THE GATEKEEPER CHECK (Critical for ASCON)
     // If Admin hasn't approved them yet, STOP THEM here.
     if (user.isVerified === false) {
-      return res.status(403).json({ 
-        message: "Account pending approval. Please contact Admin." 
+      return res.status(403).json({
+        message: "Account pending approval. Please contact Admin.",
       });
     }
 
     // 5. Create and assign a Token (The "Key Card")
     // This token proves who they are for the next 1 hour
     const token = jwt.sign(
-      { _id: user._id, isAdmin: false }, 
+      { _id: user._id, isAdmin: false },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: "1h" }
     );
 
     // 6. Success! Send the token to the App
-    res.header('auth-token', token).json({ 
+    res.header("auth-token", token).json({
       token: token,
       user: {
         id: user._id,
         fullName: user.fullName,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
+// @route   POST /api/auth/forgot-password
+// @desc    Simulate sending a reset code (For testing)
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) return res.status(400).json({ message: "Email not found" });
+
+    // In a real app, we would email this code.
+    // For now, we send it back so you can test immediately.
+    res.json({ message: "Reset Authorized", userId: user._id });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// @route   POST /api/auth/reset-password
+// @desc    Set the new password
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+
+    // Encrypt new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    await User.findByIdAndUpdate(userId, { password: hashedPassword });
+
+    res.json({ message: "Password updated successfully! Please login." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

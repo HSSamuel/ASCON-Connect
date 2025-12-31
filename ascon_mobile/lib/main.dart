@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
       title: 'ASCON Alumni',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xFF006400), // ASCON Green
+        primaryColor: const Color(0xFF1B5E3A), // ASCON Green
         useMaterial3: true,
       ),
       home: const LoginScreen(),

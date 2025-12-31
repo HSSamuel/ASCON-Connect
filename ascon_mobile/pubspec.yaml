@@ -15,6 +15,8 @@ dependencies:
   shared_preferences: ^2.5.3
   google_fonts: ^6.3.2
   url_launcher: ^6.3.2
+  image_picker: ^1.0.7
+  intl: ^0.19.0
 
 dev_dependencies:
   flutter_test:
@@ -33,19 +35,13 @@ flutter:
 # ==========================================
 # SPLASH SCREEN CONFIGURATION
 # ==========================================
-flutter_native_splash:
-  # This is the main background color for older Android & iOS
-  color: "#FFFFFF" 
-  image: assets/logo_centered.png
-
-  android_12:
-    # This controls the overall screen background on Android 12+
-    color: "#FFFFFF"
-    
-    # This controls the color of the immediate circle behind the logo icon
-    icon_background_color: "#FFFFFF"
-    
-    image: assets/logo_centered.png
+#flutter_native_splash:
+#  color: "#FFFFFF"
+#  image: assets/logo_centered.png
+#  android_12:
+#    color: "#FFFFFF"
+#    icon_background_color: "#FFFFFF"
+#    image: assets/logo_centered.png
 
 # ==========================================
 # APP ICON CONFIGURATION (Home Screen & Web Favicon)

@@ -1,39 +1,11 @@
 const mongoose = require("mongoose");
 
-// This is the Blueprint for every ASCON Alumnus
 const UserSchema = new mongoose.Schema({
-  // 1. Full Name (Text)
-  fullName: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-
-  // 2. Email Address (Unique ID)
-  email: {
-    type: String,
-    required: true,
-    unique: true, // This prevents two people from using the same email
-    lowercase: true,
-  },
-
-  // 3. Password (Security)
-  // We will encrypt this later. Never store plain text passwords!
-  password: {
-    type: String,
-    required: true,
-  },
-
-  // 4. Year of Attendance (Number)
-  // e.g., 2024
-  yearOfAttendance: {
-    type: Number,
-    required: true,
-  },
-
-  // 5. Programme Title (The Dropdown)
-  // We use 'enum' to strictly force the user to pick ONLY these options.
-  // If they try to send "Cooking Class", the database will reject it.
+  // --- EXISTING BASIC FIELDS ---
+  fullName: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true },
+  password: { type: String, required: true },
+  yearOfAttendance: { type: Number, required: true },
   programmeTitle: {
     type: String,
     required: true,
@@ -44,20 +16,16 @@ const UserSchema = new mongoose.Schema({
       "Leadership Development Programme",
     ],
   },
+  isVerified: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
 
-  // 6. The Gatekeeper (Verification)
-  // By default, this is FALSE. The user cannot login until Admin changes this to TRUE.
-  isVerified: {
-    type: Boolean,
-    default: false,
-  },
-
-  // 7. System Data
-  // Tracks when they signed up
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  // --- 🆕 NEW PRO FIELDS ---
+  profilePicture: { type: String, default: "" }, // URL to the image
+  bio: { type: String, default: "" },
+  jobTitle: { type: String, default: "" },
+  organization: { type: String, default: "" }, // ✅ CHANGED from 'company'
+  linkedin: { type: String, default: "" },
+  phoneNumber: { type: String, default: "" },
 });
 
 module.exports = mongoose.model("User", UserSchema);

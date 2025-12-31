@@ -15,11 +15,15 @@ app.use(cors());
 const authRoute = require("./routes/auth");
 const directoryRoute = require("./routes/directory");
 const adminRoute = require("./routes/admin");
+const profileRoute = require("./routes/profile");
+const eventsRoute = require("./routes/events");
 
 // 4. Route Middlewares
 app.use("/api/auth", authRoute);
 app.use("/api/directory", directoryRoute);
 app.use("/api/admin", adminRoute);
+app.use("/api/profile", profileRoute);
+app.use("/api/events", eventsRoute);
 
 // 5. Connect to Database FIRST, then Start Server
 const PORT = process.env.PORT || 5000;

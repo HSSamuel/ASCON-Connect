@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart'; // Make sure to add this for styling
+import 'package:google_fonts/google_fonts.dart';
 import 'directory_screen.dart';
 import 'profile_screen.dart';
+import 'events_screen.dart';
+import 'about_screen.dart'; // ✅ ADDED MISSING IMPORT
 
 class HomeScreen extends StatefulWidget {
   final String userName; 
@@ -12,21 +14,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0; // Tracks which tab is active (0, 1, or 2)
-  late List<Widget> _screens; // We use 'late' because we initialize it in initState
+  int _currentIndex = 0; 
+  late List<Widget> _screens; 
 
   @override
   void initState() {
     super.initState();
-    // We initialize the screens here so we can access 'widget.userName'
     _screens = [
-      // Tab 0: Dashboard (We pass the name here too so it looks nice)
       _DashboardView(userName: widget.userName),
-      
-      // Tab 1: Directory
+      const EventsScreen(), // Added const for better performance
       const DirectoryScreen(),
-      
-      // Tab 2: Profile (We MUST pass the name here)
       ProfileScreen(userName: widget.userName),
     ];
   }
@@ -34,26 +31,30 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // The body changes based on the selected tab
       body: _screens[_currentIndex], 
       
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
-            _currentIndex = index; // Switch the tab
+            _currentIndex = index; 
           });
         },
-        selectedItemColor: const Color(0xFF006400), // ASCON Green
+        selectedItemColor: const Color(0xFF1B5E3A), // ✅ ASCON Deep Green
         unselectedItemColor: Colors.grey,
         backgroundColor: Colors.white,
         elevation: 10,
-        type: BottomNavigationBarType.fixed, // Keeps buttons stable
+        type: BottomNavigationBarType.fixed, 
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_outlined),
             activeIcon: Icon(Icons.dashboard),
             label: "Dashboard",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.event_outlined),
+            activeIcon: Icon(Icons.event),
+            label: "Events",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
@@ -80,10 +81,24 @@ class _DashboardView extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text("ASCON Dashboard"),
-        backgroundColor: const Color(0xFF006400),
+        backgroundColor: const Color(0xFF1B5E3A), // ✅ ASCON Deep Green
         foregroundColor: Colors.white,
-        automaticallyImplyLeading: false, 
+        automaticallyImplyLeading: false,
+        
+        // ✅ CORRECTED POSITION: 'actions' is now INSIDE AppBar
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const AboutScreen()),
+              );
+            },
+          ),
+        ],
       ),
+      
       backgroundColor: Colors.grey[50],
       body: Center(
         child: Padding(
@@ -100,7 +115,7 @@ class _DashboardView extends StatelessWidget {
                 style: GoogleFonts.inter(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF006400),
+                  color: const Color(0xFF1B5E3A),
                 ),
               ),
               const SizedBox(height: 10),

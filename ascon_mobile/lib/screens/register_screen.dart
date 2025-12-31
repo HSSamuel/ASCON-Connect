@@ -34,7 +34,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       appBar: AppBar(
         title: const Text("New Registration"),
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF006400),
+        foregroundColor: const Color(0xFF1B5E3A),
         elevation: 0,
       ),
       backgroundColor: Colors.white,
@@ -49,7 +49,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: const Color(0xFF006400),
+                  color: const Color(0xFF1B5E3A),
                 ),
               ),
               Text(
@@ -134,9 +134,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : registerUser, 
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF006400),
+                    backgroundColor: const Color(0xFF1B5E3A),
                     foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF006400).withOpacity(0.6),
+                    disabledBackgroundColor: const Color(0xFF1B5E3A).withOpacity(0.6),
                   ),
                   child: _isLoading 
                     ? const SizedBox(
@@ -213,7 +213,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Navigator.pop(ctx); 
                   Navigator.pop(context); 
                 }, 
-                child: const Text("OK", style: TextStyle(color: Color(0xFF006400)))
+                child: const Text("OK", style: TextStyle(color: Color(0xFF1B5E3A)))
               )
             ],
           )

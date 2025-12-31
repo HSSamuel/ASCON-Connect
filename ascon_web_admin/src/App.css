@@ -1,38 +1,289 @@
-.App {
-  text-align: center;
+/* =========================================
+   1. GLOBAL CONTAINER & LAYOUT
+   ========================================= */
+body {
+  background-color: #f4f4f4;
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.admin-container {
+  padding: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
   min-height: 100vh;
+}
+
+.admin-wrapper {
+  background-color: transparent;
+}
+
+/* Titles */
+.admin-title {
+  color: #1B5E3A; /* ✅ UPDATED Deep Green */
+  margin: 0 0 5px 0;
+  font-size: 28px;
+}
+
+.admin-subtitle {
+  color: #666;
+  margin: 0 0 30px 0;
+}
+
+/* =========================================
+   UPDATED HEADER SECTION (Logo & Centering)
+   ========================================= */
+
+/* 1. The Container for the whole header block */
+.header-centered {
+  text-align: center;
+  margin-bottom: 30px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+  align-items: center; /* Ensures everything sits in the middle */
+}
+
+/* 2. The Logo Image style */
+.admin-logo-main {
+  width: 120px; /* Adjust this value to make it bigger or smaller */
+  height: auto;
+  margin-bottom: 15px;
+}
+
+/* 3. Centering the tab buttons */
+.tabs-centered {
+  display: flex;
+  gap: 10px;
+  justify-content: center; /* THE KEY to centering the buttons */
+  margin-top: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap; /* Ensures they wrap nicely on very small screens */
+}
+
+/* =========================================
+   END HEADER UPDATES
+   ========================================= */
+
+/* =========================================
+   2. TABS & BUTTONS
+   ========================================= */
+.approve-btn {
+  background-color: #d4af37; /* Gold */
+  color: white;
+  font-weight: bold;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: transform 0.2s, background-color 0.2s;
+  font-size: 14px;
+}
+
+.approve-btn:hover {
+  transform: scale(1.05);
+  background-color: #bfa13f;
+}
+
+.approve-btn.inactive {
+  background-color: #ccc !important; /* Grey for inactive tabs */
+  color: #666;
+}
+
+.approve-btn.inactive:hover {
+  background-color: #bbb !important;
+}
+
+/* Red Delete Button */
+.delete-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.delete-btn:hover {
+  background-color: #c82333;
+}
+
+/* =========================================
+   3. FORMS & INPUTS
+   ========================================= */
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 12px;
+  margin-top: 5px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-sizing: border-box; /* Prevents padding from breaking width */
+  font-family: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #1B5E3A; /* ✅ UPDATED Deep Green */
+  border-color: transparent;
+}
+
+label {
+  font-weight: bold;
+  font-size: 14px;
+  color: #333;
+}
+
+/* =========================================
+   4. TABLES (Desktop View)
+   ========================================= */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: white;
+  border-radius: 10px;
+  overflow: hidden; /* Rounds corners */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  margin-top: 10px;
+}
+
+.admin-table thead {
+  background-color: #1B5E3A; /* ✅ UPDATED Deep Green */
   color: white;
 }
 
-.App-link {
-  color: #61dafb;
+.admin-table th,
+.admin-table td {
+  padding: 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Avatars */
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #eee;
+}
+
+.avatar-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+/* Tags (News/Reunion) */
+.tag {
+  padding: 4px 10px;
+  border-radius: 15px;
+  font-size: 12px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+/* =========================================
+   5. UTILITIES
+   ========================================= */
+.empty-state {
+  padding: 40px;
+  background-color: white;
+  border-radius: 10px;
+  text-align: center;
+  color: #888;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+}
+
+/* =========================================
+   6. MOBILE RESPONSIVENESS (The Magic)
+   ========================================= */
+@media screen and (max-width: 768px) {
+  .admin-container {
+    padding: 15px;
   }
-  to {
-    transform: rotate(360deg);
+
+  .admin-title {
+    font-size: 22px;
+  }
+
+  /* Hide Table Header */
+  .admin-table thead {
+    display: none;
+  }
+
+  /* Make rows look like cards */
+  .admin-table,
+  .admin-table tbody,
+  .admin-table tr,
+  .admin-table td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .admin-table {
+    background-color: transparent;
+    box-shadow: none;
+  }
+
+  .admin-table tr {
+    margin-bottom: 15px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    padding: 10px;
+  }
+
+  .admin-table td {
+    text-align: right;
+    padding-left: 50%;
+    position: relative;
+    border-bottom: 1px solid #eee;
+    min-height: 40px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  /* Pseudo-element for labels */
+  .admin-table td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    width: 45%;
+    text-align: left;
+    font-weight: bold;
+    color: #1B5E3A; /* ✅ UPDATED Deep Green */
+  }
+
+  .admin-table td:last-child {
+    border-bottom: none;
+    justify-content: center;
+    padding: 15px 0 5px 0;
+  }
+
+  .approve-btn,
+  .delete-btn {
+    width: 100%;
+    padding: 12px;
+  }
+
+  /* Stack the form inputs on mobile */
+  form > div {
+    flex-direction: column;
   }
 }
