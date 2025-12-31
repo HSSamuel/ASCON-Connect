@@ -1,7 +1,8 @@
-import 'dart:convert'; // To send JSON data
-import 'package:http/http.dart' as http; // To connect to the internet
+import 'dart:convert'; 
+import 'package:http/http.dart' as http; 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../config.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -11,16 +12,15 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  // 1. Controllers to capture text
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _yearController = TextEditingController();
   
-  // 2. Variable for the Dropdown Menu
   String? _selectedProgramme;
+  bool _isLoading = false;
+  bool _obscurePassword = true; // <--- NEW: Tracks password visibility
   
-  // The list of options exactly as they are in your Database
   final List<String> _programmes = [
     'Management Programme',
     'Computer Programme',
@@ -32,9 +32,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("New Registration"),
+        title: const Text("New Registration"),
         backgroundColor: Colors.white,
-        foregroundColor: Color(0xFF006400), // Green Back Arrow
+        foregroundColor: const Color(0xFF006400),
         elevation: 0,
       ),
       backgroundColor: Colors.white,
@@ -49,14 +49,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF006400),
+                  color: const Color(0xFF006400),
                 ),
               ),
               Text(
                 'Enter your details for Admin verification.',
                 style: GoogleFonts.inter(color: Colors.grey[600]),
               ),
-              SizedBox(height: 30),
+              const SizedBox(height: 30),
 
               // FULL NAME
               _buildLabel("Full Name"),
@@ -64,7 +64,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 controller: _nameController,
                 decoration: _inputDecoration("Director Samuel"),
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
 
               // EMAIL
               _buildLabel("Email Address"),
@@ -72,16 +72,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 controller: _emailController,
                 decoration: _inputDecoration("samuel@ascon.gov.ng"),
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
 
-              // PASSWORD
+              // PASSWORD WITH EYE ICON
               _buildLabel("Password"),
               TextFormField(
                 controller: _passwordController,
-                obscureText: true,
-                decoration: _inputDecoration("******"),
+                obscureText: _obscurePassword, // Use variable
+                decoration: InputDecoration(
+                  hintText: "******",
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                  // EYE ICON:
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.grey,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                  ),
+                ),
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
 
               // YEAR OF ATTENDANCE
               _buildLabel("Year of Attendance"),
@@ -90,7 +106,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 keyboardType: TextInputType.number,
                 decoration: _inputDecoration("2023"),
               ),
-              SizedBox(height: 15),
+              const SizedBox(height: 15),
 
               // PROGRAMME DROPDOWN
               _buildLabel("Programme Attended"),
@@ -100,7 +116,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 items: _programmes.map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
-                    child: Text(value, style: TextStyle(fontSize: 14)),
+                    child: Text(value, style: const TextStyle(fontSize: 14)),
                   );
                 }).toList(),
                 onChanged: (newValue) {
@@ -109,24 +125,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   });
                 },
               ),
-              SizedBox(height: 40),
+              const SizedBox(height: 40),
 
               // REGISTER BUTTON
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
-  registerUser(); // Call the function we just wrote
-},
+                  onPressed: _isLoading ? null : registerUser, 
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF006400),
+                    backgroundColor: const Color(0xFF006400),
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFF006400).withOpacity(0.6),
                   ),
-                  child: Text(
-                    'SUBMIT FOR APPROVAL',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
+                  child: _isLoading 
+                    ? const SizedBox(
+                        height: 24, 
+                        width: 24, 
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      )
+                    : const Text(
+                        'SUBMIT FOR APPROVAL',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                 ),
               ),
             ],
@@ -136,18 +157,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Helper functions to keep code clean
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      border: OutlineInputBorder(),
-      contentPadding: EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+      border: const OutlineInputBorder(),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
     );
   }
 
-  // Function to talk to the Backend
   Future<void> registerUser() async {
-    // 1. Validation: Make sure they filled everything
     if (_nameController.text.isEmpty || 
         _emailController.text.isEmpty || 
         _passwordController.text.isEmpty || 
@@ -155,70 +173,76 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _selectedProgramme == null) {
       
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Please fill all fields"), backgroundColor: Colors.red),
+        const SnackBar(content: Text("Please fill all fields"), backgroundColor: Colors.red),
       );
       return;
     }
 
-    // 2. Prepare the Data
-    // Note: If testing on Android Emulator, use 'https://ascon.onrender.com/api/auth/register'
-    // Since you are on Chrome/Web, localhost is fine.
-    final url = Uri.parse('https://ascon.onrender.com/api/auth/register');
+    setState(() {
+      _isLoading = true;
+    });
+
+    final url = Uri.parse('${AppConfig.baseUrl}/api/auth/register');
     
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'fullName': _nameController.text,
-          'email': _emailController.text,
+          'fullName': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
           'password': _passwordController.text,
           'yearOfAttendance': int.parse(_yearController.text),
           'programmeTitle': _selectedProgramme,
         }),
       );
 
-      // 3. Check the Server Response
       final responseData = jsonDecode(response.body);
 
       if (response.statusCode == 201) {
-        // SUCCESS!
-        // Show success message
+        if (!mounted) return;
         showDialog(
           context: context, 
+          barrierDismissible: false, 
           builder: (ctx) => AlertDialog(
-            title: Text("Registration Successful"),
-            content: Text(responseData['message']), // "Please wait for Admin approval"
+            title: const Text("Registration Successful"),
+            content: Text(responseData['message']),
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(ctx); // Close dialog
-                  Navigator.pop(context); // Go back to Login Screen
+                  Navigator.pop(ctx); 
+                  Navigator.pop(context); 
                 }, 
-                child: Text("OK")
+                child: const Text("OK", style: TextStyle(color: Color(0xFF006400)))
               )
             ],
           )
         );
       } else {
-        // FAILURE (e.g., Email already exists)
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(responseData['message']), backgroundColor: Colors.red),
+          SnackBar(content: Text(responseData['message'] ?? "Registration failed"), backgroundColor: Colors.red),
         );
       }
     } catch (error) {
-      // INTERNET ERROR
       print(error);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Connection failed. Is the server running?"), backgroundColor: Colors.red),
+        const SnackBar(content: Text("Connection failed. Check internet."), backgroundColor: Colors.red),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(text, style: TextStyle(fontWeight: FontWeight.w600)),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
     );
   }
 }
