@@ -8,7 +8,6 @@ class AlumniDetailScreen extends StatelessWidget {
 
   const AlumniDetailScreen({super.key, required this.alumniData});
 
-  // --- HELPER: Launch URLs Safely ---
   Future<void> _launchURL(String urlString) async {
     if (urlString.isEmpty) return;
     final Uri url = Uri.parse(urlString);
@@ -21,16 +20,11 @@ class AlumniDetailScreen extends StatelessWidget {
     }
   }
 
-  // --- HELPER: Smart Image Loader (URL vs Base64) ---
   ImageProvider? getProfileImage(String? imagePath) {
     if (imagePath == null || imagePath.isEmpty) return null;
-    
-    // 1. Check if it is a URL (Cloudinary/S3)
     if (imagePath.startsWith('http')) {
       return NetworkImage(imagePath);
     } 
-    
-    // 2. Fallback for Base64 strings
     try {
       return MemoryImage(base64Decode(imagePath));
     } catch (e) {
@@ -40,7 +34,6 @@ class AlumniDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // --- 1. SAFE DATA EXTRACTION ---
     final String fullName = alumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = alumniData['jobTitle'] ?? '';
     final String org = alumniData['organization'] ?? '';
@@ -51,15 +44,14 @@ class AlumniDetailScreen extends StatelessWidget {
     final String year = alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
     final String imageString = alumniData['profilePicture'] ?? '';
     
-    // ✅ Logic: Show "Not Specified" if missing
     final String programme = (alumniData['programmeTitle'] != null && alumniData['programmeTitle'].toString().isNotEmpty) 
         ? alumniData['programmeTitle'] 
         : 'Not Specified';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[50], // ✅ Light grey background to make cards pop
       appBar: AppBar(
-        title: Text("Alumni Profile", style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+        title: Text("Alumni Profile", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
         backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
         elevation: 0,
@@ -67,7 +59,7 @@ class AlumniDetailScreen extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 2. HEADER SECTION (Gradient + Avatar) ---
+            // --- 1. HEADER SECTION ---
             Stack(
               clipBehavior: Clip.none,
               alignment: Alignment.center,
@@ -75,32 +67,33 @@ class AlumniDetailScreen extends StatelessWidget {
                 // Background Gradient
                 Container(
                   width: double.infinity,
-                  height: 140,
+                  height: 100, // Compact height
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
+                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
                   ),
                 ),
-                // Avatar
+                // Avatar with "Floating" Shadow
                 Positioned(
-                  bottom: -60,
+                  bottom: -45, 
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 4),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
+                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
                       ],
                     ),
                     child: CircleAvatar(
-                      radius: 60,
+                      radius: 45, 
                       backgroundColor: Colors.grey[200],
                       backgroundImage: getProfileImage(imageString),
                       child: getProfileImage(imageString) == null
-                          ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                          ? const Icon(Icons.person, size: 45, color: Colors.grey)
                           : null,
                     ),
                   ),
@@ -108,54 +101,56 @@ class AlumniDetailScreen extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 70), // Spacer for Avatar
+            const SizedBox(height: 55), 
 
-            // --- 3. NAME & JOB INFO ---
+            // --- 2. IDENTITY SECTION ---
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
-                      fontSize: 26,
+                      fontSize: 22, 
                       fontWeight: FontWeight.bold,
                       color: Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   
                   if (job.isNotEmpty || org.isNotEmpty)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.work_outline, size: 16, color: Colors.grey),
+                        const Icon(Icons.work_outline, size: 14, color: Colors.grey),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             "$job at $org",
-                            style: GoogleFonts.inter(fontSize: 16, color: Colors.grey[700]),
+                            style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w500),
                             textAlign: TextAlign.center,
                           ),
                         ),
                       ],
                     ),
                   
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 10),
                   
+                  // Class Badge
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD4AF37).withOpacity(0.15), // Gold tint
+                      color: const Color(0xFFD4AF37).withOpacity(0.1), // Gold tint
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3)),
                     ),
                     child: Text(
                       "Class of $year",
                       style: GoogleFonts.inter(
-                        color: const Color(0xFFB8860B), // Dark Gold
+                        color: const Color(0xFFB8860B), 
                         fontWeight: FontWeight.bold,
-                        fontSize: 13
+                        fontSize: 12 
                       ),
                     ),
                   ),
@@ -163,9 +158,9 @@ class AlumniDetailScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 25),
+            const SizedBox(height: 20),
 
-            // --- 4. ACTION BUTTONS (Clean Row) ---
+            // --- 3. CONTACT ACTION BUTTONS ---
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -180,49 +175,70 @@ class AlumniDetailScreen extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 30),
-            const Divider(thickness: 1, indent: 20, endIndent: 20, color: Colors.black12),
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
 
-            // --- 5. DETAILS SECTION ---
+            // --- 4. DETAILS CARDS ---
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle("About Me"),
-                  const SizedBox(height: 8),
-                  Text(
-                    bio,
-                    style: GoogleFonts.inter(fontSize: 15, height: 1.6, color: Colors.grey[800]),
+                  // ✅ ENHANCED "ABOUT ME" CARD
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF1B5E3A)),
+                            const SizedBox(width: 8),
+                            Text(
+                              "About Me",
+                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: const Color(0xFF1B5E3A)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          bio,
+                          style: GoogleFonts.inter(fontSize: 14, height: 1.6, color: Colors.grey[800]),
+                          textAlign: TextAlign.justify, // Pro look
+                        ),
+                      ],
+                    ),
                   ),
-                  
-                  const SizedBox(height: 30),
 
-                  _buildSectionTitle("Academic Record"),
-                  const SizedBox(height: 10),
-                  
-                  // ✅ IMPROVED PROGRAMME CARD
+                  const SizedBox(height: 16),
+
+                  // ✅ ACADEMIC RECORD CARD
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF1B5E3A).withOpacity(0.2)),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
-                        BoxShadow(color: const Color(0xFF1B5E3A).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
                       ],
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1B5E3A).withOpacity(0.1),
+                            color: const Color(0xFF1B5E3A).withOpacity(0.08),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.school, color: Color(0xFF1B5E3A)),
+                          child: const Icon(Icons.school_outlined, color: Color(0xFF1B5E3A), size: 22),
                         ),
                         const SizedBox(width: 15),
                         Expanded(
@@ -231,15 +247,14 @@ class AlumniDetailScreen extends StatelessWidget {
                             children: [
                               Text(
                                 "Programme Attended",
-                                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500]),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 programme,
                                 style: GoogleFonts.inter(
-                                  fontSize: 16, 
+                                  fontSize: 14, 
                                   fontWeight: FontWeight.bold, 
-                                  // Grey text if "Not Specified", black otherwise
                                   color: programme == 'Not Specified' ? Colors.grey : Colors.black87
                                 ),
                               ),
@@ -249,52 +264,44 @@ class AlumniDetailScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
-                  const SizedBox(height: 50),
                 ],
               ),
             ),
+            
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  // --- WIDGET BUILDERS ---
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: GoogleFonts.inter(
-        fontSize: 18,
-        fontWeight: FontWeight.bold,
-        color: const Color(0xFF1B5E3A),
-      ),
-    );
-  }
+  // --- HELPER WIDGETS ---
 
   Widget _buildCircleAction(IconData icon, String label, Color color, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         children: [
           InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(50),
             child: Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: Colors.white, // White bg for button
                 shape: BoxShape.circle,
-                border: Border.all(color: color.withOpacity(0.2)),
+                border: Border.all(color: color.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(color: color.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
+                ],
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: color, size: 22),
             ),
           ),
           const SizedBox(height: 6),
           Text(
             label,
-            style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey[600]),
           ),
         ],
       ),

@@ -30,7 +30,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
 
-      // Ensure this endpoint returns the 'programmeTitle' field in the JSON response
       final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
       final response = await http.get(
         url,
@@ -54,7 +53,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> logout() async {
-    // Show confirmation dialog
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -79,7 +77,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Helper to handle Image Logic
   ImageProvider? getProfileImage(String? imagePath) {
     if (imagePath == null || imagePath.isEmpty) return null;
     if (imagePath.startsWith('http')) {
@@ -95,13 +92,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Extract values for cleaner code
     final String fullName = _userProfile?['fullName'] ?? widget.userName;
     final String jobTitle = _userProfile?['jobTitle'] ?? '';
     final String org = _userProfile?['organization'] ?? '';
     
-    // ✅ Logic for Programme Title:
-    // If fetched, show it. If null/empty, show "Add Programme" to prompt user.
     final String programme = (_userProfile?['programmeTitle'] != null && _userProfile!['programmeTitle'].toString().isNotEmpty)
         ? _userProfile!['programmeTitle']
         : 'Add Programme';
@@ -113,7 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         : 'Add Phone Number';
 
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Light background for contrast
+      backgroundColor: Colors.grey[50], 
       extendBodyBehindAppBar: true, 
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -140,9 +134,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       clipBehavior: Clip.none,
                       alignment: Alignment.center,
                       children: [
-                        // Green Gradient Background
+                        // Green Gradient Background (Reduced Height 220 -> 200)
                         Container(
-                          height: 220,
+                          height: 200,
                           width: double.infinity,
                           decoration: const BoxDecoration(
                             gradient: LinearGradient(
@@ -156,7 +150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         
                         // Page Title
                         Positioned(
-                          top: 100,
+                          top: 90, // Adjusted top position
                           child: Text(
                             "My Profile",
                             style: GoogleFonts.inter(
@@ -167,9 +161,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
 
-                        // The Overlapping Avatar
+                        // The Overlapping Avatar (Size Unchanged)
                         Positioned(
-                          top: 160,
+                          top: 140, // Moved up slightly to compact
                           child: Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
@@ -183,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ],
                             ),
                             child: CircleAvatar(
-                              radius: 60,
+                              radius: 45,
                               backgroundColor: Colors.grey[200],
                               backgroundImage: getProfileImage(_userProfile?['profilePicture']),
                               child: getProfileImage(_userProfile?['profilePicture']) == null
@@ -195,23 +189,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 70), // Spacer for the overlapping avatar
+                    // Spacer for the overlapping avatar (Reduced 70 -> 60)
+                    const SizedBox(height: 60), 
 
                     // --- 2. IDENTITY SECTION ---
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16), // Reduced side padding
                       child: Column(
                         children: [
                           Text(
                             fullName,
                             textAlign: TextAlign.center,
                             style: GoogleFonts.inter(
-                              fontSize: 24, 
+                              fontSize: 22, // Reduced font size 24 -> 22
                               fontWeight: FontWeight.bold,
                               color: Colors.black87
                             ),
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 4), // Reduced spacing 6 -> 4
                           
                           // Job & Org
                           if (jobTitle.isNotEmpty || org.isNotEmpty)
@@ -219,28 +214,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               "$jobTitle ${org.isNotEmpty ? 'at $org' : ''}",
                               textAlign: TextAlign.center,
                               style: GoogleFonts.inter(
-                                fontSize: 14, 
+                                fontSize: 13, // Reduced font size 14 -> 13
                                 color: Colors.grey[600],
                                 fontWeight: FontWeight.w500
                               ),
                             ),
                           
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12), // Reduced spacing 16 -> 12
                           
                           // Badges Row (Programme & Class)
                           Wrap(
                             alignment: WrapAlignment.center,
-                            spacing: 10,
-                            runSpacing: 10,
+                            spacing: 8, // Reduced spacing 10 -> 8
+                            runSpacing: 8,
                             children: [
-                              // ✅ Programme Badge
                               _buildBadge(
                                 Icons.school, 
                                 programme, 
                                 isPlaceholder: programme == 'Add Programme'
                               ),
                               
-                              // Class Year Badge
                               _buildBadge(
                                 Icons.calendar_today, 
                                 "Class of $year",
@@ -252,14 +245,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 20), // Reduced spacing 25 -> 20
 
                     // --- 3. EDIT BUTTON ---
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: SizedBox(
                         width: double.infinity,
-                        height: 50,
+                        height: 45, // Slimmer button 50 -> 45
                         child: ElevatedButton.icon(
                           onPressed: () async {
                             final result = await Navigator.push(
@@ -268,34 +261,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 builder: (context) => EditProfileScreen(userData: _userProfile ?? {}),
                               ),
                             );
-                            if (result == true) fetchProfile(); // Refresh if updated
+                            if (result == true) fetchProfile(); 
                           },
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          label: const Text("Edit Details"),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text("Edit Details", style: TextStyle(fontSize: 14)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1B5E3A),
                             foregroundColor: Colors.white,
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 20), // Reduced spacing 30 -> 20
 
-                    // --- 4. CONTACT INFO CARD ---
+                    // --- 4. CONTACT INFO CARD (Compact) ---
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      padding: const EdgeInsets.all(20),
+                      margin: const EdgeInsets.symmetric(horizontal: 16), // Reduced margin
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), // Reduced padding
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.03), 
-                            blurRadius: 10, 
-                            offset: const Offset(0, 4)
+                            blurRadius: 8, 
+                            offset: const Offset(0, 3)
                           ),
                         ],
                       ),
@@ -304,11 +297,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           Text(
                             "Contact Information",
-                            style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF1B5E3A)),
+                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: const Color(0xFF1B5E3A)),
                           ),
-                          const SizedBox(height: 15),
+                          const SizedBox(height: 12),
                           _buildContactRow(Icons.email_outlined, "Email", email),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Divider()),
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
                           _buildContactRow(Icons.phone_outlined, "Phone", phone),
                         ],
                       ),
@@ -322,11 +315,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- WIDGET BUILDERS ---
+  // --- WIDGET BUILDERS (Compact) ---
 
   Widget _buildBadge(IconData icon, String text, {bool isPlaceholder = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      // Reduced internal padding
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isPlaceholder ? Colors.orange[50] : const Color(0xFF1B5E3A).withOpacity(0.08),
         borderRadius: BorderRadius.circular(20),
@@ -339,16 +333,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Icon(
             icon, 
-            size: 14, 
+            size: 13, // Smaller icon
             color: isPlaceholder ? Colors.orange[800] : const Color(0xFF1B5E3A)
           ),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: GoogleFonts.inter(
-              fontSize: 12, 
-              fontWeight: FontWeight.w600, 
-              color: isPlaceholder ? Colors.orange[800] : const Color(0xFF1B5E3A)
+          const SizedBox(width: 5),
+          Flexible( // Added Flexible to prevent overflow
+            child: Text(
+              text,
+              style: GoogleFonts.inter(
+                fontSize: 11, // Smaller font
+                fontWeight: FontWeight.w600, 
+                color: isPlaceholder ? Colors.orange[800] : const Color(0xFF1B5E3A)
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -360,26 +357,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8), // Reduced padding 10 -> 8
           decoration: BoxDecoration(
             color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, color: Colors.grey[600], size: 20),
+          child: Icon(icon, color: Colors.grey[600], size: 18), // Smaller icon
         ),
-        const SizedBox(width: 15),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 label,
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[500]),
+                style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[500]), // Smaller label
               ),
               const SizedBox(height: 2),
               Text(
                 value,
-                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87),
+                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87), // Smaller text
               ),
             ],
           ),

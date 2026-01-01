@@ -54,13 +54,13 @@ class _EventsScreenState extends State<EventsScreen> {
       appBar: AppBar(
         title: Text(
           "News & Events", 
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold)
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18)
         ),
         backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
       ),
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey[50],
       
       body: RefreshIndicator(
         onRefresh: fetchEvents,
@@ -70,7 +70,7 @@ class _EventsScreenState extends State<EventsScreen> {
             : _events.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12), // Reduced padding
                     itemCount: _events.length,
                     itemBuilder: (context, index) {
                       return _buildEventCard(_events[index]);
@@ -80,18 +80,16 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.event_note, size: 60, color: Colors.grey[400]),
-          const SizedBox(height: 16),
+          Icon(Icons.event_note, size: 50, color: Colors.grey[300]),
+          const SizedBox(height: 12),
           Text(
             "No news or events yet.",
-            style: GoogleFonts.inter(fontSize: 16, color: Colors.grey[600]),
+            style: GoogleFonts.inter(fontSize: 15, color: Colors.grey[600]),
           ),
         ],
       ),
@@ -111,7 +109,9 @@ class _EventsScreenState extends State<EventsScreen> {
 
     final Map<String, String> safeEventData = {
       'title': event['title']?.toString() ?? 'No Title',
-      'date': dateString,
+      'date': dateString, // Keeps the short date for the card
+      // ✅ ADD THIS LINE: Pass the full raw date so Detail Screen can show time
+      'rawDate': event['date']?.toString() ?? '', 
       'location': event['location']?.toString() ?? 'ASCON HQ',
       'image': event['image']?.toString() ?? 'https://via.placeholder.com/600',
       'description': event['description']?.toString() ?? 'No description available.',
@@ -125,23 +125,23 @@ class _EventsScreenState extends State<EventsScreen> {
         );
       },
       child: Card(
-        margin: const EdgeInsets.only(bottom: 16),
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 1, // Reduced elevation
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Green Strip
+            // Thinner Green Strip
             Container(
-              height: 8,
+              height: 4,
               decoration: const BoxDecoration(
                 color: Color(0xFF1B5E3A),
-                borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                borderRadius: BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
               ),
             ),
             
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(12.0), // Compact Padding
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -150,15 +150,15 @@ class _EventsScreenState extends State<EventsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: Colors.green[50], 
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           event['type'] ?? 'News', 
                           style: GoogleFonts.inter(
-                            fontSize: 11, 
+                            fontSize: 10, 
                             fontWeight: FontWeight.bold, 
                             color: const Color(0xFF1B5E3A)
                           ),
@@ -166,60 +166,56 @@ class _EventsScreenState extends State<EventsScreen> {
                       ),
                       Text(
                         dateString,
-                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[500]),
                       ),
                     ],
                   ),
                   
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
-                  // Title
                   Text(
                     event['title'] ?? 'No Title',
                     style: GoogleFonts.inter(
-                      fontSize: 18, 
+                      fontSize: 16, 
                       fontWeight: FontWeight.bold, 
                       color: Colors.black87,
                       height: 1.3
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
-                  // Location
                   Row(
                     children: [
-                      Icon(Icons.location_on, size: 14, color: Colors.grey[500]),
+                      Icon(Icons.location_on, size: 12, color: Colors.grey[500]),
                       const SizedBox(width: 4),
                       Text(
                         event['location'] ?? 'Publication Dept',
-                        style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600]),
+                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
                       ),
                     ],
                   ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
 
-                  // --- ✅ JUSTIFIED DESCRIPTION ---
                   Text(
                     event['description'] ?? '',
                     maxLines: 3, 
                     overflow: TextOverflow.ellipsis, 
-                    textAlign: TextAlign.justify, // 👈 JUSTIFIED HERE
+                    textAlign: TextAlign.justify, 
                     style: GoogleFonts.inter(
-                      fontSize: 14, 
+                      fontSize: 13, 
                       color: Colors.grey[800], 
                       height: 1.5
                     ),
                   ),
                   
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
-                  // Read More Link
                   Text(
                     "Read More",
                     style: GoogleFonts.inter(
-                      fontSize: 13, 
+                      fontSize: 12, 
                       fontWeight: FontWeight.w600, 
                       color: const Color(0xFF1B5E3A),
                       decoration: TextDecoration.underline

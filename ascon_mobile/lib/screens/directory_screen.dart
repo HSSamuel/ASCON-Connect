@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'alumni_detail_screen.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
-import 'dart:async'; // Required for Debounce
+import 'dart:async'; 
 import 'package:http/http.dart' as http;
 import '../config.dart';
 
@@ -31,18 +31,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     super.dispose();
   }
 
-  // ✅ Server-Side Search Function
   Future<void> fetchAlumni({String query = ""}) async {
     setState(() => _isLoading = true);
-
     String endpoint = '${AppConfig.baseUrl}/api/directory';
-    if (query.isNotEmpty) {
-      endpoint += '?search=$query';
-    }
+    if (query.isNotEmpty) endpoint += '?search=$query';
 
     try {
       final response = await http.get(Uri.parse(endpoint));
-
       if (response.statusCode == 200) {
         if (mounted) {
           setState(() {
@@ -54,21 +49,17 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (error) {
-      debugPrint("Directory Error: $error");
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ✅ Debounce Logic
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    
     _debounce = Timer(const Duration(milliseconds: 500), () {
       fetchAlumni(query: query);
     });
   }
 
-  // Helper for Images
   ImageProvider? getProfileImage(String? imagePath) {
       if (imagePath == null || imagePath.isEmpty) return null;
       if (imagePath.startsWith('http')) {
@@ -86,37 +77,37 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       appBar: AppBar(
         title: Text(
           "Alumni Directory",
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false, 
         elevation: 0,
       ),
-      backgroundColor: Colors.grey[50], // Slightly off-white for contrast
+      backgroundColor: Colors.grey[50], 
       body: Column(
         children: [
-          // 1. SEARCH BAR AREA
+          // 1. COMPACT SEARCH BAR
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-            color: const Color(0xFF1B5E3A), // Extend Green Header
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), // Reduced padding
+            color: const Color(0xFF1B5E3A), 
             child: Container(
+              height: 45, // Fixed smaller height
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
-                ],
+                borderRadius: BorderRadius.circular(10),
               ),
               child: TextField(
                 controller: _searchController,
                 onChanged: _onSearchChanged,
+                textAlignVertical: TextAlignVertical.center,
                 decoration: InputDecoration(
                   hintText: 'Search Name, Company, or Year...',
-                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: Color(0xFF1B5E3A)),
+                  hintStyle: TextStyle(color: Colors.grey[400], fontSize: 13),
+                  prefixIcon: const Icon(Icons.search, color: Color(0xFF1B5E3A), size: 20),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 15),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                  isDense: true,
                 ),
               ),
             ),
@@ -132,7 +123,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                   : _alumniList.isEmpty
                       ? _buildEmptyState()
                       : ListView.builder(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(12), // Reduced list padding
                           itemCount: _alumniList.length,
                           itemBuilder: (context, index) {
                             return _buildAlumniCard(_alumniList[index]);
@@ -145,23 +136,16 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
   Widget _buildEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off, size: 60, color: Colors.grey[300]),
-          const SizedBox(height: 16),
+          Icon(Icons.search_off, size: 50, color: Colors.grey[300]),
+          const SizedBox(height: 12),
           Text(
             "No alumni found.",
-            style: GoogleFonts.inter(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            "Try adjusting your search criteria.",
-            style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[500]),
+            style: GoogleFonts.inter(fontSize: 15, color: Colors.grey[600], fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -178,50 +162,46 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (context) => AlumniDetailScreen(alumniData: user),
-          ),
+          MaterialPageRoute(builder: (context) => AlumniDetailScreen(alumniData: user)),
         );
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 12), // Reduced spacing
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey[100]!),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 3)),
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(12.0), // Reduced internal padding
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar
+              // Compact Avatar
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey[200]!, width: 2),
+                  border: Border.all(color: Colors.grey[200]!, width: 1),
                 ),
                 child: CircleAvatar(
-                  radius: 28,
+                  radius: 24, // Reduced from 28
                   backgroundColor: Colors.grey[100],
                   backgroundImage: getProfileImage(user['profilePicture']),
                   child: getProfileImage(user['profilePicture']) == null
-                      ? const Icon(Icons.person, color: Colors.grey, size: 30)
+                      ? const Icon(Icons.person, color: Colors.grey, size: 26)
                       : null,
                 ),
               ),
               
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Name & Badge Row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -229,7 +209,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                           child: Text(
                             user['fullName'] ?? 'Unknown',
                             style: GoogleFonts.inter(
-                              fontSize: 16,
+                              fontSize: 15, // Reduced from 16
                               fontWeight: FontWeight.bold,
                               color: Colors.black87,
                             ),
@@ -237,50 +217,44 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // Class Badge
                         if (user['yearOfAttendance'] != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1B5E3A).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
+                              color: const Color(0xFF1B5E3A).withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              "'${user['yearOfAttendance'].toString().substring(2)}", // e.g., '23
+                              "'${user['yearOfAttendance'].toString().substring(2)}", 
                               style: const TextStyle(
                                 color: Color(0xFF1B5E3A),
                                 fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                                fontSize: 11,
                               ),
                             ),
                           ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    
-                    // Job / Program
                     Text(
                       subtitle,
-                      style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13),
+                      style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12), // Reduced from 13
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    
-                    const SizedBox(height: 12),
-                    
-                    // Action Link
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Text(
                           "View Profile",
                           style: GoogleFonts.inter(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF1B5E3A),
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward, size: 12, color: Color(0xFF1B5E3A)),
+                        const Icon(Icons.arrow_forward, size: 10, color: Color(0xFF1B5E3A)),
                       ],
                     ),
                   ],

@@ -26,17 +26,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _linkedinController;
   late TextEditingController _phoneController;
   late TextEditingController _yearController;
-  
-  // ✅ Controller for custom input when "Other" is selected
   late TextEditingController _otherProgrammeController;
 
   String? _selectedProgramme;
-  
   Uint8List? _selectedImageBytes; 
   XFile? _pickedFile; 
   String? _currentUrl; 
 
-  // ✅ Matches Backend Enum exactly
   final List<String> _programmeOptions = [
     "Management Programme",
     "Computer Programme",
@@ -61,11 +57,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _linkedinController = TextEditingController(text: widget.userData['linkedin'] ?? '');
     _phoneController = TextEditingController(text: widget.userData['phoneNumber'] ?? '');
     _yearController = TextEditingController(text: widget.userData['yearOfAttendance']?.toString() ?? '');
-    
-    // Load existing custom text (if any)
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
 
-    // ✅ Logic: Determine Dropdown Selection
     String existingProg = widget.userData['programmeTitle'] ?? '';
     
     if (_programmeOptions.contains(existingProg)) {
@@ -74,7 +67,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _selectedProgramme = null;
     }
     
-    // If "Other" was saved, or we have custom text, set dropdown to "Other"
     if (existingProg == "Other" || (widget.userData['customProgramme'] != null && widget.userData['customProgramme'].toString().isNotEmpty)) {
        _selectedProgramme = "Other";
     }
@@ -120,7 +112,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       var request = http.MultipartRequest('PUT', url);
       request.headers['auth-token'] = token ?? '';
 
-      // Add Standard Fields
       request.fields['bio'] = _bioController.text;
       request.fields['jobTitle'] = _jobController.text;
       request.fields['organization'] = _orgController.text;
@@ -128,18 +119,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       request.fields['phoneNumber'] = _phoneController.text;
       request.fields['yearOfAttendance'] = _yearController.text;
 
-      // ✅ LOGIC: Handle "Other" vs Standard
       if (_selectedProgramme == "Other") {
-        // 1. Send "Other" to satisfy the enum validation
         request.fields['programmeTitle'] = "Other";
-        // 2. Send the typed text to the custom field
         request.fields['customProgramme'] = _otherProgrammeController.text.trim();
       } else if (_selectedProgramme != null) {
         request.fields['programmeTitle'] = _selectedProgramme!;
-        request.fields['customProgramme'] = ""; // Clear custom if they switched back
+        request.fields['customProgramme'] = ""; 
       }
 
-      // Add Image (if changed)
       if (_pickedFile != null && _selectedImageBytes != null) {
         request.files.add(
           http.MultipartFile.fromBytes(
@@ -154,32 +141,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
-      print("Status: ${response.statusCode}");
-      print("Body: ${response.body}");
-
       if (response.statusCode == 200) {
         if (!mounted) return;
         Navigator.pop(context, true); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Profile Updated Successfully!")),
         );
-      } 
-      // ✅ FIX: Handle Expired Token (400/401)
-      else if (response.statusCode == 400 || response.statusCode == 401) {
+      } else if (response.statusCode == 400 || response.statusCode == 401) {
         if (!mounted) return;
-        await prefs.clear(); // Clear bad token
-        
+        await prefs.clear(); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Session expired. Please login again."), backgroundColor: Colors.red),
         );
-        // Navigate to Login (Replace '/login' with your login route name or MaterialPageRoute)
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-      }
-      else {
+      } else {
         throw Exception("Failed to update: ${response.body}");
       }
     } catch (e) {
-      print("Upload Error: $e");
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error updating profile."), backgroundColor: Colors.red),
@@ -204,17 +182,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        // 1. Reduced Padding from 20 to 16
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             children: [
-              // --- AVATAR ---
+              // --- AVATAR (Unchanged size) ---
               Center(
                 child: Stack(
                   children: [
                     CircleAvatar(
-                      radius: 60,
+                      radius: 50,
                       backgroundColor: const Color(0xFF1B5E3A),
                       backgroundImage: getImageProvider(),
                       child: getImageProvider() == null
@@ -239,23 +218,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 30),
+              // 2. Reduced spacing from 30 to 20
+              const SizedBox(height: 20),
 
               // --- FIELDS ---
+              // 3. Compact Job & Org
               _buildTextField("Job Title", _jobController, Icons.work),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12), // Reduced from 15
               _buildTextField("Organization", _orgController, Icons.business),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               
-              // --- PROGRAMME DROPDOWN ---
+              // --- PROGRAMME DROPDOWN (Compact) ---
               DropdownButtonFormField<String>(
                 value: _selectedProgramme,
+                isExpanded: true,
+                isDense: true, // Makes the dropdown height smaller
                 decoration: const InputDecoration(
                   labelText: "Programme Attended",
-                  prefixIcon: Icon(Icons.school, color: Colors.grey),
+                  prefixIcon: Icon(Icons.school, color: Colors.grey, size: 20),
                   border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Reduced padding
                 ),
-                isExpanded: true, 
                 items: _programmeOptions.map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
@@ -274,9 +257,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 validator: (value) => value == null ? 'Please select a programme' : null,
               ),
 
-              // ✅ CONDITIONAL INPUT FOR "OTHER"
               if (_selectedProgramme == "Other") ...[
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
                 _buildTextField(
                   "Specify Programme Name", 
                   _otherProgrammeController, 
@@ -284,19 +266,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ],
               
-              const SizedBox(height: 15),
-              _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
-              const SizedBox(height: 15),
-              _buildTextField("Phone Number", _phoneController, Icons.phone, isNumber: true),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
+              
+              // 4. SIDE-BY-SIDE: Class Year & Phone Number
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildTextField("Phone", _phoneController, Icons.phone, isNumber: true),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
               _buildTextField("LinkedIn URL", _linkedinController, Icons.link),
-              const SizedBox(height: 15),
+              const SizedBox(height: 12),
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
-              const SizedBox(height: 30),
+              
+              // 5. Reduced spacing before button
+              const SizedBox(height: 24),
               
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 45, // Slightly reduced height from 50
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : saveProfile,
                   style: ElevatedButton.styleFrom(
@@ -304,7 +299,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     foregroundColor: Colors.white,
                   ),
                   child: _isLoading 
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text("SAVE CHANGES"),
                 ),
               )
@@ -320,16 +315,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       controller: controller,
       maxLines: maxLines,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(fontSize: 14), // Slightly smaller font for compact feel
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.grey),
+        labelStyle: const TextStyle(fontSize: 13),
+        prefixIcon: Icon(icon, color: Colors.grey, size: 20), // Smaller icon
         border: const OutlineInputBorder(),
+        isDense: true, // Removes extra vertical space inside the field
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Tighter padding
         alignLabelWithHint: maxLines > 1, 
       ),
-      // Validation for "Other" field
       validator: (value) {
         if (label == "Specify Programme Name" && _selectedProgramme == "Other" && (value == null || value.isEmpty)) {
-          return "Please specify the programme name";
+          return "Please specify";
         }
         return null;
       },
