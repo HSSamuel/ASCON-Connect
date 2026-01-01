@@ -1,5 +1,7 @@
 const router = require("express").Router();
 const Event = require("../models/Event");
+const verifyToken = require("./verifyToken");
+const verifyAdmin = require("./verifyAdmin");
 
 // @route   GET /api/events
 // @desc    Get all events (Sorted by closest date)
@@ -15,7 +17,7 @@ router.get("/", async (req, res) => {
 
 // @route   POST /api/events
 // @desc    Create a new Event
-router.post("/", async (req, res) => {
+router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   const event = new Event({
     title: req.body.title,
     description: req.body.description,
@@ -34,7 +36,7 @@ router.post("/", async (req, res) => {
 
 // @route   DELETE /api/events/:id
 // @desc    Delete an event by ID (✅ NEW ROUTE)
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const removedEvent = await Event.findByIdAndDelete(req.params.id);
     if (!removedEvent) {

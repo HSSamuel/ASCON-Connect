@@ -1,11 +1,15 @@
-import 'dart:convert'; 
-import 'package:http/http.dart' as http; 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../config.dart';
+import 'welcome_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String? prefilledName;
+  final String? prefilledEmail;
+
+  const RegisterScreen({super.key, this.prefilledName, this.prefilledEmail});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -15,175 +19,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _yearController = TextEditingController();
-  
-  String? _selectedProgramme;
+  final _certificateController = TextEditingController();
+
   bool _isLoading = false;
-  bool _obscurePassword = true; // <--- NEW: Tracks password visibility
-  
-  final List<String> _programmes = [
-    'Management Programme',
-    'Computer Programme',
-    'Financial Management',
-    'Leadership Development Programme',
-  ];
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("New Registration"),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1B5E3A),
-        elevation: 0,
-      ),
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Join the Network',
-                style: GoogleFonts.inter(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF1B5E3A),
-                ),
-              ),
-              Text(
-                'Enter your details for Admin verification.',
-                style: GoogleFonts.inter(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 30),
-
-              // FULL NAME
-              _buildLabel("Full Name"),
-              TextFormField(
-                controller: _nameController,
-                decoration: _inputDecoration("Director Samuel"),
-              ),
-              const SizedBox(height: 15),
-
-              // EMAIL
-              _buildLabel("Email Address"),
-              TextFormField(
-                controller: _emailController,
-                decoration: _inputDecoration("samuel@ascon.gov.ng"),
-              ),
-              const SizedBox(height: 15),
-
-              // PASSWORD WITH EYE ICON
-              _buildLabel("Password"),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword, // Use variable
-                decoration: InputDecoration(
-                  hintText: "******",
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-                  // EYE ICON:
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                      color: Colors.grey,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePassword = !_obscurePassword;
-                      });
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-
-              // YEAR OF ATTENDANCE
-              _buildLabel("Year of Attendance"),
-              TextFormField(
-                controller: _yearController,
-                keyboardType: TextInputType.number,
-                decoration: _inputDecoration("2023"),
-              ),
-              const SizedBox(height: 15),
-
-              // PROGRAMME DROPDOWN
-              _buildLabel("Programme Attended"),
-              DropdownButtonFormField<String>(
-                value: _selectedProgramme,
-                decoration: _inputDecoration("Select Programme"),
-                items: _programmes.map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value, style: const TextStyle(fontSize: 14)),
-                  );
-                }).toList(),
-                onChanged: (newValue) {
-                  setState(() {
-                    _selectedProgramme = newValue;
-                  });
-                },
-              ),
-              const SizedBox(height: 40),
-
-              // REGISTER BUTTON
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : registerUser, 
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1B5E3A),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFF1B5E3A).withOpacity(0.6),
-                  ),
-                  child: _isLoading 
-                    ? const SizedBox(
-                        height: 24, 
-                        width: 24, 
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
-                      )
-                    : const Text(
-                        'SUBMIT FOR APPROVAL',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      border: const OutlineInputBorder(),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-    );
+  void initState() {
+    super.initState();
+    if (widget.prefilledName != null) {
+      _nameController.text = widget.prefilledName!;
+    }
+    if (widget.prefilledEmail != null) {
+      _emailController.text = widget.prefilledEmail!;
+    }
   }
 
   Future<void> registerUser() async {
-    if (_nameController.text.isEmpty || 
-        _emailController.text.isEmpty || 
-        _passwordController.text.isEmpty || 
-        _yearController.text.isEmpty || 
-        _selectedProgramme == null) {
-      
+    // 1. Check Empty Fields
+    if (_nameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _passwordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty ||
+        _yearController.text.isEmpty ||
+        _certificateController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill all fields"), backgroundColor: Colors.red),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    // 2. Check Passwords Match
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     final url = Uri.parse('${AppConfig.baseUrl}/api/auth/register');
-    
+
     try {
       final response = await http.post(
         url,
@@ -193,7 +73,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'email': _emailController.text.trim(),
           'password': _passwordController.text,
           'yearOfAttendance': int.parse(_yearController.text),
-          'programmeTitle': _selectedProgramme,
+          'certificateNumber': _certificateController.text.trim(),
         }),
       );
 
@@ -201,22 +81,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (response.statusCode == 201) {
         if (!mounted) return;
+        // Trigger the Welcome Dialog
         showDialog(
-          context: context, 
-          barrierDismissible: false, 
-          builder: (ctx) => AlertDialog(
-            title: const Text("Registration Successful"),
-            content: Text(responseData['message']),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx); 
-                  Navigator.pop(context); 
-                }, 
-                child: const Text("OK", style: TextStyle(color: Color(0xFF1B5E3A)))
-              )
-            ],
-          )
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => const WelcomeDialog(),
         );
       } else {
         if (!mounted) return;
@@ -225,24 +94,185 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } catch (error) {
-      print(error);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Connection failed. Check internet."), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        toolbarHeight: 40, // Compact AppBar height
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1B5E3A), size: 22),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            // Compact padding for mobile
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // --- ✅ LOGO RE-INSERTED & CENTERED ---
+                Center(
+                  child: Container(
+                    height: 80, // Slightly smaller than login for compactness
+                    width: 80,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                    ),
+                    child: Image.asset(
+                      'assets/logo.png', 
+                      errorBuilder: (c,o,s) => const Icon(Icons.school, size: 60, color: Color(0xFF1B5E3A)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // --- ✅ HEADER TEXT CENTERED ---
+                Text(
+                  'Create Account',
+                  textAlign: TextAlign.center, // Center alignment
+                  style: GoogleFonts.inter(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1B5E3A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Join the Alumni Network',
+                  textAlign: TextAlign.center, // Center alignment
+                  style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600]),
+                ),
+
+                const SizedBox(height: 20), // Compact Gap
+
+                // --- FORM FIELDS (Compact Style) ---
+                
+                // Full Name
+                _buildCompactField(_nameController, "Full Name", Icons.person_outline),
+                const SizedBox(height: 12),
+
+                // Email
+                _buildCompactField(_emailController, "Email Address", Icons.email_outlined),
+                const SizedBox(height: 12),
+
+                // Password
+                _buildCompactField(_passwordController, "Password", Icons.lock_outline, isPassword: true, isConfirm: false),
+                const SizedBox(height: 12),
+
+                // Confirm Password
+                _buildCompactField(_confirmPasswordController, "Confirm Password", Icons.lock_outline, isPassword: true, isConfirm: true),
+                const SizedBox(height: 12),
+
+                // Year of Attendance
+                _buildCompactField(_yearController, "Year of Attendance (e.g., 2023)", Icons.calendar_today_outlined, isNumber: true),
+                const SizedBox(height: 12),
+
+                // Certificate Number
+                _buildCompactField(_certificateController, "Certificate Number", Icons.verified_user_outlined),
+                
+                const SizedBox(height: 24),
+
+                // --- SUBMIT BUTTON ---
+                SizedBox(
+                  width: double.infinity,
+                  height: 45, // Compact height
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : registerUser,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1B5E3A),
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      disabledBackgroundColor: const Color(0xFF1B5E3A).withOpacity(0.6),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('CREATE ACCOUNT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // --- FOOTER ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text("Already have an account? ", style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Text(
+                        "Login",
+                        style: TextStyle(
+                          color: Color(0xFF1B5E3A),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20), // Bottom padding
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Helper for Compact Input Fields
+  Widget _buildCompactField(TextEditingController controller, String label, IconData icon, {bool isPassword = false, bool isConfirm = false, bool isNumber = false}) {
+    return SizedBox(
+      height: 48,
+      child: TextFormField(
+        controller: controller,
+        obscureText: isPassword ? (isConfirm ? _obscureConfirmPassword : _obscurePassword) : false,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        style: const TextStyle(fontSize: 14, color: Colors.black87),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+          filled: true,
+          fillColor: Colors.grey[50], // Very light grey fill
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey[200]!)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1B5E3A), width: 1.5)),
+          prefixIcon: Icon(icon, color: const Color(0xFF1B5E3A), size: 20),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+          suffixIcon: isPassword
+              ? IconButton(
+                  icon: Icon(
+                    (isConfirm ? _obscureConfirmPassword : _obscurePassword) ? Icons.visibility_off : Icons.visibility,
+                    color: Colors.grey,
+                    size: 20,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (isConfirm) {
+                        _obscureConfirmPassword = !_obscureConfirmPassword;
+                      } else {
+                        _obscurePassword = !_obscurePassword;
+                      }
+                    });
+                  },
+                )
+              : null,
+        ),
+      ),
     );
   }
 }

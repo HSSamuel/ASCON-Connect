@@ -20,7 +20,7 @@ body {
 
 /* Titles */
 .admin-title {
-  color: #1B5E3A; /* ✅ UPDATED Deep Green */
+  color: #1b5e3a; /* ✅ UPDATED Deep Green */
   margin: 0 0 5px 0;
   font-size: 28px;
 }
@@ -127,7 +127,7 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid #1B5E3A; /* ✅ UPDATED Deep Green */
+  outline: 2px solid #1b5e3a; /* ✅ UPDATED Deep Green */
   border-color: transparent;
 }
 
@@ -151,7 +151,7 @@ label {
 }
 
 .admin-table thead {
-  background-color: #1B5E3A; /* ✅ UPDATED Deep Green */
+  background-color: #1b5e3a; /* ✅ UPDATED Deep Green */
   color: white;
 }
 
@@ -267,7 +267,7 @@ label {
     width: 45%;
     text-align: left;
     font-weight: bold;
-    color: #1B5E3A; /* ✅ UPDATED Deep Green */
+    color: #1b5e3a; /* ✅ UPDATED Deep Green */
   }
 
   .admin-table td:last-child {
@@ -285,5 +285,175 @@ label {
   /* Stack the form inputs on mobile */
   form > div {
     flex-direction: column;
+  }
+}
+
+/* =========================================
+   7. LOGIN SCREEN STYLES (New)
+   ========================================= */
+
+/* --- 1. FULL PAGE CONTAINER --- */
+.login-container {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px; /* Adds safety padding on very small screens */
+  box-sizing: border-box;
+
+  /* Background Image with Dark Green Overlay */
+  background-image: 
+    linear-gradient(rgba(27, 94, 58, 0.85), rgba(0, 0, 0, 0.75)), 
+    url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop'); 
+    
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  
+  /* Subtle zoom animation */
+  animation: zoomBackground 20s infinite alternate;
+}
+
+@keyframes zoomBackground {
+  0% { background-size: 100%; }
+  100% { background-size: 110%; }
+}
+
+/* --- 2. GLASS CARD (Transparent) --- */
+.login-card {
+  /* ✅ TRANSPARENCY: White with 85% opacity */
+  background: rgba(255, 255, 255, 0.85);
+  
+  /* ✅ GLASS EFFECT: Blurs the image behind the card */
+  backdrop-filter: blur(8px); 
+  -webkit-backdrop-filter: blur(8px);
+
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3); /* Softer, deeper shadow */
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.4); /* Subtle border */
+}
+
+/* --- 3. RESPONSIVE TITLE --- */
+.login-title {
+  margin-bottom: 20px;
+  color: #1B5E3A;
+  font-weight: 800;
+  font-size: 24px; /* Default Desktop Size */
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.login-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 15px;
+  object-fit: contain;
+}
+
+/* --- 4. MOBILE OPTIMIZATIONS --- */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 25px 25px; /* Reduce padding on mobile */
+    max-width: 80%;    /* Allow card to fill screen width if needed */
+  }
+
+  /* ✅ Fix for "Admin Portal" overflowing */
+  .login-title {
+    font-size: 20px; 
+    margin-bottom: 15px;
+  }
+
+  .login-logo {
+    width: 60px; /* Smaller logo on mobile */
+    height: 60px;
+  }
+
+  /* Ensure Google Button fits without scrolling */
+  .login-card iframe {
+    max-width: 100% !important; 
+    transform: scale(0.95); /* Slightly shrink button if absolutely necessary */
+  }
+  
+  .login-card > div:last-child { 
+    transform: scale(0.85); 
+    transform-origin: center;
+    width: 100%;
+  }
+}
+
+.login-error {
+  background-color: #ffe6e6;
+  color: #d32f2f;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.login-btn {
+  width: 100%;
+  background-color: #1b5e3a;
+  padding: 14px;
+  font-size: 16px;
+  margin-top: 10px;
+}
+
+.login-btn:hover {
+  background-color: #14452b;
+}
+
+/* --- Password Eye Toggle Styles --- */
+.password-wrapper {
+  position: relative; /* Allows absolute positioning of the eye */
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  padding-right: 40px; /* Make space for the icon so text doesn't overlap */
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: #666;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 50%;
+  transform: translateY(-40%); /* Vertically center */
+}
+
+.password-toggle-btn:focus {
+  outline: none;
+}
+
+/* --- Mobile Specific Tweaks --- */
+@media screen and (max-width: 480px) {
+  .login-card {
+    padding: 30px 20px; /* Less padding on small screens */
+    box-shadow: none; /* Optional: flatter look on mobile */
+    background-color: transparent; /* Blends with background if preferred */
+  }
+
+  /* If you want the card to look distinct on mobile, keep bg white and shadow */
+  .login-card {
+    background-color: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   }
 }

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart'; 
 import '../config.dart';
+import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
   const EventsScreen({super.key});
@@ -28,13 +29,21 @@ class _EventsScreenState extends State<EventsScreen> {
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
         setState(() {
-          _events = jsonDecode(response.body);
+          if (data is Map && data.containsKey('events')) {
+            _events = data['events'];
+          } else if (data is List) {
+            _events = data;
+          }
           _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      print(e);
+      debugPrint("Error loading events: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -43,111 +52,185 @@ class _EventsScreenState extends State<EventsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("News & Events"),
+        title: Text(
+          "News & Events", 
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold)
+        ),
         backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
       ),
       backgroundColor: Colors.grey[100],
       
-      // ✅ Floating Button REMOVED. Only Admins can post from Web Portal now.
+      body: RefreshIndicator(
+        onRefresh: fetchEvents,
+        color: const Color(0xFF1B5E3A),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)))
+            : _events.isEmpty
+                ? _buildEmptyState()
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _events.length,
+                    itemBuilder: (context, index) {
+                      return _buildEventCard(_events[index]);
+                    },
+                  ),
+      ),
+    );
+  }
 
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _events.isEmpty
-              ? const Center(child: Text("No upcoming events."))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _events.length,
-                  itemBuilder: (context, index) {
-                    final event = _events[index];
-                    
-                    // Simple Date Formatting
-                    // We try-catch the date parsing just in case
-                    String dateString = "TBD";
-                    try {
-                      final date = DateTime.parse(event['date']);
-                      dateString = "${date.day}/${date.month}/${date.year}";
-                    } catch (e) {
-                      dateString = "Unknown Date";
-                    }
+  // --- HELPER WIDGETS ---
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // 1. Colored Header strip
-                          Container(
-                            height: 10,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF1B5E3A),
-                              borderRadius: BorderRadius.only(
-                                topLeft: Radius.circular(12),
-                                topRight: Radius.circular(12)
-                              ),
-                            ),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.event_note, size: 60, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            "No news or events yet.",
+            style: GoogleFonts.inter(fontSize: 16, color: Colors.grey[600]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventCard(dynamic event) {
+    String dateString = "TBD";
+    try {
+      if (event['date'] != null) {
+        final date = DateTime.parse(event['date']);
+        dateString = DateFormat('MMM dd, yyyy').format(date);
+      }
+    } catch (e) {
+      dateString = event['date'] ?? "Unknown";
+    }
+
+    final Map<String, String> safeEventData = {
+      'title': event['title']?.toString() ?? 'No Title',
+      'date': dateString,
+      'location': event['location']?.toString() ?? 'ASCON HQ',
+      'image': event['image']?.toString() ?? 'https://via.placeholder.com/600',
+      'description': event['description']?.toString() ?? 'No description available.',
+    };
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context, 
+          MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
+        );
+      },
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Green Strip
+            Container(
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1B5E3A),
+                borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+              ),
+            ),
+            
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50], 
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          event['type'] ?? 'News', 
+                          style: GoogleFonts.inter(
+                            fontSize: 11, 
+                            fontWeight: FontWeight.bold, 
+                            color: const Color(0xFF1B5E3A)
                           ),
-                          
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green[50],
-                                        borderRadius: BorderRadius.circular(4)
-                                      ),
-                                      child: Text(
-                                        event['type'] ?? 'News',
-                                        style: const TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold, fontSize: 12),
-                                      ),
-                                    ),
-                                    Text(
-                                      dateString,
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  event['title'] ?? 'No Title',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 18, 
-                                    fontWeight: FontWeight.bold
-                                  ),
-                                ),
-                                const SizedBox(height: 5),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      event['location'] ?? 'No Location',
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  event['description'] ?? '',
-                                  style: TextStyle(color: Colors.grey[800], height: 1.4),
-                                ),
-                              ],
-                            ),
-                          )
-                        ],
+                        ),
                       ),
-                    );
-                  },
-                ),
+                      Text(
+                        dateString,
+                        style: GoogleFonts.inter(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 12),
+
+                  // Title
+                  Text(
+                    event['title'] ?? 'No Title',
+                    style: GoogleFonts.inter(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: Colors.black87,
+                      height: 1.3
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Location
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 14, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Text(
+                        event['location'] ?? 'Publication Dept',
+                        style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // --- ✅ JUSTIFIED DESCRIPTION ---
+                  Text(
+                    event['description'] ?? '',
+                    maxLines: 3, 
+                    overflow: TextOverflow.ellipsis, 
+                    textAlign: TextAlign.justify, // 👈 JUSTIFIED HERE
+                    style: GoogleFonts.inter(
+                      fontSize: 14, 
+                      color: Colors.grey[800], 
+                      height: 1.5
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 12),
+
+                  // Read More Link
+                  Text(
+                    "Read More",
+                    style: GoogleFonts.inter(
+                      fontSize: 13, 
+                      fontWeight: FontWeight.w600, 
+                      color: const Color(0xFF1B5E3A),
+                      decoration: TextDecoration.underline
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

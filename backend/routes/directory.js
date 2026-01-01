@@ -1,18 +1,44 @@
 const router = require("express").Router();
-const User = require("../models/User"); // Import the User model
+const User = require("../models/User");
 
 // @route   GET /api/directory
-// @desc    Get all verified alumni
-// @access  Public (For now - we will secure this later)
+// @desc    Get alumni (Searchable)
 router.get("/", async (req, res) => {
   try {
-    // 1. Find all users where isVerified is TRUE
-    // .select('-password') means "Don't send the passwords back!"
-    const alumniList = await User.find({ isVerified: true })
-      .select("-password")
-      .sort({ yearOfAttendance: -1 }); // Newest first
+    const { search } = req.query; // Grab '?search=...' from URL
 
-    // 2. Send the list back to the App
+    // 1. Base Query: Always require verified users
+    let query = { isVerified: true };
+
+    // 2. If user searched for something, add filters
+    if (search) {
+      const searchRegex = new RegExp(search, "i"); // 'i' = case insensitive
+
+      // Check if the search term looks like a Year (e.g., "2023")
+      const isYear = !isNaN(search);
+
+      if (isYear) {
+        // Search Name OR Year
+        query.$or = [
+          { fullName: searchRegex },
+          { yearOfAttendance: Number(search) },
+        ];
+      } else {
+        // Search Name OR Job OR Organization
+        query.$or = [
+          { fullName: searchRegex },
+          { jobTitle: searchRegex },
+          { organization: searchRegex },
+        ];
+      }
+    }
+
+    // 3. Run Query
+    const alumniList = await User.find(query)
+      .select("-password") // Hide passwords
+      .sort({ yearOfAttendance: -1 }) // Newest graduates first
+      .limit(50); // Safety limit: never send more than 50 at once
+
     res.json(alumniList);
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import "./App.css";
 import Toast from "./Toast";
 import ConfirmModal from "./ConfirmModal";
-// Import your logo
 import logo from "./assets/logo.png";
 
-function AdminDashboard() {
+// ✅ CONFIG: Change this to your live URL when deploying
+const BASE_URL = window.location.hostname === "localhost"
+  ? "http://localhost:5000"
+  : "https://ascon.onrender.com";
+
+function AdminDashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
   const [pendingUsers, setPendingUsers] = useState([]);
   const [eventsList, setEventsList] = useState([]);
@@ -23,34 +27,44 @@ function AdminDashboard() {
     setToast({ message: msg, type });
   };
 
+  // ✅ 1. Wrap Fetch Functions in useCallback
+  // This prevents infinite loops and fixes the useEffect warning
+  const fetchPendingUsers = useCallback(async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/api/admin/pending`, {
+        headers: { "auth-token": token },
+      });
+      setPendingUsers(res.data);
+    } catch (err) {
+      if (err.response && err.response.status === 401) onLogout();
+      console.error(err);
+    }
+  }, [token, onLogout]); // Re-create only if token changes
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/api/events`);
+      setEventsList(res.data);
+    } catch (err) {
+      console.error("Error fetching events.");
+    }
+  }, []); // No dependencies (BASE_URL is constant)
+
+  // ✅ 2. Now safe to include dependencies
   useEffect(() => {
     fetchPendingUsers();
     fetchEvents();
-  }, []);
-
-  const fetchPendingUsers = async () => {
-    try {
-      const res = await axios.get(
-        "https://ascon.onrender.com/api/admin/pending"
-      );
-      setPendingUsers(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const fetchEvents = async () => {
-    try {
-      const res = await axios.get("https://ascon.onrender.com/api/events");
-      setEventsList(res.data);
-    } catch (err) {
-      console.error("Error fetching events. Ensure backend is deployed.");
-    }
-  };
+  }, [fetchPendingUsers, fetchEvents]);
 
   const approveUser = async (id, name) => {
     try {
-      await axios.put(`https://ascon.onrender.com/api/admin/verify/${id}`);
+      await axios.put(
+        `${BASE_URL}/api/admin/verify/${id}`,
+        {},
+        {
+          headers: { "auth-token": token },
+        }
+      );
       showToast(`${name} has been verified!`, "success");
       fetchPendingUsers();
     } catch (err) {
@@ -61,13 +75,20 @@ function AdminDashboard() {
   const postEvent = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("https://ascon.onrender.com/api/events", {
-        title: eventTitle,
-        description: eventDesc,
-        location: eventLoc,
-        date: new Date(),
-        type: eventType,
-      });
+      await axios.post(
+        `${BASE_URL}/api/events`,
+        {
+          title: eventTitle,
+          description: eventDesc,
+          location: eventLoc,
+          date: new Date(),
+          type: eventType,
+        },
+        {
+          headers: { "auth-token": token },
+        }
+      );
+
       showToast(`Published: "${eventTitle}"`, "success");
       setEventTitle("");
       setEventDesc("");
@@ -87,7 +108,9 @@ function AdminDashboard() {
     setDeleteModal({ show: false, id: null });
 
     try {
-      await axios.delete(`https://ascon.onrender.com/api/events/${id}`);
+      await axios.delete(`${BASE_URL}/api/events/${id}`, {
+        headers: { "auth-token": token },
+      });
       showToast("Event deleted successfully.", "success");
       fetchEvents();
     } catch (err) {
@@ -95,11 +118,16 @@ function AdminDashboard() {
     }
   };
 
-  const renderAvatar = (base64String) => {
-    if (!base64String) return <div className="avatar-placeholder">👤</div>;
+  const renderAvatar = (imagePath) => {
+    if (!imagePath) return <div className="avatar-placeholder">👤</div>;
+
+    if (imagePath.startsWith("http")) {
+      return <img src={imagePath} alt="Avatar" className="avatar" />;
+    }
+
     return (
       <img
-        src={`data:image/png;base64,${base64String}`}
+        src={`data:image/png;base64,${imagePath}`}
         alt="Avatar"
         className="avatar"
       />
@@ -110,9 +138,18 @@ function AdminDashboard() {
     <div className="admin-container">
       {/* --- CENTERED HEADER SECTION --- */}
       <div className="header-centered">
+        <div style={{ position: "absolute", right: 20, top: 20 }}>
+          <button
+            onClick={onLogout}
+            className="delete-btn"
+            style={{ fontSize: "12px" }}
+          >
+            LOGOUT
+          </button>
+        </div>
+
         <img src={logo} alt="ASCON Logo" className="admin-logo-main" />
 
-        {/* ✅ UPDATED COLOR: Deep Green */}
         <h1 className="admin-title" style={{ color: "#1B5E3A" }}>
           ASCON Admin Portal
         </h1>
@@ -122,7 +159,6 @@ function AdminDashboard() {
           <button
             onClick={() => setActiveTab("users")}
             className={`approve-btn ${activeTab === "users" ? "" : "inactive"}`}
-            // ✅ UPDATED BACKGROUND COLOR: Deep Green
             style={{
               backgroundColor: activeTab === "users" ? "#1B5E3A" : "#ccc",
             }}
@@ -134,7 +170,6 @@ function AdminDashboard() {
             className={`approve-btn ${
               activeTab === "events" ? "" : "inactive"
             }`}
-            // ✅ UPDATED BACKGROUND COLOR: Deep Green
             style={{
               backgroundColor: activeTab === "events" ? "#1B5E3A" : "#ccc",
             }}
@@ -216,7 +251,6 @@ function AdminDashboard() {
       {/* --- TAB 2: MANAGE EVENTS --- */}
       {activeTab === "events" && (
         <div>
-          {/* POST EVENT FORM */}
           <div
             className="empty-state"
             style={{
@@ -226,7 +260,6 @@ function AdminDashboard() {
               border: "1px solid #ddd",
             }}
           >
-            {/* ✅ UPDATED HEADER COLOR */}
             <h2 style={{ color: "#1B5E3A", marginTop: 0 }}>
               📢 Post New Announcement
             </h2>
@@ -308,7 +341,6 @@ function AdminDashboard() {
             </form>
           </div>
 
-          {/* EVENTS LIST */}
           {eventsList.length === 0 ? (
             <div className="empty-state">No events posted yet.</div>
           ) : (

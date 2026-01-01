@@ -1,17 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <color android:color="#1B5E3A"/>
-    </item>
+    <item android:drawable="@android:color/white" />
 
-    <item
-        android:width="135dp"
-        android:height="135dp"
-        android:gravity="center">
-        
-        <bitmap 
-            android:src="@drawable/logo_centered" 
-            android:gravity="fill" 
-            android:filter="true" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash" /> 
     </item>
 </layer-list>

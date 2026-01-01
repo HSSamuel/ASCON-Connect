@@ -1,16 +1,20 @@
 class AppConfig {
-  // 🟢 TOGGLE: Set false to use your Local Backend
-  static const bool useOnlineServer = false; 
+  // =========================================================
+  // 🎚️ MODE SWITCH
+  // Set this to 'true' when releasing to others.
+  // Set this to 'false' while testing on your laptop/phone.
+  // =========================================================
+  static const bool isProduction = false; 
 
-  // 1. Cloud URL (Keep for later)
+  // 🌍 The Online Server (For the final app)
   static const String onlineUrl = 'https://ascon.onrender.com';
 
-  // 2. Local URL
-  // ✅ FIX: For Chrome/Web, always use 'localhost'
-  static const String localUrl = 'http://localhost:5000'; 
+  // 💻 Your Local Computer IP (For testing now)
+  // ✅ Kept your specific IP here
+  static const String localUrl = 'http://10.231.185.203:5000'; 
 
-  // Logic to pick the right one
+  // 🧠 Automatic Logic (Don't touch this)
   static String get baseUrl {
-    return useOnlineServer ? onlineUrl : localUrl;
+    return isProduction ? onlineUrl : localUrl;
   }
 }

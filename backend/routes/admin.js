@@ -1,8 +1,11 @@
 const router = require("express").Router();
 const User = require("../models/User");
+const verifyToken = require("./verifyToken"); // Import Token Checker
+const verifyAdmin = require("./verifyAdmin"); // Import Admin Checker
 
-// 1. GET ALL PENDING USERS (Waiting for approval)
-router.get("/pending", async (req, res) => {
+// 1. GET ALL PENDING USERS (Protected)
+// We add both middlewares here
+router.get("/pending", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const pendingUsers = await User.find({ isVerified: false });
     res.json(pendingUsers);
@@ -11,13 +14,13 @@ router.get("/pending", async (req, res) => {
   }
 });
 
-// 2. APPROVE A USER (Flip the switch to true)
-router.put("/verify/:id", async (req, res) => {
+// 2. APPROVE A USER (Protected)
+router.put("/verify/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
       { isVerified: true },
-      { new: true } // Return the updated version
+      { new: true }
     );
     res.json(updatedUser);
   } catch (err) {

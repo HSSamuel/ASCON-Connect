@@ -122,7 +122,7 @@ class AboutScreen extends StatelessWidget {
                   
                   Center(
                     child: Text(
-                      "ASCON Connect v1.0.0",
+                      "ASCON Alumni v1.0.0",
                       style: TextStyle(color: Colors.grey[400], fontSize: 12),
                     ),
                   ),
