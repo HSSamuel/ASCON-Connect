@@ -62,6 +62,7 @@ The repository is organized into three main components:
 ```bash
 cd backend
 npm install
+npx nodemon server.js
 ```
 
 Create a `.env` file:
@@ -102,15 +103,6 @@ cd ascon_web_admin
 npm install
 npm start
 ```
-
-### Backend
-
-```bash
-cd backend
-npm install
-npx nodemon server.js
-```
-
 ---
 
 ## 📱 Features
