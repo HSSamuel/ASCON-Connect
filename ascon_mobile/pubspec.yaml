@@ -23,14 +23,32 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-
-  # Tools for generating assets
   flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+
+# ==========================================
+# 🌊 NATIVE SPLASH SCREEN CONFIG
+# ==========================================
+flutter_native_splash:
+  color: "#FFFFFF"             # White background for Light Mode
+  image: "assets/splash_logo.png"
+  branding: "assets/splash_logo.png"
+
+  # ✅ FORCE WHITE IN DARK MODE
+  color_dark: "#FFFFFF"        # White background for Dark Mode
+  image_dark: "assets/splash_logo.png"
+
+  android_12:
+    image: "assets/splash_logo.png"
+    icon_background_color: "#FFFFFF"
+    icon_background_color_dark: "#FFFFFF" # Force White on Android 12+ Dark Mode
+
+  web: false
 
 # ==========================================
 # APP ICON (Logo Symbol Only)

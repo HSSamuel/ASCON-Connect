@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb check
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'home_screen.dart'; 
@@ -19,15 +20,26 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  // ✅ PRODUCTION READY INITIALIZATION
+  // On Web: Passes null (plugin uses index.html <meta> tag).
+  // On Mobile: Passes the Web Client ID (so backend gets a valid token).
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: kIsWeb 
+        ? null 
+        : '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com', 
+    scopes: ['email', 'profile'],
+  );
   
   bool _isLoading = false;
   bool _obscurePassword = true; 
 
-  // --- LOGIN LOGIC ---
+  // --- EMAIL LOGIN LOGIC ---
   Future<void> loginUser() async {
     setState(() => _isLoading = true);
-    final url = Uri.parse('${AppConfig.baseUrl}/api/auth/login');
+    // Uses the URL defined in config.dart (Production or Local)
+    final url = Uri.parse('${AppConfig.baseUrl}/api/auth/login'); 
+    
     try {
       final response = await http.post(
         url,
@@ -42,30 +54,50 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', responseData['token']);
+        
         if (responseData['user'] != null && responseData['user']['fullName'] != null) {
              await prefs.setString('user_name', responseData['user']['fullName']);
         }
+        
         if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen(userName: responseData['user']['fullName'])));
       } else {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(responseData['message'] ?? 'Login failed'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(responseData['message'] ?? 'Login failed'), 
+          backgroundColor: Colors.red
+        ));
       }
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connection Error."), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Connection Error. Please check your internet."), 
+        backgroundColor: Colors.red
+      ));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // --- GOOGLE LOGIN LOGIC ---
   Future<void> signInWithGoogle() async {
     try {
       setState(() => _isLoading = true);
+      
+      // 1. Trigger Google Sign In (Opens Dialog)
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) { setState(() => _isLoading = false); return; }
+      
+      // If user cancelled the dialog, stop loading
+      if (googleUser == null) { 
+        setState(() => _isLoading = false); 
+        return; 
+      }
+      
+      // 2. Get the authentication tokens
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final url = Uri.parse('${AppConfig.baseUrl}/api/auth/google');
+      
+      // 3. Send ID Token to Backend for Verification
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -74,25 +106,41 @@ class _LoginScreenState extends State<LoginScreen> {
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
+        // Success: Save Token & Navigate Home
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('auth_token', data['token']);
+        
         if (data['user'] != null && data['user']['fullName'] != null) {
              await prefs.setString('user_name', data['user']['fullName']);
         }
+        
         if (!mounted) return;
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen(userName: data['user']['fullName'])));
+        
       } else if (response.statusCode == 404) {
+        // New User: Navigate to Registration to complete profile
         if (!mounted) return;
         final googleData = data['googleData'];
-        Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(prefilledName: googleData['fullName'], prefilledEmail: googleData['email'])));
+        Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(
+          prefilledName: googleData['fullName'], 
+          prefilledEmail: googleData['email']
+        )));
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please complete your Alumni details.")));
+        
       } else {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message'] ?? "Login Failed"), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(data['message'] ?? "Login Failed"), 
+          backgroundColor: Colors.red
+        ));
       }
     } catch (e) {
+      debugPrint("Google Sign-In Error: $e");
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Google Sign-In failed."), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Google Sign-In failed."), 
+        backgroundColor: Colors.red
+      ));
     } finally {
        if (mounted) setState(() => _isLoading = false);
     }
@@ -105,13 +153,12 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            // ✅ Reduced padding for mobile
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- LOGO (Kept Large) ---
+                // --- LOGO ---
                 Center(
                   child: Container(
                     height: 100,
@@ -127,15 +174,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 
-                // ✅ Reduced Gap
                 const SizedBox(height: 16), 
 
-                // --- HEADINGS (Compact) ---
+                // --- WELCOME TEXT ---
                 Text(
                   'Welcome Back',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
-                    fontSize: 24, // Reduced from 28
+                    fontSize: 24, 
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFF1B5E3A),
                   ),
@@ -147,12 +193,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600]),
                 ),
                 
-                // ✅ Reduced Gap
                 const SizedBox(height: 24), 
 
-                // --- EMAIL INPUT (Compact) ---
+                // --- EMAIL INPUT ---
                 SizedBox(
-                  height: 48, // Fixed height constraint
+                  height: 48,
                   child: TextFormField(
                     controller: _emailController,
                     style: const TextStyle(fontSize: 14),
@@ -165,14 +210,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey[200]!)),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1B5E3A), width: 1.5)),
                       prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF1B5E3A), size: 20),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12), // Compact padding
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                     ),
                   ),
                 ),
                 
-                const SizedBox(height: 12), // Tighter gap
+                const SizedBox(height: 12), 
 
-                // --- PASSWORD INPUT (Compact) ---
+                // --- PASSWORD INPUT ---
                 SizedBox(
                   height: 48,
                   child: TextFormField(
@@ -202,7 +247,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
-                    // Reduced visual height of button
                     style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
                     child: const Text("Forgot Password?", style: TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold, fontSize: 13)),
                   ),
@@ -210,10 +254,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // --- LOGIN BUTTON (Compact) ---
+                // --- LOGIN BUTTON ---
                 SizedBox(
                   width: double.infinity,
-                  height: 45, // Reduced from 50
+                  height: 45, 
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : loginUser,
                     style: ElevatedButton.styleFrom(
@@ -230,10 +274,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // --- GOOGLE BUTTON (Compact) ---
+                // --- GOOGLE BUTTON ---
                 SizedBox(
                   width: double.infinity,
-                  height: 45, // Reduced from 50
+                  height: 45, 
                   child: OutlinedButton.icon(
                     onPressed: _isLoading ? null : signInWithGoogle,
                     icon: const Icon(Icons.login, color: Color(0xFF1B5E3A), size: 20),

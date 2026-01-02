@@ -1,19 +1,15 @@
 class AppConfig {
   // =========================================================
-  // 🎚️ MODE SWITCH
-  // Set this to 'true' when releasing to others.
-  // Set this to 'false' while testing on your laptop/phone.
+  // 🚀 PRODUCTION MODE: ON
   // =========================================================
-  static const bool isProduction = false; 
+  static const bool isProduction = true; 
 
-  // 🌍 The Online Server (For the final app)
+  // 🌍 The Online Server (Your active backend)
   static const String onlineUrl = 'https://ascon.onrender.com';
 
-  // 💻 Your Local Computer IP (For testing now)
-  // ✅ Kept your specific IP here
+  // 💻 Local Backup (Ignored when isProduction is true)
   static const String localUrl = 'http://10.231.185.203:5000'; 
 
-  // 🧠 Automatic Logic (Don't touch this)
   static String get baseUrl {
     return isProduction ? onlineUrl : localUrl;
   }
