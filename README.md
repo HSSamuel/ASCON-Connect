@@ -89,9 +89,12 @@ npm start
 
 ```bash
 cd ascon_mobile
+flutter clean
 flutter pub get
-flutter run OR
 flutter run -d chrome
+flutter run -d chrome --web-browser-flag "--disable-web-security"
+flutter run -d chrome --web-port=5001
+flutter build apk --release
 ```
 
 ---
@@ -103,6 +106,7 @@ cd ascon_web_admin
 npm install
 npm start
 ```
+
 ---
 
 ## 📱 Features
@@ -122,6 +126,17 @@ npm start
 - Broadcast notifications (planned)
 
 ---
+
+## 📡 API Endpoints Overview
+
+Method,Endpoint,Description,Access
+POST,/api/auth/register,Create account,Public
+POST,/api/auth/login,Login & get Token,Public
+GET,/api/events,Fetch all events,Public
+GET,/api/admin/users,List all users,Admin
+PUT,/api/admin/users/:id/verify,Approve a user,Admin
+POST,/api/admin/events,Create new event,Admin
+POST,/api/admin/programmes,Add new course,Admin
 
 ## 🚀 Deployment
 

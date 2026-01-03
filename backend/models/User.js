@@ -1,50 +1,64 @@
 const mongoose = require("mongoose");
 
-const UserSchema = new mongoose.Schema({
-  // --- EXISTING BASIC FIELDS ---
-  fullName: { type: String, required: true, trim: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true },
-  yearOfAttendance: { type: Number, required: true },
-
-  // ✅ PROGRAMME DROPDOWN
-  programmeTitle: {
+const userSchema = new mongoose.Schema({
+  fullName: {
     type: String,
-    required: false,
-    enum: [
-      "Management Programme",
-      "Computer Programme",
-      "Financial Management",
-      "Leadership Development Programme",
-      "Public Administration and Management",
-      "Public Administration and Policy (Advanced)",
-      "Public Sector Management Course",
-      "Performance Improvement Course",
-      "Creativity and Innovation Course",
-      "Mandatory & Executive Programmes",
-      "Postgraduate Diploma in Public Administration and Management",
-      "Other", // Allows selection of "Other"
-    ],
+    required: true,
+    min: 6,
+    max: 255,
   },
-
-  // ✅ NEW FIELD: Stores the manual input when "Other" is selected
-  customProgramme: { type: String, default: "" },
-
-  isVerified: { type: Boolean, default: false },
-  isAdmin: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
-  certificateNumber: {
+  email: {
+    type: String,
+    required: true,
+    max: 255,
+    min: 6,
+  },
+  password: {
+    type: String,
+    required: true,
+    max: 1024,
+    min: 6,
+  },
+  phoneNumber: {
     type: String,
     required: true,
   },
 
-  // --- 🆕 NEW PRO FIELDS ---
-  profilePicture: { type: String, default: "" },
-  bio: { type: String, default: "" },
+  // ✅ Programme Details (required: false to prevent update crashes)
+  programmeTitle: {
+    type: String,
+    required: false,
+  },
+  customProgramme: {
+    type: String,
+    default: "",
+  },
+  yearOfAttendance: {
+    type: Number,
+    required: false,
+  },
+
+  // ✅ Professional Details
   jobTitle: { type: String, default: "" },
   organization: { type: String, default: "" },
+  bio: { type: String, default: "" },
   linkedin: { type: String, default: "" },
-  phoneNumber: { type: String, default: "" },
+
+  // ✅ NEW: Remembers if they have seen the Welcome Dialog (Permanent Fix)
+  hasSeenWelcome: { type: Boolean, default: false },
+
+  // Admin & Security Fields
+  isAdmin: { type: Boolean, default: false },
+  isVerified: { type: Boolean, default: true },
+  canEdit: { type: Boolean, default: false },
+
+  // Profile Picture
+  profilePicture: { type: String, default: "" },
+
+  date: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
-module.exports = mongoose.model("User", UserSchema);
+module.exports = mongoose.model("User", userSchema);

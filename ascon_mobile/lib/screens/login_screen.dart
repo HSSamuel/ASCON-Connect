@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb check
+import 'package:flutter/foundation.dart'; 
+import '../services/auth_service.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
+import 'welcome_dialog.dart'; 
 import 'home_screen.dart'; 
-import '../config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,129 +17,158 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
-  // ✅ PRODUCTION READY INITIALIZATION
-  // On Web: Passes null (plugin uses index.html <meta> tag).
-  // On Mobile: Passes the Web Client ID (so backend gets a valid token).
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId: kIsWeb 
-        ? null 
-        : '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com', 
-    scopes: ['email', 'profile'],
-  );
+  // ✅ WEB: Uses the Web Client ID
+  clientId: kIsWeb 
+      ? '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com' 
+      : null,
+  
+  // ✅ ANDROID: ALSO asks for a token for the Web Client ID (so Backend accepts it)
+  serverClientId: kIsWeb 
+      ? null 
+      : '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com',
+);
   
   bool _isLoading = false;
   bool _obscurePassword = true; 
 
-  // --- EMAIL LOGIN LOGIC ---
-  Future<void> loginUser() async {
-    setState(() => _isLoading = true);
-    // Uses the URL defined in config.dart (Production or Local)
-    final url = Uri.parse('${AppConfig.baseUrl}/api/auth/login'); 
-    
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        }),
-      );
-      final responseData = jsonDecode(response.body);
+  // ✅ PERMANENT DATABASE CHECK
+  // This replaces the old SharedPreferences logic.
+  Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
+    // 1. Check the Database Flag directly from the User Object
+    // If the field is missing (e.g. old user record), default to false.
+    bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
 
-      if (response.statusCode == 200) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', responseData['token']);
-        
-        if (responseData['user'] != null && responseData['user']['fullName'] != null) {
-             await prefs.setString('user_name', responseData['user']['fullName']);
-        }
-        
-        if (!mounted) return;
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen(userName: responseData['user']['fullName'])));
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(responseData['message'] ?? 'Login failed'), 
-          backgroundColor: Colors.red
-        ));
-      }
-    } catch (error) {
+    if (hasSeenWelcome) {
+      // ⏩ OLD USER (Already seen it): Go Straight to Home
+      print("🚀 LOGIN: User has already seen welcome dialog. Skipping.");
+      _navigateToHome(user['fullName']);
+    } else {
+      // 👋 NEW USER (Or hasn't seen it): Show Dialog
+      print("👋 LOGIN: First time (or reset). Showing Welcome Dialog.");
+      
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Connection Error. Please check your internet."), 
-        backgroundColor: Colors.red
-      ));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return WelcomeDialog(
+            userName: user['fullName'],
+            // ✅ Pass callback to update the Database when they click "Get Started"
+            onGetStarted: _markWelcomeAsSeen, 
+          );
+        },
+      );
     }
   }
 
-  // --- GOOGLE LOGIN LOGIC ---
+  // ✅ CALL BACKEND TO UPDATE FLAG
+  Future<void> _markWelcomeAsSeen() async {
+    try {
+      // This calls the method you added to AuthService
+      await _authService.markWelcomeSeen(); 
+      print("✅ DATABASE: Welcome status marked as seen.");
+    } catch (e) {
+      print("❌ ERROR: Failed to mark welcome as seen: $e");
+    }
+  }
+
+  // ✅ HELPER: Navigate to Home
+  void _navigateToHome(String userName) {
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => HomeScreen(userName: userName)),
+      (route) => false,
+    );
+  }
+
+  // --- CLEAN EMAIL LOGIN ---
+  Future<void> loginUser() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill in all fields"), backgroundColor: Colors.orange)
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+    
+    final result = await _authService.login(
+      _emailController.text.trim(), 
+      _passwordController.text
+    );
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success']) {
+      // ✅ SUCCESS: Check DB flag
+      _handleLoginSuccess(result['data']['user']);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result['message']), 
+        backgroundColor: Colors.red
+      ));
+    }
+  }
+
+  // --- ROBUST GOOGLE LOGIN ---
   Future<void> signInWithGoogle() async {
     try {
       setState(() => _isLoading = true);
       
-      // 1. Trigger Google Sign In (Opens Dialog)
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      
-      // If user cancelled the dialog, stop loading
+      // 1. Try Standard Login
+      GoogleSignInAccount? googleUser;
+      try {
+        googleUser = await _googleSignIn.signIn();
+      } catch (error) {
+        print("⚠️ Popup closed (Normal behavior on some browsers). Trying recovery...");
+      }
+
+      // 2. RECOVERY: If popup failed, check if we are secretly logged in already
+      if (googleUser == null) {
+        googleUser = await _googleSignIn.signInSilently();
+      }
+
+      // 3. If STILL null, then the user really cancelled.
       if (googleUser == null) { 
         setState(() => _isLoading = false); 
         return; 
       }
       
-      // 2. Get the authentication tokens
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final url = Uri.parse('${AppConfig.baseUrl}/api/auth/google');
-      
-      // 3. Send ID Token to Backend for Verification
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'token': googleAuth.idToken}),
-      );
-      final data = jsonDecode(response.body);
+      print("✅ Google User Found: ${googleUser.email}");
 
-      if (response.statusCode == 200) {
-        // Success: Save Token & Navigate Home
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', data['token']);
-        
-        if (data['user'] != null && data['user']['fullName'] != null) {
-             await prefs.setString('user_name', data['user']['fullName']);
+      // ✅ 4. GET AUTHENTICATION (The part you were missing)
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      // ✅ 5. SEND TO BACKEND (The part you were missing)
+      final result = await _authService.googleLogin(googleAuth.idToken);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      // 6. Handle Backend Response
+      if (result['success']) {
+        if (result['statusCode'] == 200) {
+          _handleLoginSuccess(result['data']['user']);
+        } else if (result['statusCode'] == 404) {
+          final googleData = result['data']['googleData'];
+          Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(
+            prefilledName: googleData['fullName'], 
+            prefilledEmail: googleData['email'],
+            googleToken: googleAuth.idToken,
+          )));
         }
-        
-        if (!mounted) return;
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen(userName: data['user']['fullName'])));
-        
-      } else if (response.statusCode == 404) {
-        // New User: Navigate to Registration to complete profile
-        if (!mounted) return;
-        final googleData = data['googleData'];
-        Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(
-          prefilledName: googleData['fullName'], 
-          prefilledEmail: googleData['email']
-        )));
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please complete your Alumni details.")));
-        
       } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(data['message'] ?? "Login Failed"), 
-          backgroundColor: Colors.red
-        ));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
       }
     } catch (e) {
-      debugPrint("Google Sign-In Error: $e");
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Google Sign-In failed."), 
-        backgroundColor: Colors.red
-      ));
-    } finally {
-       if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+      print("❌ CRITICAL ERROR: $e");
     }
   }
 
@@ -158,44 +184,24 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- LOGO ---
                 Center(
                   child: Container(
-                    height: 100,
-                    width: 100,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))],
-                    ),
-                    child: Image.asset(
-                      'assets/logo.png', 
-                      errorBuilder: (c,o,s) => const Icon(Icons.school, size: 80, color: Color(0xFF1B5E3A)),
-                    ),
+                    height: 100, width: 100,
+                    decoration: const BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]),
+                    child: Image.asset('assets/logo.png', errorBuilder: (c,o,s) => const Icon(Icons.school, size: 80, color: Color(0xFF1B5E3A))),
                   ),
                 ),
-                
                 const SizedBox(height: 16), 
 
-                // --- WELCOME TEXT ---
-                Text(
+                const Text(
                   'Welcome Back',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 24, 
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1B5E3A),
-                  ),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1B5E3A)),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Sign in to access your alumni network',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[600]),
-                ),
-                
+                Text('Sign in to access your alumni network', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
                 const SizedBox(height: 24), 
 
-                // --- EMAIL INPUT ---
                 SizedBox(
                   height: 48,
                   child: TextFormField(
@@ -210,14 +216,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey[200]!)),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1B5E3A), width: 1.5)),
                       prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF1B5E3A), size: 20),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                     ),
                   ),
                 ),
-                
                 const SizedBox(height: 12), 
 
-                // --- PASSWORD INPUT ---
                 SizedBox(
                   height: 48,
                   child: TextFormField(
@@ -233,7 +236,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey[200]!)),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1B5E3A), width: 1.5)),
                       prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF1B5E3A), size: 20),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                       suffixIcon: IconButton(
                         icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 20),
                         onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
@@ -242,7 +244,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 
-                // --- FORGOT PASSWORD ---
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -254,7 +255,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // --- LOGIN BUTTON ---
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
@@ -274,7 +274,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // --- GOOGLE BUTTON ---
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
@@ -292,7 +291,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 20),
                 
-                // --- NEW HERE? ---
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -301,10 +299,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onTap: () {
                         if (!_isLoading) Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
                       },
-                      child: const Text(
-                        "Create Account",
-                        style: TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
+                      child: const Text("Create Account", style: TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
                   ],
                 ),

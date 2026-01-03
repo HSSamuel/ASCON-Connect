@@ -6,19 +6,10 @@
     <meta charset="UTF-8" />
     <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
     <meta name="description" content="ASCON Alumni Connect Mobile App." />
-
     <meta
-      http-equiv="Content-Security-Policy"
-      content="
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    font-src 'self' https://fonts.gstatic.com;
-    img-src 'self' data: https://lh3.googleusercontent.com https://res.cloudinary.com;
-    connect-src 'self' https://ascon.onrender.com https://www.googleapis.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;
-  "
+      name="google-signin-client_id"
+      content="641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com"
     />
-
     <meta
       name="google-signin-client_id"
       content="641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com"
@@ -32,13 +23,20 @@
     <link rel="apple-touch-icon" href="icons/Icon-192.png" />
     <link rel="icon" type="image/png" href="favicon.png" />
 
-    <title>ascon_mobile</title>
+    <title>ASCON Alumni</title>
     <link rel="manifest" href="manifest.json" />
 
-    <meta
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-      name="viewport"
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"
+      rel="stylesheet"
     />
+    <style>
+      body {
+        font-family: "Roboto", sans-serif;
+      }
+    </style>
 
     <style id="splash-screen-style">
       html {

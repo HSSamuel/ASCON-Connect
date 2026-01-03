@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'alumni_detail_screen.dart'; 
-import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'dart:async'; 
-import 'package:http/http.dart' as http;
-import '../config.dart';
+import '../services/data_service.dart'; // ✅ Import Data Service
+import 'alumni_detail_screen.dart'; 
 
 class DirectoryScreen extends StatefulWidget {
   const DirectoryScreen({super.key});
@@ -14,6 +12,8 @@ class DirectoryScreen extends StatefulWidget {
 }
 
 class _DirectoryScreenState extends State<DirectoryScreen> {
+  final DataService _dataService = DataService(); // ✅ Use the Service
+
   List<dynamic> _alumniList = []; 
   bool _isLoading = false;            
   final TextEditingController _searchController = TextEditingController();
@@ -22,7 +22,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   @override
   void initState() {
     super.initState();
-    fetchAlumni(); 
+    _loadDirectory(); 
   }
 
   @override
@@ -31,32 +31,24 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     super.dispose();
   }
 
-  Future<void> fetchAlumni({String query = ""}) async {
+  Future<void> _loadDirectory({String query = ""}) async {
     setState(() => _isLoading = true);
-    String endpoint = '${AppConfig.baseUrl}/api/directory';
-    if (query.isNotEmpty) endpoint += '?search=$query';
+    
+    // Clean, robust service call
+    final list = await _dataService.fetchDirectory(query: query);
 
-    try {
-      final response = await http.get(Uri.parse(endpoint));
-      if (response.statusCode == 200) {
-        if (mounted) {
-          setState(() {
-            _alumniList = jsonDecode(response.body);
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    } catch (error) {
-      if (mounted) setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() {
+        _alumniList = list;
+        _isLoading = false;
+      });
     }
   }
 
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
-      fetchAlumni(query: query);
+      _loadDirectory(query: query);
     });
   }
 
@@ -75,9 +67,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           "Alumni Directory",
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: const Color(0xFF1B5E3A),
         foregroundColor: Colors.white,
@@ -87,12 +79,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       backgroundColor: Colors.grey[50], 
       body: Column(
         children: [
-          // 1. COMPACT SEARCH BAR
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), // Reduced padding
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             color: const Color(0xFF1B5E3A), 
             child: Container(
-              height: 45, // Fixed smaller height
+              height: 45, 
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
@@ -113,17 +104,16 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             ),
           ),
 
-          // 2. THE LIST
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => fetchAlumni(query: _searchController.text),
+              onRefresh: () => _loadDirectory(query: _searchController.text),
               color: const Color(0xFF1B5E3A),
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)))
                   : _alumniList.isEmpty
                       ? _buildEmptyState()
                       : ListView.builder(
-                          padding: const EdgeInsets.all(12), // Reduced list padding
+                          padding: const EdgeInsets.all(12), 
                           itemCount: _alumniList.length,
                           itemBuilder: (context, index) {
                             return _buildAlumniCard(_alumniList[index]);
@@ -145,7 +135,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           const SizedBox(height: 12),
           Text(
             "No alumni found.",
-            style: GoogleFonts.inter(fontSize: 15, color: Colors.grey[600], fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 15, color: Colors.grey[600], fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -166,7 +156,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         );
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12), // Reduced spacing
+        margin: const EdgeInsets.only(bottom: 12), 
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -176,18 +166,17 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12.0), // Reduced internal padding
+          padding: const EdgeInsets.all(12.0), 
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Compact Avatar
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.grey[200]!, width: 1),
                 ),
                 child: CircleAvatar(
-                  radius: 24, // Reduced from 28
+                  radius: 24, 
                   backgroundColor: Colors.grey[100],
                   backgroundImage: getProfileImage(user['profilePicture']),
                   child: getProfileImage(user['profilePicture']) == null
@@ -208,8 +197,8 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         Expanded(
                           child: Text(
                             user['fullName'] ?? 'Unknown',
-                            style: GoogleFonts.inter(
-                              fontSize: 15, // Reduced from 16
+                            style: const TextStyle(
+                              fontSize: 15, 
                               fontWeight: FontWeight.bold,
                               color: Colors.black87,
                             ),
@@ -238,23 +227,23 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 12), // Reduced from 13
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12), 
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    const Row(
                       children: [
                         Text(
                           "View Profile",
-                          style: GoogleFonts.inter(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF1B5E3A),
+                            color: Color(0xFF1B5E3A),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_forward, size: 10, color: Color(0xFF1B5E3A)),
+                        SizedBox(width: 4),
+                        Icon(Icons.arrow_forward, size: 10, color: Color(0xFF1B5E3A)),
                       ],
                     ),
                   ],

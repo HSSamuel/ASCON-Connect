@@ -1,12 +1,9 @@
-import 'dart:async'; 
-import 'dart:convert';
+import 'dart:async';
+import 'dart:convert'; // Required for base64Decode
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart'; // ✅ Required for Date Format
-
-import '../config.dart';
+import 'package:intl/intl.dart'; 
+import '../services/data_service.dart'; 
+import '../services/auth_service.dart'; 
 import 'directory_screen.dart';
 import 'profile_screen.dart';
 import 'events_screen.dart';
@@ -69,6 +66,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ---------------------------------------------------------
+// DASHBOARD VIEW (The main Home Tab)
+// ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
   const _DashboardView({required this.userName});
@@ -78,72 +78,34 @@ class _DashboardView extends StatefulWidget {
 }
 
 class _DashboardViewState extends State<_DashboardView> {
+  final DataService _dataService = DataService();
+  final AuthService _authService = AuthService();
+
   late Future<List<dynamic>> _eventsFuture;
+  late Future<List<dynamic>> _programmesFuture;
+
   String? _profileImage;
   int _unreadNotifications = 2; 
 
   @override
   void initState() {
     super.initState();
-    _eventsFuture = fetchEvents();
-    _fetchProfileImage(); 
+    _refreshData();
   }
 
-  Future<void> _fetchProfileImage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
+  void _refreshData() {
+    setState(() {
+      _eventsFuture = _dataService.fetchEvents();
+      _programmesFuture = _authService.getProgrammes();
+      _loadProfileImage();
+    });
+  }
 
-      final response = await http.get(url, headers: {'auth-token': token ?? ''});
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) setState(() => _profileImage = data['profilePicture']);
-      }
-    } catch (e) {
-      debugPrint("Error fetching profile image: $e");
+  Future<void> _loadProfileImage() async {
+    final profile = await _dataService.fetchProfile();
+    if (mounted && profile != null) {
+      setState(() => _profileImage = profile['profilePicture']);
     }
-  }
-
-  Future<void> _forceLogout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false, 
-    );
-  }
-
-  Future<List<dynamic>> fetchEvents() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
-    final url = Uri.parse('${AppConfig.baseUrl}/api/events');
-
-    try {
-      final response = await http.get(
-        url,
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
-      );
-
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        _forceLogout();
-        return [];
-      }
-
-      if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(response.body);
-        if (jsonResponse is Map && jsonResponse.containsKey('events')) {
-          return jsonResponse['events'];
-        } else if (jsonResponse is List) {
-          return jsonResponse;
-        }
-      }
-    } catch (e) {
-      debugPrint("Error fetching events: $e");
-    }
-    return [];
   }
 
   ImageProvider? getProfileImage(String? imagePath) {
@@ -169,16 +131,16 @@ class _DashboardViewState extends State<_DashboardView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
+                  const Text(
                     "Notifications",
-                    style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1B5E3A)),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1B5E3A)),
                   ),
                   TextButton(
                     onPressed: () {
                       Navigator.pop(context);
                       setState(() => _unreadNotifications = 0); 
                     },
-                    child: Text("Mark all read", style: GoogleFonts.inter(color: Colors.grey)),
+                    child: const Text("Mark all read", style: TextStyle(color: Colors.grey)),
                   )
                 ],
               ),
@@ -192,7 +154,7 @@ class _DashboardViewState extends State<_DashboardView> {
                       children: [
                         Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
                         const SizedBox(height: 10),
-                        Text("No new notifications", style: GoogleFonts.inter(color: Colors.grey)),
+                        const Text("No new notifications", style: TextStyle(color: Colors.grey)),
                       ],
                     ),
                   ),
@@ -208,7 +170,7 @@ class _DashboardViewState extends State<_DashboardView> {
       },
     ).whenComplete(() {
       if (_unreadNotifications > 0) {
-         setState(() => _unreadNotifications = 0);
+          setState(() => _unreadNotifications = 0);
       }
     });
   }
@@ -234,9 +196,9 @@ class _DashboardViewState extends State<_DashboardView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
+                Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
                 const SizedBox(height: 4),
-                Text(time, style: GoogleFonts.inter(fontSize: 11, color: Colors.grey)),
+                Text(time, style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ],
             ),
           ),
@@ -245,14 +207,24 @@ class _DashboardViewState extends State<_DashboardView> {
     );
   }
 
+  Color _getTypeColor(String type) {
+    switch (type) {
+      case 'Reunion': return const Color(0xFF1B5E3A); // Green
+      case 'Webinar': return Colors.blue[700]!;     // Blue
+      case 'Seminar': return Colors.purple[700]!;   // Purple
+      case 'News':    return Colors.orange[800]!;   // Orange
+      default:        return Colors.grey[700]!;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           "ASCON Dashboard",
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18, color: const Color(0xFF1B5E3A)),
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1B5E3A)),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -277,67 +249,229 @@ class _DashboardViewState extends State<_DashboardView> {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeroCard(),
+        child: RefreshIndicator(
+          onRefresh: () async => _refreshData(),
+          color: const Color(0xFF1B5E3A),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeroCard(),
 
-              const SizedBox(height: 20),
+                const SizedBox(height: 25),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "Upcoming Events",
-                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _eventsFuture = fetchEvents();
-                        _fetchProfileImage(); 
-                      });
-                    },
-                    child: const Icon(Icons.refresh, size: 18, color: Color(0xFF1B5E3A)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
+                // ✅ FEATURED PROGRAMMES SECTION
+                // This logic completely hides the section if there are no programmes.
+                FutureBuilder<List<dynamic>>(
+                  future: _programmesFuture,
+                  builder: (context, snapshot) {
+                    // 1. Loading State: Show Title + Shimmer
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Featured Programmes",
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 140,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [1,2,3].map((_) => _buildShimmerCard()).toList(),
+                            ),
+                          ),
+                          const SizedBox(height: 25),
+                        ],
+                      );
+                    }
 
-              FutureBuilder<List<dynamic>>(
-                future: _eventsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)));
-                  }
-                  if (snapshot.hasError) {
-                    return _buildEmptyState("Could not load events.");
-                  }
-                  final events = snapshot.data ?? [];
-                  if (events.isEmpty) {
-                    return _buildEmptyState("No Upcoming Events");
-                  }
+                    final programmes = snapshot.data ?? [];
 
-                  return Column(
-                    children: events.map((event) {
-                      return _buildEventCard(context, {
-                        'title': event['title'] ?? 'No Title',
-                        'date': event['date'] ?? 'TBA', // Raw date from API
-                        'location': event['location'] ?? 'ASCON Complex',
-                        'image': event['image'] ?? event['imageUrl'] ?? 'https://via.placeholder.com/600',
-                        'description': event['description'] ?? 'No description provided.',
-                      });
-                    }).toList(),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
+                    // 2. Empty State: HIDE EVERYTHING (Returns 0 size box)
+                    if (programmes.isEmpty) {
+                      return const SizedBox.shrink(); 
+                    }
+
+                    // 3. Data State: Show Title + List
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Featured Programmes",
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 140, 
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: programmes.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 12),
+                            itemBuilder: (context, index) {
+                              final prog = programmes[index];
+                              return _buildProgrammeCard(prog);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 25),
+                      ],
+                    );
+                  },
+                ),
+
+                // --- EVENTS SECTION ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Upcoming Events",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                    GestureDetector(
+                      onTap: _refreshData,
+                      child: const Icon(Icons.refresh, size: 18, color: Color(0xFF1B5E3A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                FutureBuilder<List<dynamic>>(
+                  future: _eventsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)));
+                    }
+                    if (snapshot.hasError) {
+                      return _buildEmptyState("Could not load events.");
+                    }
+                    final events = snapshot.data ?? [];
+                    if (events.isEmpty) {
+                      return _buildEmptyState("No Upcoming Events");
+                    }
+
+                    return Column(
+                      children: events.map((event) {
+                        return _buildEventCard(context, {
+                          'title': event['title'] ?? 'No Title',
+                          'date': event['date'] ?? 'TBA', 
+                          'location': event['location'] ?? 'ASCON Complex',
+                          'image': event['image'] ?? event['imageUrl'] ?? 'https://via.placeholder.com/600',
+                          'description': event['description'] ?? 'No description provided.',
+                          'type': event['type'] ?? 'News', 
+                        });
+                      }).toList(),
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  // ✅ WIDGET: Pro Programme Card
+  Widget _buildProgrammeCard(Map<String, dynamic> prog) {
+    return Container(
+      width: 220, // Slightly wider for better text fit
+      margin: const EdgeInsets.only(bottom: 5), // Space for shadow
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[100]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            // Optional: Handle tap (e.g., show details dialog)
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // --- TOP ROW: Icon & Decoration ---
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1B5E3A).withOpacity(0.08), // Light Green bg
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.school_rounded, color: Color(0xFF1B5E3A), size: 22),
+                    ),
+                    // Optional: A small 'arrow' to show it's clickable
+                    Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300]),
+                  ],
+                ),
+                
+                const Spacer(), // Pushes text to the middle/bottom
+
+                // --- MIDDLE: Title ---
+                Text(
+                  prog['title'] ?? "Programme",
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700, // Bolder
+                    fontSize: 14,
+                    color: Colors.black87,
+                    height: 1.2, // Better line spacing
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                
+                const SizedBox(height: 12),
+
+                // --- BOTTOM: Code Badge ---
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100], // Subtle grey pill
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Text(
+                    prog['code']?.toUpperCase() ?? "ASCON",
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ WIDGET: Loading Shimmer for Programmes
+  Widget _buildShimmerCard() {
+    return Container(
+      width: 150,
+      margin: const EdgeInsets.only(right: 10),
+      decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
     );
   }
 
@@ -366,14 +500,14 @@ class _DashboardViewState extends State<_DashboardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       "Welcome back,",
-                      style: GoogleFonts.inter(color: Colors.white70, fontSize: 13),
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
                     const SizedBox(height: 4),
                     _TypingText(
                       text: widget.userName,
-                      style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -399,14 +533,14 @@ class _DashboardViewState extends State<_DashboardView> {
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.verified_user, color: Colors.amberAccent, size: 16),
-                const SizedBox(width: 6),
+                Icon(Icons.verified_user, color: Colors.amberAccent, size: 16),
+                SizedBox(width: 6),
                 Text(
                   "Verified Member",
-                  style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 11),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 11),
                 ),
               ],
             ),
@@ -432,35 +566,36 @@ class _DashboardViewState extends State<_DashboardView> {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey),
           ),
         ],
       ),
     );
   }
 
+  // ✅ UPDATED EVENT CARD
   Widget _buildEventCard(BuildContext context, Map<String, dynamic> data) {
-    // ✅ 1. PARSE & FORMAT DATE FOR CARD
-    String formattedDate = data['date'] ?? 'TBA';
-    String rawDate = data['date']?.toString() ?? ''; // Keep raw for Detail Screen
+    String formattedDate = 'TBA';
+    String rawDate = data['date']?.toString() ?? '';
+    
+    // Parse Date
     try {
       if (rawDate.isNotEmpty) {
         final dateObj = DateTime.parse(rawDate);
-        // "Fri, 12 Jan, 2026 at 4:30 PM"
-        formattedDate = DateFormat("EEE, d MMM, y 'at' h:mm a").format(dateObj);
+        formattedDate = DateFormat("EEE, d MMM, y • h:mm a").format(dateObj);
       }
     } catch (e) {
       // Keep default if parsing fails
     }
 
+    String type = data['type'] ?? 'News';
+
     return GestureDetector(
       onTap: () {
-        // ✅ 2. PASS RAW DATE TO DETAIL SCREEN
-        // We add 'rawDate' so the detail screen can do its own full formatting if needed
         final safeData = {
           ...data.map((key, value) => MapEntry(key, value.toString())),
-          'rawDate': rawDate, 
-          'date': formattedDate, // Display formatted on card
+          'rawDate': rawDate,
+          'date': formattedDate,
         };
         
         Navigator.push(
@@ -469,60 +604,93 @@ class _DashboardViewState extends State<_DashboardView> {
         );
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 16),
         width: double.infinity,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[100]!),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3)),
+            BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.network(
-                data['image'],
-                height: 120,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(height: 120, color: Colors.grey[200], child: const Icon(Icons.event, color: Colors.grey)),
-              ),
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: Container(
+                    height: 150, 
+                    width: double.infinity,
+                    color: Colors.grey[50], 
+                    child: Image.network(
+                      data['image'] ?? data['imageUrl'] ?? '',
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) => Center(
+                        child: Icon(Icons.image_not_supported, color: Colors.grey[300], size: 40)
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _getTypeColor(type),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    ),
+                    child: Text(
+                      type.toUpperCase(),
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.calendar_today, size: 12, color: Color(0xFF1B5E3A)),
+                      const Icon(Icons.calendar_month_outlined, size: 14, color: Color(0xFF1B5E3A)),
                       const SizedBox(width: 6),
-                      // ✅ 3. DISPLAY FORMATTED DATE
                       Text(
                         formattedDate,
-                        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF1B5E3A)),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1B5E3A)),
                       ),
-                      const SizedBox(width: 12),
-                      const Icon(Icons.location_on, size: 12, color: Colors.grey),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  Text(
+                    data['title'] ?? 'Untitled Event',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.2),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  
+                  const SizedBox(height: 8),
+                  
+                  Row(
+                    children: [
+                      Icon(Icons.location_on_outlined, size: 14, color: Colors.grey[500]),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          data['location'],
-                          style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[600]),
+                          data['location'] ?? 'ASCON Complex',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    data['title'],
-                    style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
                   ),
                 ],
               ),
@@ -534,6 +702,9 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 }
 
+// ---------------------------------------------------------
+// TYPING TEXT WIDGET
+// ---------------------------------------------------------
 class _TypingText extends StatefulWidget {
   final String text;
   final TextStyle style;

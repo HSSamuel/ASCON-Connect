@@ -67,7 +67,7 @@ class AboutScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      "The Natural Place for Capacity Building",
+                      "...the natural place for human capacity building.",
                       textAlign: TextAlign.center,
                       style: GoogleFonts.inter(
                         color: const Color(0xFFFFD700), // Gold

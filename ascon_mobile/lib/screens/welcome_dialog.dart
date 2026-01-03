@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'home_screen.dart'; 
 
 class WelcomeDialog extends StatelessWidget {
-  const WelcomeDialog({super.key});
+  final String userName;
+  final VoidCallback? onGetStarted; // ✅ Added callback for DB update
+
+  const WelcomeDialog({
+    super.key, 
+    required this.userName,
+    this.onGetStarted, // ✅ Accept the callback
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -63,15 +71,12 @@ class WelcomeDialog extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     
-                    // ✅ UPDATED: Added TextAlign.justify
                     Text(
-                      "On behalf of the Administrative Staff College of Nigeria (ASCON), I warmly welcome you to our Alumni Association platform.\n\n"
+                      "On behalf of the Administrative Staff College of Nigeria (ASCON), I warmly welcome you to our Alumni Association.\n\n"
                       "This platform has been designed to strengthen the bonds we share as members of the ASCON family and to provide opportunities for continued professional development, networking, and collaboration.\n\n"
                       "Together, we will continue to uphold the values of excellence, integrity, and innovation that define ASCON.\n\n"
                       'Welcome aboard!"',
-                      
-                      textAlign: TextAlign.justify, // <--- THIS JUSTIFIES THE TEXT
-                      
+                      textAlign: TextAlign.justify,
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         height: 1.5, 
@@ -94,7 +99,7 @@ class WelcomeDialog extends StatelessWidget {
                   children: [
                     const CircleAvatar(
                       radius: 25,
-                     backgroundImage: AssetImage('assets/ascondg.jpg'), 
+                      backgroundImage: AssetImage('assets/ascondg.jpg'), 
                     ),
                     const SizedBox(width: 15),
                     Expanded(
@@ -130,8 +135,18 @@ class WelcomeDialog extends StatelessWidget {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
+                    // ✅ 1. Trigger Backend Update
+                    if (onGetStarted != null) onGetStarted!();
+
+                    // ✅ 2. CLOSE DIALOG
                     Navigator.of(context).pop(); 
-                    Navigator.of(context).pop(); 
+                    
+                    // ✅ 3. NAVIGATE TO HOME SCREEN
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(builder: (context) => HomeScreen(userName: userName)),
+                      (route) => false, 
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1B5E3A),
