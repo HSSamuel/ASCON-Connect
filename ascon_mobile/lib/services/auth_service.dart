@@ -4,6 +4,7 @@ import 'dart:io';    // ✅ Import for SocketException
 import 'package:flutter/material.dart'; 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:jwt_decoder/jwt_decoder.dart'; // ✅ NEW: Import for Token Expiry Check
 import '../config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart'; 
@@ -13,7 +14,7 @@ class AuthService {
   // Generic helper to handle HTTP errors & Session Expiry
   Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     try {
-      // ✅ 1. SECURITY CHECK: Session Expiry
+      // ✅ 1. SECURITY CHECK: Backend says Session Expired (401/403)
       if (response.statusCode == 401 || response.statusCode == 403) {
         await logout(); // Clear local storage
 
@@ -121,7 +122,7 @@ class AuthService {
       
       // If registration is successful and returns a token, save session immediately
       if (result['success'] == true && result['data']['token'] != null) {
-         await _saveUserSession(result['data']['token'], result['data']['user'] ?? {});
+          await _saveUserSession(result['data']['token'], result['data']['user'] ?? {});
       }
 
       return result;
@@ -177,12 +178,12 @@ class AuthService {
   }
 
   // ---------------------------------------------------------------------------
-  // ✅ NEW: MARK WELCOME AS SEEN (Fixes the error in LoginScreen)
+  // ✅ NEW: MARK WELCOME AS SEEN
   // ---------------------------------------------------------------------------
   Future<void> markWelcomeSeen() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? token = prefs.getString('auth_token');
+      // Use helper to ensure token is valid before sending
+      final String? token = await getToken(); 
 
       if (token == null) return;
 
@@ -192,7 +193,7 @@ class AuthService {
         url,
         headers: {
           'Content-Type': 'application/json',
-          'auth-token': token, // Backend usually expects 'auth-token' header
+          'auth-token': token, 
         },
       );
       
@@ -215,10 +216,30 @@ class AuthService {
     }
   }
 
-  // ✅ Added Public Helper to get Token
+  // ✅ UPDATED: Public Helper to get Token
+  // This now checks if the token is EXPIRED. If yes, it logs out automatically.
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    final token = prefs.getString('auth_token');
+
+    // 1. If no token, return null
+    if (token == null) return null;
+
+    // 2. Check Expiry using JwtDecoder
+    if (JwtDecoder.isExpired(token)) {
+      print("⚠️ Token is expired. Logging out user...");
+      await logout(); // Clear storage
+      return null;    // Return null so the app knows we aren't logged in
+    }
+
+    // 3. Token is valid
+    return token;
+  }
+
+  // ✅ NEW: Helper to check if session is valid (for Splash Screen)
+  Future<bool> isSessionValid() async {
+    final token = await getToken();
+    return token != null;
   }
 
   Future<void> logout() async {
