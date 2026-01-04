@@ -14,11 +14,20 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ AUTO-DETECT THEME COLORS
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final dividerColor = Theme.of(context).dividerColor;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Light background for contrast
+      backgroundColor: scaffoldBg, // ✅ Dynamic Background
       appBar: AppBar(
         title: Text("About ASCON", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
-        backgroundColor: const Color(0xFF1B5E3A),
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
@@ -73,6 +82,7 @@ class AboutScreen extends StatelessWidget {
                         color: const Color(0xFFFFD700), // Gold
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
+                        fontStyle: FontStyle.italic, // ✅ ADDED ITALIC
                       ),
                     ),
                   ),
@@ -89,6 +99,7 @@ class AboutScreen extends StatelessWidget {
                 children: [
                   // Vision Card
                   _buildInfoCard(
+                    context,
                     icon: Icons.visibility_outlined,
                     title: "Our Vision",
                     content: "To be a world-class Management Development Institute (MDI) using advanced technology and best practices for rapid and sustainable national development.",
@@ -98,6 +109,7 @@ class AboutScreen extends StatelessWidget {
 
                   // Mission Card
                   _buildInfoCard(
+                    context,
                     icon: Icons.track_changes_outlined,
                     title: "Our Mission",
                     content: "To consistently deliver excellent management training, consultancy, research, and related services to improve performance across all sectors of the Nigerian economy.",
@@ -110,30 +122,31 @@ class AboutScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cardColor, // ✅ Dynamic Card
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                        if (!isDark)
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
                       ],
                     ),
                     child: Column(
                       children: [
-                         Text(
+                          Text(
                           "Contact Information",
                           style: GoogleFonts.inter(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1B5E3A),
+                            color: primaryColor,
                           ),
                         ),
                         const SizedBox(height: 20),
-                        _buildContactRow(Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
-                        const Divider(height: 24, thickness: 0.5),
-                        _buildContactRow(Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
-                        const Divider(height: 24, thickness: 0.5),
-                        _buildContactRow(Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
-                        const Divider(height: 24, thickness: 0.5),
-                        _buildContactRow(Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
+                        _buildContactRow(context, Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
+                        Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        _buildContactRow(context, Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
+                        Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        _buildContactRow(context, Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
+                        Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        _buildContactRow(context, Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
                       ],
                     ),
                   ),
@@ -147,7 +160,7 @@ class AboutScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () => _launchURL("https://ascon.gov.ng"),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1B5E3A),
+                        backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
                         elevation: 2,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -176,15 +189,22 @@ class AboutScreen extends StatelessWidget {
   }
 
   // --- HELPER: Info Card (Centered Text) ---
-  Widget _buildInfoCard({required IconData icon, required String title, required String content}) {
+  Widget _buildInfoCard(BuildContext context, {required IconData icon, required String title, required String content}) {
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+          if (!isDark)
+            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
         ],
       ),
       child: Column(
@@ -192,10 +212,10 @@ class AboutScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF1B5E3A).withOpacity(0.08),
+              color: primaryColor.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: const Color(0xFF1B5E3A), size: 24),
+            child: Icon(icon, color: primaryColor, size: 24),
           ),
           const SizedBox(height: 12),
           Text(
@@ -203,7 +223,7 @@ class AboutScreen extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: textColor,
             ),
           ),
           const SizedBox(height: 8),
@@ -213,7 +233,7 @@ class AboutScreen extends StatelessWidget {
             style: GoogleFonts.inter(
               fontSize: 14,
               height: 1.5,
-              color: Colors.grey[700],
+              color: subTextColor,
             ),
           ),
         ],
@@ -222,7 +242,9 @@ class AboutScreen extends StatelessWidget {
   }
 
   // --- HELPER: Contact Row (Centered) ---
-  Widget _buildContactRow(IconData icon, String text, {VoidCallback? onTap}) {
+  Widget _buildContactRow(BuildContext context, IconData icon, String text, {VoidCallback? onTap}) {
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    
     return GestureDetector(
       onTap: onTap,
       child: Row(
@@ -234,7 +256,7 @@ class AboutScreen extends StatelessWidget {
             child: Text(
               text,
               textAlign: TextAlign.center, // ✅ Align Text Center
-              style: GoogleFonts.inter(fontSize: 14, color: Colors.grey[800], fontWeight: FontWeight.w500),
+              style: GoogleFonts.inter(fontSize: 14, color: textColor, fontWeight: FontWeight.w500),
             ),
           ),
         ],

@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
+import '../main.dart'; // ✅ Required for navigatorKey
+import '../screens/login_screen.dart'; // ✅ Required for redirection
 
 class DataService {
   
@@ -11,24 +14,43 @@ class DataService {
     final token = prefs.getString('auth_token') ?? '';
     return {
       'Content-Type': 'application/json',
-      'auth-token': token,
-      'Authorization': 'Bearer $token', // Some endpoints might use Bearer
+      'auth-token': token, // Standard header
+      'Authorization': 'Bearer $token', // Backup standard
     };
   }
 
-  // Helper to handle HTTP errors safely
+  // ✅ ROBUST ERROR HANDLER
+  // Handles 401 (Session Expired) by kicking the user out to Login
   dynamic _handleResponse(http.Response response) {
+    // 1. Session Expired / Unauthorized
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      _forceLogout();
+      throw Exception('Session expired'); 
+    }
+
+    // 2. Success
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      // If body is empty, return null or empty list depending on context
       if (response.body.isEmpty) return null;
       return jsonDecode(response.body);
-    } else {
-      // If unauthorized, we might want to trigger logout logic later
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        throw Exception('Unauthorized');
-      }
+    } 
+    
+    // 3. Other Errors
+    else {
+      print("⚠️ API Error: ${response.statusCode} - ${response.body}");
       throw Exception('Failed to load data: ${response.statusCode}');
     }
+  }
+
+  // ✅ Helper to Force Logout
+  Future<void> _forceLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear(); // Clear token
+
+    // Use global key to navigate without context
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
   }
 
   // --- 1. USER PROFILE ---
@@ -38,10 +60,16 @@ class DataService {
       final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
       
       final response = await http.get(url, headers: headers);
-      return _handleResponse(response);
+      final data = _handleResponse(response);
+
+      // Handle wrapper object if exists (e.g. { success: true, data: {...} })
+      if (data is Map<String, dynamic> && data.containsKey('data')) {
+        return data['data'];
+      }
+      return data; // Return direct map
     } catch (e) {
       print("Error fetching profile: $e");
-      return null; // Return null safely instead of crashing
+      return null;
     }
   }
 
@@ -52,19 +80,23 @@ class DataService {
       final url = Uri.parse('${AppConfig.baseUrl}/api/events');
 
       final response = await http.get(url, headers: headers);
-      
       final data = _handleResponse(response);
       
-      // Handle different formats (List vs Map with 'events' key)
-      if (data is Map && data.containsKey('events')) {
-        return data['events'];
-      } else if (data is List) {
+      // ✅ Handle different backend formats safely
+      if (data == null) return [];
+      
+      if (data is List) {
         return data;
+      } else if (data is Map && data.containsKey('events')) {
+        return data['events'];
+      } else if (data is Map && data.containsKey('data')) {
+        return data['data']; // Common standard wrapper
       }
+      
       return [];
     } catch (e) {
       print("Error fetching events: $e");
-      return []; // Return empty list safely
+      return []; 
     }
   }
 
@@ -80,7 +112,15 @@ class DataService {
 
       final data = _handleResponse(response);
       
-      if (data is List) return data;
+      // ✅ Handle different backend formats safely
+      if (data == null) return [];
+
+      if (data is List) {
+        return data;
+      } else if (data is Map && data.containsKey('data')) {
+        return data['data']; // Handle wrapper { success: true, data: [] }
+      }
+      
       return [];
     } catch (e) {
       print("Error fetching directory: $e");

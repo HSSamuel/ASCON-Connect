@@ -4,19 +4,29 @@ import 'home_screen.dart';
 
 class WelcomeDialog extends StatelessWidget {
   final String userName;
-  final VoidCallback? onGetStarted; // ✅ Added callback for DB update
+  final VoidCallback? onGetStarted; 
 
   const WelcomeDialog({
     super.key, 
     required this.userName,
-    this.onGetStarted, // ✅ Accept the callback
+    this.onGetStarted, 
   });
 
   @override
   Widget build(BuildContext context) {
+    // ✅ AUTO-DETECT THEME COLORS
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+    final cardColor = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    
+    // Dynamic Box Color: Light Grey in Day, Dark Grey in Night
+    final containerColor = isDark ? Colors.grey[800] : const Color(0xFFF5F7F6);
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: Colors.white,
+      backgroundColor: cardColor, // ✅ Dynamic Background
       insetPadding: const EdgeInsets.all(20), 
       child: SingleChildScrollView(
         child: Padding(
@@ -29,12 +39,12 @@ class WelcomeDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(4), 
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1B5E3A), width: 2),
+                  border: Border.all(color: primaryColor, width: 2),
                 ),
-                child: const CircleAvatar(
+                child: CircleAvatar(
                   radius: 25,
-                  backgroundImage: AssetImage('assets/logo.png'), 
-                  backgroundColor: Colors.transparent,
+                  backgroundImage: const AssetImage('assets/logo.png'), 
+                  backgroundColor: isDark ? Colors.grey[200] : Colors.transparent, // Ensure logo is visible
                 ),
               ),
               const SizedBox(height: 15),
@@ -46,16 +56,16 @@ class WelcomeDialog extends StatelessWidget {
                 style: GoogleFonts.inter(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: textColor, // ✅ Dynamic Text
                 ),
               ),
               const SizedBox(height: 20),
 
-              // --- 3. MESSAGE BODY (Grey Box) ---
+              // --- 3. MESSAGE BODY (Dynamic Box) ---
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F7F6), 
+                  color: containerColor, // ✅ Dynamic Box Color
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -66,7 +76,7 @@ class WelcomeDialog extends StatelessWidget {
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         fontStyle: FontStyle.italic,
-                        color: Colors.grey[700],
+                        color: subTextColor, 
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -80,7 +90,7 @@ class WelcomeDialog extends StatelessWidget {
                       style: GoogleFonts.inter(
                         fontSize: 14,
                         height: 1.5, 
-                        color: Colors.grey[700],
+                        color: subTextColor, // ✅ Dynamic Text
                       ),
                     ),
                   ],
@@ -92,7 +102,7 @@ class WelcomeDialog extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 15),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F7F6),
+                  color: containerColor, // ✅ Dynamic Box Color
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -111,14 +121,14 @@ class WelcomeDialog extends StatelessWidget {
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: Colors.black87,
+                              color: textColor, // ✅ Dynamic Text
                             ),
                           ),
                           Text(
                             "Director General, ASCON",
                             style: GoogleFonts.inter(
                               fontSize: 12,
-                              color: Colors.grey[600],
+                              color: subTextColor, 
                             ),
                           ),
                         ],
@@ -149,7 +159,7 @@ class WelcomeDialog extends StatelessWidget {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1B5E3A),
+                    backgroundColor: primaryColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),

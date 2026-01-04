@@ -58,14 +58,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController = TextEditingController(text: widget.prefilledEmail ?? '');
   }
 
-  // ✅ NEW: Beautiful Success Dialog
+  // ✅ NEW: Beautiful Success Dialog (Dynamic Colors)
   void _showSuccessDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = Theme.of(context).cardColor;
+    // final textColor = Theme.of(context).textTheme.bodyLarge?.color; // Unused variable removed
+
     showDialog(
       context: context,
-      barrierDismissible: false, // User must tap button to close
+      barrierDismissible: false, 
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: bgColor, // ✅ Dynamic Background
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
@@ -75,7 +80,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
+                    color: isDark ? Colors.green[900] : Colors.green[50], // ✅ Dynamic
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check_circle, color: Colors.green, size: 60),
@@ -83,10 +88,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 20),
                 
                 // Title
-                const Text(
+                Text(
                   "Registration Successful!",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1B5E3A)),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
                 ),
                 const SizedBox(height: 10),
                 
@@ -94,7 +99,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Text(
                   "Your account has been created successfully.\nPlease login to continue.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodyMedium?.color),
                 ),
                 const SizedBox(height: 25),
                 
@@ -103,14 +108,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.pop(context); // Close Dialog
+                      Navigator.pop(context); 
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (_) => const LoginScreen()),
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1B5E3A),
+                      backgroundColor: Theme.of(context).primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -138,7 +143,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = true);
 
-    // Logic: Determine final programme title
     String finalProgrammeTitle;
     if (_selectedProgramme == "Other") {
       finalProgrammeTitle = _customProgrammeController.text.trim();
@@ -161,7 +165,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (result['success']) {
-      // ✅ Show Dialog instead of SnackBar
       _showSuccessDialog();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -172,13 +175,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Dynamic Theme Colors
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      // Background handled by Theme
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor, // ✅ Matches background
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1B5E3A)),
+          icon: Icon(Icons.arrow_back, color: primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -191,33 +200,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 
-                // ✅ 1. LOGO (Centered)
+                // ✅ UPDATED LOGO: Matches Login Screen (No Padding, Large, Shadowed)
                 Center(
                   child: Container(
                     height: 100, width: 100,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle, 
-                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      // Shadow Effect
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark ? Colors.black38 : Colors.black12,
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
                     ),
-                    child: Image.asset(
-                      'assets/logo.png', 
-                      errorBuilder: (c,o,s) => const Icon(Icons.school, size: 80, color: Color(0xFF1B5E3A))
+                    // ClipOval for clean circle cut
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/logo.png', 
+                        fit: BoxFit.cover, // Fills the circle
+                        errorBuilder: (c,o,s) => Icon(Icons.school, size: 80, color: primaryColor)
+                      ),
                     ),
                   ),
                 ),
+                
                 const SizedBox(height: 20),
 
-                // ✅ 2. HEADER TEXT (Centered)
-                const Text(
+                // 2. HEADER TEXT
+                Text(
                   "Create Account",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1B5E3A)),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryColor),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   "Join the ASCON Alumni Network",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 14, color: subTextColor),
                 ),
                 const SizedBox(height: 30),
 
@@ -228,15 +249,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _buildTextField("Phone Number", _phoneController, Icons.phone_outlined, isNumber: true),
                 const SizedBox(height: 16),
                 
+                // ✅ DROPDOWN (Now Dynamic)
                 DropdownButtonFormField<String>(
                   value: _selectedProgramme,
-                  decoration: _inputDecoration("Programme Attended", Icons.school_outlined),
+                  dropdownColor: Theme.of(context).cardColor, // ✅ Fixes dropdown background
+                  decoration: InputDecoration(
+                    labelText: "Programme Attended",
+                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                    prefixIcon: Icon(Icons.school_outlined, color: primaryColor, size: 20),
+                  ),
                   items: _programmes.map((prog) {
                     return DropdownMenuItem(
                       value: prog,
                       child: Text(
                         prog,
-                        style: const TextStyle(fontSize: 14),
+                        style: TextStyle(fontSize: 14, color: textColor), // ✅ Dynamic text
                         overflow: TextOverflow.ellipsis,
                       ),
                     );
@@ -267,12 +294,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleRegister,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1B5E3A),
+                      backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     child: _isLoading 
-                      ? const CircularProgressIndicator(color: Colors.white) 
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
                       : const Text("REGISTER", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -281,10 +308,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("Already a member? ", style: TextStyle(color: Colors.grey[700])),
+                    Text("Already a member? ", style: TextStyle(color: subTextColor)),
                     GestureDetector(
                       onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
-                      child: const Text("Login", style: TextStyle(color: Color(0xFF1B5E3A), fontWeight: FontWeight.bold)),
+                      child: Text("Login", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -297,14 +324,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // ✅ Updated Helper: Uses Global Theme automatically
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPassword = false, bool isNumber = false}) {
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final primaryColor = Theme.of(context).primaryColor;
+
     return TextFormField(
       controller: controller,
       obscureText: isPassword ? _obscurePassword : false,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: TextStyle(fontSize: 14, color: textColor), // ✅ Input Text
       validator: (value) => value == null || value.isEmpty ? 'Field required' : null,
-      style: const TextStyle(fontSize: 14),
-      decoration: _inputDecoration(label, icon).copyWith(
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+        prefixIcon: Icon(icon, color: primaryColor, size: 20),
         suffixIcon: isPassword 
           ? IconButton(
               icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
@@ -312,19 +347,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ) 
           : null,
       ),
-    );
-  }
-
-  InputDecoration _inputDecoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-      filled: true,
-      fillColor: Colors.grey[50],
-      prefixIcon: Icon(icon, color: const Color(0xFF1B5E3A), size: 20),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey[200]!)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF1B5E3A), width: 1.5)),
     );
   }
 }

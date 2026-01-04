@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
-import '../services/data_service.dart'; // ✅ Import Data Service
+import '../services/data_service.dart'; 
 import 'login_screen.dart';
 import 'edit_profile_screen.dart'; 
 
@@ -15,8 +15,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final DataService _dataService = DataService(); // ✅ Use DataService
-  final AuthService _authService = AuthService(); // ✅ Use AuthService for logout
+  final DataService _dataService = DataService(); 
+  final AuthService _authService = AuthService(); 
   
   Map<String, dynamic>? _userProfile;
   bool _isLoading = true;
@@ -28,9 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    // Uses the safe service method
     final profile = await _dataService.fetchProfile();
-    
     if (mounted) {
       setState(() {
         _userProfile = profile;
@@ -40,11 +38,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
+    // ✅ Dynamic Dialog
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dialogBg = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Logout"),
-        content: const Text("Are you sure you want to logout?"),
+        backgroundColor: dialogBg,
+        title: Text("Logout", style: TextStyle(color: textColor)),
+        content: Text("Are you sure you want to logout?", style: TextStyle(color: textColor)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Logout", style: TextStyle(color: Colors.red))),
@@ -71,7 +75,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Safely extract data with fallbacks
+    // ✅ Dynamic Theme Colors
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+
     final String fullName = _userProfile?['fullName'] ?? widget.userName;
     final String jobTitle = _userProfile?['jobTitle'] ?? '';
     final String org = _userProfile?['organization'] ?? '';
@@ -83,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? _userProfile!['phoneNumber'] : 'Add Phone Number';
 
     return Scaffold(
-      backgroundColor: Colors.grey[50], 
+      backgroundColor: scaffoldBg, // ✅ Dynamic Background
       extendBodyBehindAppBar: true, 
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -97,10 +108,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A))) 
+          ? Center(child: CircularProgressIndicator(color: primaryColor)) 
           : RefreshIndicator(
               onRefresh: _loadProfile, 
-              color: const Color(0xFF1B5E3A),
+              color: primaryColor,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
@@ -130,15 +141,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))],
+                              border: Border.all(color: cardColor, width: 4), // ✅ Border matches card color
+                              boxShadow: [
+                                if (!isDark) // Only shadow in light mode
+                                  BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
+                              ],
                             ),
                             child: CircleAvatar(
                               radius: 45,
-                              backgroundColor: Colors.grey[200],
+                              backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
                               backgroundImage: getProfileImage(_userProfile?['profilePicture']),
                               child: getProfileImage(_userProfile?['profilePicture']) == null
-                                  ? const Icon(Icons.person, size: 60, color: Colors.grey)
+                                  ? Icon(Icons.person, size: 60, color: Colors.grey[400])
                                   : null,
                             ),
                           ),
@@ -150,10 +164,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16), 
                       child: Column(
                         children: [
-                          Text(fullName, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          Text(fullName, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
                           const SizedBox(height: 4), 
                           if (jobTitle.isNotEmpty || org.isNotEmpty)
-                            Text("$jobTitle ${org.isNotEmpty ? 'at $org' : ''}", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                            Text("$jobTitle ${org.isNotEmpty ? 'at $org' : ''}", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 12), 
                           Wrap(
                             alignment: WrapAlignment.center,
@@ -185,7 +199,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           label: const Text("Edit Details", style: TextStyle(fontSize: 14)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1B5E3A),
+                            backgroundColor: primaryColor,
                             foregroundColor: Colors.white,
                             elevation: 1,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -197,14 +211,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16), 
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), 
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))]),
+                      decoration: BoxDecoration(
+                        color: cardColor, // ✅ Dynamic Card Background
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          if (!isDark) 
+                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
+                        ],
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Contact Information", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1B5E3A))),
+                          Text("Contact Information", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
                           const SizedBox(height: 12),
                           _buildContactRow(Icons.email_outlined, "Email", email),
-                          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Theme.of(context).dividerColor)),
                           _buildContactRow(Icons.phone_outlined, "Phone", phone),
                         ],
                       ),
@@ -218,30 +239,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBadge(IconData icon, String text, {bool isPlaceholder = false}) {
+    // ✅ Dynamic Badges
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: isPlaceholder ? Colors.orange[50] : const Color(0xFF1B5E3A).withOpacity(0.08),
+        color: isPlaceholder 
+            ? (isDark ? Colors.orange[900]!.withOpacity(0.3) : Colors.orange[50]) 
+            : primaryColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isPlaceholder ? Colors.orange.withOpacity(0.3) : const Color(0xFF1B5E3A).withOpacity(0.1)),
+        border: Border.all(
+          color: isPlaceholder 
+              ? (isDark ? Colors.orange[700]! : Colors.orange.withOpacity(0.3)) 
+              : primaryColor.withOpacity(0.1),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: isPlaceholder ? Colors.orange[800] : const Color(0xFF1B5E3A)),
+          Icon(icon, size: 13, color: isPlaceholder ? Colors.orange[700] : primaryColor),
           const SizedBox(width: 5),
-          Flexible(child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isPlaceholder ? Colors.orange[800] : const Color(0xFF1B5E3A)), overflow: TextOverflow.ellipsis)),
+          Flexible(
+            child: Text(
+              text, 
+              style: TextStyle(
+                fontSize: 11, 
+                fontWeight: FontWeight.w600, 
+                color: isPlaceholder ? Colors.orange[700] : primaryColor
+              ), 
+              overflow: TextOverflow.ellipsis
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildContactRow(IconData icon, String label, String value) {
+    // ✅ Dynamic Contact Rows
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconBg = isDark ? Colors.grey[800] : Colors.grey[50];
+    final labelColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final valueColor = Theme.of(context).textTheme.bodyLarge?.color;
+
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(8), 
-          decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+          decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: Colors.grey[600], size: 18), 
         ),
         const SizedBox(width: 12),
@@ -249,9 +296,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+              Text(label, style: TextStyle(fontSize: 11, color: labelColor)),
               const SizedBox(height: 2),
-              Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.black87)),
+              Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: valueColor)),
             ],
           ),
         ),

@@ -1,11 +1,11 @@
 {
-    "name": "ascon_mobile",
-    "short_name": "ascon_mobile",
+    "name": "ASCON Alumni",
+    "short_name": "ASCON",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
     "theme_color": "#1B5E3A",
-    "description": "A new Flutter project.",
+    "description": "The official mobile application for the ASCON Alumni Network.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

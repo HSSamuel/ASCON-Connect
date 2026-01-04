@@ -91,6 +91,7 @@ npm start
 cd ascon_mobile
 flutter clean
 flutter pub get
+flutter pub run flutter_launcher_icons
 flutter run -d chrome
 flutter run -d chrome --web-browser-flag "--disable-web-security"
 flutter run -d chrome --web-port=5001

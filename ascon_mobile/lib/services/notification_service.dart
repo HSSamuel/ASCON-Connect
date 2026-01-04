@@ -1,52 +1,86 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import '../config.dart'; // Ensure you have your API URL here
 
-// 1. Background Handler (Must be outside the class)
+// ✅ BACKGROUND HANDLER (Must be top-level function, outside any class)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  print("🌙 Background Notification: ${message.notification?.title}");
+  // If you need to access Firebase here, you must call Firebase.initializeApp()
+  debugPrint("🌙 Background Message: ${message.messageId}");
 }
 
 class NotificationService {
+  // Singleton Pattern
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+  NotificationService._internal();
+
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
-  // 2. Initialize
+  // ✅ INITIALIZE SERVICE
   Future<void> init() async {
-    // Request Permission (Critical for Android 13+)
-    await _firebaseMessaging.requestPermission(
+    // 1. Request Permission (Critical for iOS/Android 13+)
+    NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
 
-    // Get Device Token (Send this to your backend later!)
-    final token = await _firebaseMessaging.getToken();
-    print("🔥 FCM Token: $token");
+    if (settings.authorizationStatus != AuthorizationStatus.authorized) {
+      debugPrint('❌ User declined notifications');
+      return;
+    }
 
-    // Listen in Background
+    // 2. Setup Local Notifications (For Foreground Alerts)
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
+    const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        // Handle tapping a foreground notification here
+        debugPrint("🔔 Foreground Notification Tapped: ${response.payload}");
+      },
+    );
+
+    // 3. Setup Firebase Listeners
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // Listen in Foreground
+    // FOREGROUND LISTENER
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint("☀️ Foreground Message: ${message.notification?.title}");
+      
+      // Show the visual alert
       if (message.notification != null) {
-        print("☀️ Foreground Notification: ${message.notification?.title}");
         _showLocalNotification(message);
       }
     });
+
+    // OPENED APP FROM BACKGROUND
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint("🚀 App Opened from Notification: ${message.data}");
+      // TODO: Navigate to specific screen based on message.data['route']
+    });
+
+    // 4. Get & Save Token
+    await _syncToken();
   }
 
-  // 3. Show Local Notification (When app is open)
+  // ✅ SHOW LOCAL NOTIFICATION (Heads-up)
   Future<void> _showLocalNotification(RemoteMessage message) async {
     const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'high_importance_channel', 
-      'High Importance Notifications',
+      'high_importance_channel', // Channel ID
+      'High Importance Notifications', // Channel Name
       importance: Importance.max,
       priority: Priority.high,
+      color: Color(0xFF1B5E3A), // Your Brand Green
     );
-    
+
     const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _localNotifications.show(
@@ -54,6 +88,37 @@ class NotificationService {
       message.notification?.title,
       message.notification?.body,
       platformDetails,
+      payload: message.data.toString(),
     );
+  }
+
+  // ✅ SYNC TOKEN WITH BACKEND
+  Future<void> _syncToken() async {
+    String? token = await _firebaseMessaging.getToken();
+    if (token == null) return;
+
+    debugPrint("🔥 FCM Token: $token");
+
+    // Check if we have a logged-in user before sending to backend
+    final prefs = await SharedPreferences.getInstance();
+    final String? authToken = prefs.getString('auth_token');
+
+    if (authToken != null) {
+      // Send token to your Backend
+      try {
+        final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token');
+        await http.post(
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'auth-token': authToken,
+          },
+          body: '{"fcmToken": "$token"}',
+        );
+        debugPrint("✅ FCM Token synced with server");
+      } catch (e) {
+        debugPrint("❌ Failed to sync FCM token: $e");
+      }
+    }
   }
 }

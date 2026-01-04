@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart'; 
+import '../widgets/full_screen_image.dart'; 
 
 class AlumniDetailScreen extends StatelessWidget {
   final Map<String, dynamic> alumniData;
@@ -34,6 +35,13 @@ class AlumniDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+
     final String fullName = alumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = alumniData['jobTitle'] ?? '';
     final String org = alumniData['organization'] ?? '';
@@ -44,64 +52,90 @@ class AlumniDetailScreen extends StatelessWidget {
     final String year = alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
     final String imageString = alumniData['profilePicture'] ?? '';
     
+    // Unique Tag for the Zoom Animation
+    final String zoomHeroTag = "zoom_profile_${alumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
+
     final String programme = (alumniData['programmeTitle'] != null && alumniData['programmeTitle'].toString().isNotEmpty) 
         ? alumniData['programmeTitle'] 
         : 'Not Specified';
 
     return Scaffold(
-      backgroundColor: Colors.grey[50], // ✅ Light grey background to make cards pop
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
         title: Text("Alumni Profile", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
-        backgroundColor: const Color(0xFF1B5E3A),
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 1. HEADER SECTION ---
-            Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.center,
-              children: [
-                // Background Gradient
-                Container(
-                  width: double.infinity,
-                  height: 100, // Compact height
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-                  ),
-                ),
-                // Avatar with "Floating" Shadow
-                Positioned(
-                  bottom: -45, 
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: 45, 
-                      backgroundColor: Colors.grey[200],
-                      backgroundImage: getProfileImage(imageString),
-                      child: getProfileImage(imageString) == null
-                          ? const Icon(Icons.person, size: 45, color: Colors.grey)
-                          : null,
+            // --- 1. FIXED HEADER SECTION (Clickable!) ---
+            // We use a Container with explicit height so touches are registered
+            SizedBox(
+              height: 150, // 100 (Green) + 50 (Half Avatar overlap space)
+              child: Stack(
+                alignment: Alignment.topCenter,
+                children: [
+                  // Background Gradient (Top 100px)
+                  Container(
+                    width: double.infinity,
+                    height: 100, 
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
                     ),
                   ),
-                ),
-              ],
+                  
+                  // Avatar (Positioned precisely to bridge the gap)
+                  Positioned(
+                    top: 55, // Pushes it down so it half-overlaps
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque, // ✅ ENSURES CLICKS REGISTER
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => FullScreenImage(
+                              imageUrl: imageString,
+                              heroTag: zoomHeroTag,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Hero(
+                        tag: zoomHeroTag,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: cardColor, width: 4),
+                            boxShadow: [
+                              if (!isDark)
+                                BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 45, 
+                            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                            backgroundImage: getProfileImage(imageString),
+                            child: getProfileImage(imageString) == null
+                                ? Icon(Icons.person, size: 45, color: isDark ? Colors.grey[500] : Colors.grey)
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
 
-            const SizedBox(height: 55), 
+            // We removed the old SizedBox(height: 55) because the Stack is now tall enough to hold everything.
+            const SizedBox(height: 10), 
 
             // --- 2. IDENTITY SECTION ---
             Padding(
@@ -114,7 +148,7 @@ class AlumniDetailScreen extends StatelessWidget {
                     style: GoogleFonts.inter(
                       fontSize: 22, 
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: textColor,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -123,12 +157,12 @@ class AlumniDetailScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.work_outline, size: 14, color: Colors.grey),
+                        Icon(Icons.work_outline, size: 14, color: subTextColor),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             "$job at $org",
-                            style: GoogleFonts.inter(fontSize: 13, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                            style: GoogleFonts.inter(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -137,11 +171,10 @@ class AlumniDetailScreen extends StatelessWidget {
                   
                   const SizedBox(height: 10),
                   
-                  // Class Badge
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFD4AF37).withOpacity(0.1), // Gold tint
+                      color: const Color(0xFFD4AF37).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3)),
                     ),
@@ -165,13 +198,13 @@ class AlumniDetailScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (linkedin.isNotEmpty)
-                  _buildCircleAction(Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
+                  _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
                 
                 if (email.isNotEmpty)
-                  _buildCircleAction(Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
+                  _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
                 
                 if (phone.isNotEmpty)
-                  _buildCircleAction(Icons.phone, "Call", Colors.green[600]!, () => _launchURL("tel:$phone")),
+                  _buildCircleAction(context, Icons.phone, "Call", Colors.green[600]!, () => _launchURL("tel:$phone")),
               ],
             ),
 
@@ -182,15 +215,16 @@ class AlumniDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  // ✅ ENHANCED "ABOUT ME" CARD
+                  // About Me
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cardColor,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                        if (!isDark)
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
                       ],
                     ),
                     child: Column(
@@ -198,19 +232,19 @@ class AlumniDetailScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.person_outline_rounded, size: 20, color: Color(0xFF1B5E3A)),
+                            Icon(Icons.person_outline_rounded, size: 20, color: primaryColor),
                             const SizedBox(width: 8),
                             Text(
                               "About Me",
-                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: const Color(0xFF1B5E3A)),
+                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
                         Text(
                           bio,
-                          style: GoogleFonts.inter(fontSize: 14, height: 1.6, color: Colors.grey[800]),
-                          textAlign: TextAlign.justify, // Pro look
+                          style: GoogleFonts.inter(fontSize: 14, height: 1.6, color: subTextColor),
+                          textAlign: TextAlign.justify,
                         ),
                       ],
                     ),
@@ -218,15 +252,16 @@ class AlumniDetailScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // ✅ ACADEMIC RECORD CARD
+                  // Academic Record
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: cardColor,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                        if (!isDark)
+                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
                       ],
                     ),
                     child: Row(
@@ -235,10 +270,10 @@ class AlumniDetailScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1B5E3A).withOpacity(0.08),
+                            color: primaryColor.withOpacity(0.08),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.school_outlined, color: Color(0xFF1B5E3A), size: 22),
+                          child: Icon(Icons.school_outlined, color: primaryColor, size: 22),
                         ),
                         const SizedBox(width: 15),
                         Expanded(
@@ -247,7 +282,7 @@ class AlumniDetailScreen extends StatelessWidget {
                             children: [
                               Text(
                                 "Programme Attended",
-                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[500]),
+                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: subTextColor),
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -255,7 +290,7 @@ class AlumniDetailScreen extends StatelessWidget {
                                 style: GoogleFonts.inter(
                                   fontSize: 14, 
                                   fontWeight: FontWeight.bold, 
-                                  color: programme == 'Not Specified' ? Colors.grey : Colors.black87
+                                  color: programme == 'Not Specified' ? Colors.grey : textColor
                                 ),
                               ),
                             ],
@@ -275,9 +310,10 @@ class AlumniDetailScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
-  Widget _buildCircleAction(IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _buildCircleAction(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardColor;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
@@ -288,11 +324,12 @@ class AlumniDetailScreen extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white, // White bg for button
+                color: cardColor,
                 shape: BoxShape.circle,
                 border: Border.all(color: color.withOpacity(0.3)),
                 boxShadow: [
-                  BoxShadow(color: color.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
+                  if (!isDark)
+                    BoxShadow(color: color.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 3))
                 ],
               ),
               child: Icon(icon, color: color, size: 22),

@@ -7,7 +7,8 @@ const verifyAdmin = require("./verifyAdmin");
 // @desc    Get all events (Sorted by closest date)
 router.get("/", async (req, res) => {
   try {
-    // Sort by Date (descending) so newest/future events are top
+    // Sort by Date (ascending/1 usually means oldest first, -1 is newest first)
+    // Depending on your need: 1 = Jan, Feb... | -1 = Dec, Nov...
     const events = await Event.find().sort({ date: 1 });
     res.json(events);
   } catch (err) {
@@ -24,6 +25,8 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     date: req.body.date,
     location: req.body.location,
     type: req.body.type,
+    // ✅ NEW ADDITION: Make sure to capture the image from the request!
+    image: req.body.image 
   });
 
   try {
@@ -35,7 +38,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // @route   DELETE /api/events/:id
-// @desc    Delete an event by ID (✅ NEW ROUTE)
+// @desc    Delete an event by ID
 router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const removedEvent = await Event.findByIdAndDelete(req.params.id);

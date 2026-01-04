@@ -22,6 +22,7 @@ dependencies:
   firebase_messaging: ^15.1.3
   flutter_local_notifications: ^17.2.2
   jwt_decoder: ^2.0.1
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
@@ -32,39 +33,33 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # ✅ IMPORTANT: Added assets/images/ so Flutter can find your new icons
   assets:
     - assets/
+    - assets/images/
 
 # ==========================================
 # 🌊 NATIVE SPLASH SCREEN CONFIG
 # ==========================================
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/images/splash_logo_with_text.png
   
   android_12:
     color: "#FFFFFF"
-    image: assets/images/splash_logo_with_text.png
     icon_background_color: "#FFFFFF"
 
   web: false
 
 # ==========================================
-# APP ICON (Logo Symbol Only)
+# 📱 APP ICON CONFIGURATION
 # ==========================================
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  
-  # KEEP the original for iOS/Web (they don't crop as much)
   image_path: "assets/logo.png"
-  
   min_sdk_android: 21
-  
-  # ANDROID ADAPTIVE ICONS
   adaptive_icon_background: "#FFFFFF"
-  # CHANGE THIS to your new padded image
-  adaptive_icon_foreground: "assets/images/launcher_icon_padded.png" 
+  adaptive_icon_foreground: "assets/images/icon_padded.png" 
   
   web:
     generate: true

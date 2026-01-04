@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'services/notification_service.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart'; // ✅ Import the new Splash Screen
+import 'config/theme.dart'; // ✅ Import the new Theme File
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -15,13 +14,10 @@ void main() async {
   if (kIsWeb) {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
-        // Copy these exact strings from your Firebase Console > Project Settings > General > Your Web App
         apiKey: "AIzaSyBBteJZoirarB77b3Cgo67njG6meoGNq_U", 
         appId: "1:826004672204:web:4352aaeba03118fb68fc69", 
         messagingSenderId: "826004672204", 
         projectId: "ascon-alumni-91df2",
-        
-        // These are optional but good to have if provided:
         storageBucket: "ascon-alumni-91df2.firebasestorage.app", 
       ),
     );
@@ -30,30 +26,24 @@ void main() async {
     await Firebase.initializeApp();
   }
 
-  // Initialize Notifications (Skip on Web for now to avoid errors until configured)
+  // ✅ Initialize Notifications (Robust Setup)
   if (!kIsWeb) {
-    await NotificationService().init();
+    try {
+      await NotificationService().init();
+      debugPrint("✅ Notifications Initialized Successfully");
+    } catch (e) {
+      debugPrint("⚠️ Notification Init Failed: $e");
+    }
   }
 
-  final prefs = await SharedPreferences.getInstance();
-  final String? token = prefs.getString('auth_token');
-  final String? savedName = prefs.getString('user_name');
-
-  runApp(MyApp(
-    isLoggedIn: token != null, 
-    userName: savedName ?? "Alumnus", 
-  ));
+  // NOTE: We removed the SharedPreferences check here because 
+  // the SplashScreen now handles the "Are we logged in?" check.
+  
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  final bool isLoggedIn;
-  final String userName;
-
-  const MyApp({
-    super.key, 
-    required this.isLoggedIn, 
-    required this.userName
-  });
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -61,16 +51,18 @@ class MyApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       title: 'ASCON Alumni',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        fontFamily: 'Roboto', 
-        primaryColor: const Color(0xFF1B5E3A),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1B5E3A),
-          primary: const Color(0xFF1B5E3A),
-        ),
-        useMaterial3: true,
-      ),
-      home: isLoggedIn ? HomeScreen(userName: userName) : const LoginScreen(),
+
+      // ✅ 1. LIGHT THEME
+      theme: AppTheme.lightTheme,
+
+      // ✅ 2. DARK THEME
+      darkTheme: AppTheme.darkTheme,
+
+      // ✅ 3. AUTO-SWITCH (Uses System Settings)
+      themeMode: ThemeMode.system, 
+
+      // ✅ START APP WITH SPLASH SCREEN
+      home: const SplashScreen(),
     );
   }
 }

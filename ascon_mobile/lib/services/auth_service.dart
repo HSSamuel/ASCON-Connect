@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:async'; // ✅ Import for TimeoutException
 import 'dart:io';    // ✅ Import for SocketException
 import 'package:flutter/material.dart'; 
+import 'package:flutter/foundation.dart'; // ✅ For kIsWeb check
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:jwt_decoder/jwt_decoder.dart'; // ✅ NEW: Import for Token Expiry Check
+import 'package:jwt_decoder/jwt_decoder.dart'; // ✅ Token Expiry Check
 import '../config.dart';
 import '../main.dart'; 
-import '../screens/login_screen.dart'; 
+import '../screens/login_screen.dart';
+import 'notification_service.dart'; // ✅ Import Notification Service
 
 class AuthService {
   
@@ -63,6 +65,11 @@ class AuthService {
       if (result['success'] == true) {
         final data = result['data'];
         await _saveUserSession(data['token'], data['user']);
+
+        // ✅ SYNC NOTIFICATION TOKEN
+        if (!kIsWeb) {
+           NotificationService().init();
+        }
       }
       return result;
     } catch (e) {
@@ -123,6 +130,11 @@ class AuthService {
       // If registration is successful and returns a token, save session immediately
       if (result['success'] == true && result['data']['token'] != null) {
           await _saveUserSession(result['data']['token'], result['data']['user'] ?? {});
+          
+          // ✅ SYNC NOTIFICATION TOKEN
+          if (!kIsWeb) {
+             NotificationService().init();
+          }
       }
 
       return result;
@@ -150,6 +162,11 @@ class AuthService {
         if (response.statusCode == 200) {
            final data = result['data'];
            await _saveUserSession(data['token'], data['user']);
+
+           // ✅ SYNC NOTIFICATION TOKEN
+           if (!kIsWeb) {
+              NotificationService().init();
+           }
         }
         result['statusCode'] = response.statusCode;
       }

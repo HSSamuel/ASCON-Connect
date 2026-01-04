@@ -21,7 +21,7 @@ const eventSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["News", "Event", "Webinar"],
+    enum: ["News", "Event", "Webinar", "Reunion", "Seminar"],
     default: "News",
   },
   // ✅ NEW FIELD: Stores the URL of the uploaded image

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; 
-import '../services/data_service.dart'; // ✅ Import Data Service
+import '../services/data_service.dart'; 
 import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -11,7 +11,7 @@ class EventsScreen extends StatefulWidget {
 }
 
 class _EventsScreenState extends State<EventsScreen> {
-  final DataService _dataService = DataService(); // ✅ Use the Service
+  final DataService _dataService = DataService(); 
   
   List<dynamic> _events = [];
   bool _isLoading = true;
@@ -23,7 +23,6 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<void> _loadEvents() async {
-    // Service handles all the API logic and errors safely
     final events = await _dataService.fetchEvents();
     
     if (mounted) {
@@ -36,23 +35,26 @@ class _EventsScreenState extends State<EventsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Dynamic Theme Colors
+    final primaryColor = Theme.of(context).primaryColor;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           "News & Events", 
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
         ),
-        backgroundColor: const Color(0xFF1B5E3A),
-        foregroundColor: Colors.white,
+        // ✅ Background color is now handled by the Theme (Green in Day, Dark Green in Night)
         automaticallyImplyLeading: false,
       ),
-      backgroundColor: Colors.grey[50],
+      backgroundColor: scaffoldBg, // ✅ Dynamic
       
       body: RefreshIndicator(
         onRefresh: _loadEvents,
-        color: const Color(0xFF1B5E3A),
+        color: primaryColor,
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF1B5E3A)))
+            ? Center(child: CircularProgressIndicator(color: primaryColor))
             : _events.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
@@ -67,15 +69,18 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Widget _buildEmptyState() {
+    // ✅ Dynamic Colors for Empty State
+    final color = Theme.of(context).textTheme.bodyMedium?.color;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.event_note, size: 50, color: Colors.grey[300]),
+          Icon(Icons.event_note, size: 50, color: color?.withOpacity(0.5)),
           const SizedBox(height: 12),
           Text(
             "No news or events yet.",
-            style: TextStyle(fontSize: 15, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 15, color: color),
           ),
         ],
       ),
@@ -83,6 +88,13 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Widget _buildEventCard(dynamic event) {
+    // ✅ Dynamic Colors for Card
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final primaryColor = Theme.of(context).primaryColor;
+
     String dateString = "TBD";
     try {
       if (event['date'] != null) {
@@ -110,17 +122,22 @@ class _EventsScreenState extends State<EventsScreen> {
         );
       },
       child: Card(
+        color: cardColor, // ✅ Dynamic Background
         margin: const EdgeInsets.only(bottom: 12),
-        elevation: 1, 
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: isDark ? 0 : 1, // Remove shadow in dark mode for cleaner look
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: isDark ? BorderSide(color: Colors.grey[800]!) : BorderSide.none, // Subtle border in dark mode
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Top Green Line
             Container(
               height: 4,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1B5E3A),
-                borderRadius: BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
+              decoration: BoxDecoration(
+                color: primaryColor,
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
               ),
             ),
             
@@ -132,24 +149,25 @@ class _EventsScreenState extends State<EventsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // ✅ Dynamic Badge Background
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.green[50], 
+                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : Colors.green[50], 
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           event['type'] ?? 'News', 
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10, 
                             fontWeight: FontWeight.bold, 
-                            color: Color(0xFF1B5E3A)
+                            color: isDark ? Colors.green[300] : primaryColor
                           ),
                         ),
                       ),
                       Text(
                         dateString,
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        style: TextStyle(fontSize: 11, color: subTextColor),
                       ),
                     ],
                   ),
@@ -158,10 +176,10 @@ class _EventsScreenState extends State<EventsScreen> {
 
                   Text(
                     event['title'] ?? 'No Title',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16, 
                       fontWeight: FontWeight.bold, 
-                      color: Colors.black87,
+                      color: textColor, // ✅ Dynamic Text
                       height: 1.3
                     ),
                   ),
@@ -170,11 +188,11 @@ class _EventsScreenState extends State<EventsScreen> {
 
                   Row(
                     children: [
-                      Icon(Icons.location_on, size: 12, color: Colors.grey[500]),
+                      Icon(Icons.location_on, size: 12, color: subTextColor),
                       const SizedBox(width: 4),
                       Text(
                         event['location'] ?? 'Publication Dept',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style: TextStyle(fontSize: 12, color: subTextColor),
                       ),
                     ],
                   ),
@@ -188,19 +206,19 @@ class _EventsScreenState extends State<EventsScreen> {
                     textAlign: TextAlign.justify, 
                     style: TextStyle(
                       fontSize: 13, 
-                      color: Colors.grey[800], 
+                      color: isDark ? Colors.grey[400] : Colors.grey[800], // ✅ Readable Grey
                       height: 1.5
                     ),
                   ),
                   
                   const SizedBox(height: 10),
 
-                  const Text(
+                  Text(
                     "Read More",
                     style: TextStyle(
                       fontSize: 12, 
                       fontWeight: FontWeight.w600, 
-                      color: Color(0xFF1B5E3A),
+                      color: primaryColor,
                       decoration: TextDecoration.underline
                     ),
                   ),

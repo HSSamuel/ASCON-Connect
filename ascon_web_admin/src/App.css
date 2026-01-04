@@ -544,3 +544,36 @@ label {
   margin-bottom: 15px;
   font-size: 14px;
 }
+
+/* =========================================
+   9. COMPACT ACTION BUTTONS (NEW)
+   ========================================= */
+
+/* The container that holds the buttons */
+.action-buttons-container {
+  display: flex;
+  flex-direction: row; /* ✅ Side-by-side alignment */
+  flex-wrap: wrap;     /* ✅ Allows wrapping if screen is too tight */
+  gap: 5px;            /* Small space between buttons */
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Make buttons smaller to fit 2-3 in a row */
+.compact-btn {
+  padding: 6px 10px !important; /* Smaller padding */
+  font-size: 11px !important;   /* Smaller text */
+  white-space: nowrap;          /* Prevent text from breaking inside button */
+  flex: 1 1 auto;              /* Allow buttons to grow/shrink intelligently */
+  min-width: 70px;              /* Minimum width to keep them readable */
+  max-width: 120px;
+  text-align: center;
+}
+
+/* On very small mobile screens, ensure they don't get too squashed */
+@media screen and (max-width: 480px) {
+  .compact-btn {
+    font-size: 10px !important;
+    padding: 5px 8px !important;
+  }
+}

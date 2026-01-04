@@ -439,22 +439,16 @@ function AdminDashboard({ token, onLogout }) {
                       </span>
                     </td>
                     <td data-label="Action">
-                      {/* ✅ ONLY SHOW ACTIONS IF USER HAS PERMISSION */}
+                      {/* ✅ SIDE-BY-SIDE BUTTONS LAYOUT */}
                       {canEdit ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "5px",
-                          }}
-                        >
+                        <div className="action-buttons-container">
                           {!user.isVerified && (
                             <button
                               onClick={() =>
                                 approveUser(user._id, user.fullName)
                               }
-                              className="approve-btn"
-                              style={{ width: "100%" }}
+                              className="approve-btn compact-btn"
+                              title="Verify User"
                             >
                               VERIFY
                             </button>
@@ -463,30 +457,30 @@ function AdminDashboard({ token, onLogout }) {
                           {/* ✅ TOGGLE ADMIN BUTTON */}
                           <button
                             onClick={() => toggleAdmin(user._id)}
-                            className="approve-btn"
+                            className="approve-btn compact-btn"
                             style={{
                               backgroundColor: user.isAdmin
                                 ? "#444"
                                 : "#007bff",
-                              fontSize: "10px",
-                              width: "100%",
                             }}
+                            title={user.isAdmin ? "Revoke Admin" : "Make Admin"}
                           >
-                            {user.isAdmin ? "REMOVE ADMIN" : "MAKE ADMIN"}
+                            {user.isAdmin ? "REVOKE ADMIN" : "MAKE ADMIN"}
                           </button>
 
                           {/* Grant/Revoke Edit Rights (Only if Admin) */}
                           {user.isAdmin && (
                             <button
                               onClick={() => toggleEditPermission(user._id)}
-                              className="approve-btn"
+                              className="approve-btn compact-btn"
                               style={{
                                 backgroundColor: user.canEdit
                                   ? "#555"
                                   : "purple",
-                                fontSize: "10px",
-                                width: "100%",
                               }}
+                              title={
+                                user.canEdit ? "Revoke Edit" : "Grant Edit"
+                              }
                             >
                               {user.canEdit ? "REVOKE EDIT" : "GRANT EDIT"}
                             </button>
@@ -494,8 +488,8 @@ function AdminDashboard({ token, onLogout }) {
 
                           <button
                             onClick={() => deleteUserClick(user._id)}
-                            className="delete-btn"
-                            style={{ width: "100%" }}
+                            className="delete-btn compact-btn"
+                            title="Delete User"
                           >
                             DELETE
                           </button>
@@ -670,26 +664,21 @@ function AdminDashboard({ token, onLogout }) {
                     </td>
                     <td data-label="Action">
                       {canEdit ? (
-                        <>
+                        <div className="action-buttons-container">
                           <button
                             onClick={() => startEditEvent(event)}
-                            className="approve-btn"
-                            style={{
-                              padding: "5px 10px",
-                              fontSize: "12px",
-                              marginRight: "5px",
-                              backgroundColor: "#3498db",
-                            }}
+                            className="approve-btn compact-btn"
+                            style={{ backgroundColor: "#3498db" }}
                           >
                             EDIT
                           </button>
                           <button
-                            className="delete-btn"
+                            className="delete-btn compact-btn"
                             onClick={() => deleteEventClick(event._id)}
                           >
                             DELETE
                           </button>
-                        </>
+                        </div>
                       ) : (
                         <span style={{ color: "#ccc" }}>🔒</span>
                       )}
@@ -790,28 +779,23 @@ function AdminDashboard({ token, onLogout }) {
                     <td data-label="Code">{prog.code || "-"}</td>
                     <td data-label="Action">
                       {canEdit ? (
-                        <>
+                        <div className="action-buttons-container">
                           {/* ✅ EDIT BUTTON FOR PROGRAMMES */}
                           <button
                             onClick={() => startEditProgramme(prog)}
-                            className="approve-btn"
-                            style={{
-                              padding: "5px 10px",
-                              fontSize: "12px",
-                              marginRight: "5px",
-                              backgroundColor: "#3498db",
-                            }}
+                            className="approve-btn compact-btn"
+                            style={{ backgroundColor: "#3498db" }}
                           >
                             EDIT
                           </button>
 
                           <button
-                            className="delete-btn"
+                            className="delete-btn compact-btn"
                             onClick={() => deleteProgrammeClick(prog._id)}
                           >
                             REMOVE
                           </button>
-                        </>
+                        </div>
                       ) : (
                         <span style={{ color: "#ccc" }}>🔒</span>
                       )}

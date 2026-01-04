@@ -7,25 +7,19 @@ const cors = require("cors");
 const app = express();
 dotenv.config();
 
-// 2. Middlewares (CORS MUST BE HERE)
-app.use(express.json());
-
-// ✅ FIX: Place the custom CORS config here, BEFORE the routes!
+// 2. Middlewares
+// ✅ FIX 1: CORS MUST be the VERY FIRST middleware
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:5000",
-      "https://asconadmin.netlify.app",
-      // Allow any localhost port (Essential for Flutter Web debugging)
-      /^http:\/\/localhost:\d+$/,
-      /^http:\/\/127\.0\.0\.1:\d+$/,
-    ],
+    origin: "*", // ✅ FIX 2: Allow ALL origins temporarily to fix the "Failed to fetch" error
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "auth-token"],
     credentials: true,
   })
 );
+
+// ✅ FIX 3: JSON parsing comes AFTER CORS
+app.use(express.json());
 
 // 3. Import Routes
 const authRoute = require("./routes/auth");
@@ -34,7 +28,7 @@ const adminRoute = require("./routes/admin");
 const profileRoute = require("./routes/profile");
 const eventsRoute = require("./routes/events");
 
-// 4. Route Middlewares (Now they are protected by the CORS rules above)
+// 4. Route Middlewares
 app.use("/api/auth", authRoute);
 app.use("/api/directory", directoryRoute);
 app.use("/api/admin", adminRoute);

@@ -167,34 +167,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  ImageProvider? getImageProvider() {
+    if (_selectedImageBytes != null) return MemoryImage(_selectedImageBytes!);
+    if (_currentUrl != null && _currentUrl!.startsWith('http')) return NetworkImage(_currentUrl!);
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    ImageProvider? getImageProvider() {
-      if (_selectedImageBytes != null) return MemoryImage(_selectedImageBytes!);
-      if (_currentUrl != null && _currentUrl!.startsWith('http')) return NetworkImage(_currentUrl!);
-      return null;
-    }
+    // ✅ Dynamic Theme Colors
+    final primaryColor = Theme.of(context).primaryColor;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final cardColor = Theme.of(context).cardColor;
 
     return Scaffold(
+      backgroundColor: scaffoldBg, // ✅ Dynamic Background
       appBar: AppBar(
         title: const Text("Edit Profile"),
-        backgroundColor: const Color(0xFF1B5E3A),
+        backgroundColor: primaryColor, // ✅ Dynamic Primary
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        // 1. Reduced Padding from 20 to 16
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             children: [
-              // --- AVATAR (Unchanged size) ---
+              // --- AVATAR ---
               Center(
                 child: Stack(
                   children: [
                     CircleAvatar(
                       radius: 50,
-                      backgroundColor: const Color(0xFF1B5E3A),
+                      backgroundColor: primaryColor,
                       backgroundImage: getImageProvider(),
                       child: getImageProvider() == null
                           ? const Icon(Icons.person, size: 60, color: Colors.white)
@@ -218,33 +225,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ],
                 ),
               ),
-              // 2. Reduced spacing from 30 to 20
               const SizedBox(height: 20),
 
               // --- FIELDS ---
-              // 3. Compact Job & Org
               _buildTextField("Job Title", _jobController, Icons.work),
-              const SizedBox(height: 12), // Reduced from 15
+              const SizedBox(height: 12), 
               _buildTextField("Organization", _orgController, Icons.business),
               const SizedBox(height: 12),
               
-              // --- PROGRAMME DROPDOWN (Compact) ---
+              // --- PROGRAMME DROPDOWN (Dynamic) ---
               DropdownButtonFormField<String>(
                 value: _selectedProgramme,
                 isExpanded: true,
-                isDense: true, // Makes the dropdown height smaller
-                decoration: const InputDecoration(
+                isDense: true, 
+                dropdownColor: cardColor, // ✅ Fixes dropdown background
+                decoration: InputDecoration(
                   labelText: "Programme Attended",
-                  prefixIcon: Icon(Icons.school, color: Colors.grey, size: 20),
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Reduced padding
+                  labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                  prefixIcon: Icon(Icons.school, color: primaryColor, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 ),
                 items: _programmeOptions.map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
                     child: Text(
                       value,
-                      style: const TextStyle(fontSize: 13),
+                      style: TextStyle(fontSize: 13, color: textColor), // ✅ Dynamic Text
                       overflow: TextOverflow.ellipsis,
                     ),
                   );
@@ -268,7 +275,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               
               const SizedBox(height: 12),
               
-              // 4. SIDE-BY-SIDE: Class Year & Phone Number
+              // SIDE-BY-SIDE: Class Year & Phone Number
               Row(
                 children: [
                   Expanded(
@@ -286,17 +293,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 12),
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
               
-              // 5. Reduced spacing before button
               const SizedBox(height: 24),
               
               SizedBox(
                 width: double.infinity,
-                height: 45, // Slightly reduced height from 50
+                height: 45, 
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : saveProfile,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1B5E3A),
+                    backgroundColor: primaryColor,
                     foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   child: _isLoading 
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -310,19 +317,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // ✅ Updated Helper: Uses Global Theme automatically
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false}) {
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final primaryColor = Theme.of(context).primaryColor;
+
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: const TextStyle(fontSize: 14), // Slightly smaller font for compact feel
+      style: TextStyle(fontSize: 14, color: textColor), // ✅ Input Text
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(fontSize: 13),
-        prefixIcon: Icon(icon, color: Colors.grey, size: 20), // Smaller icon
-        border: const OutlineInputBorder(),
-        isDense: true, // Removes extra vertical space inside the field
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12), // Tighter padding
+        labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+        prefixIcon: Icon(icon, color: primaryColor, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        isDense: true, 
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         alignLabelWithHint: maxLines > 1, 
       ),
       validator: (value) {
