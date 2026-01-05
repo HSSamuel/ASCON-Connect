@@ -7,10 +7,11 @@ import {
 } from "react-router-dom";
 import AdminDashboard from "./AdminDashboard";
 import Login from "./Login";
-import ResetPassword from "./pages/ResetPassword"; // ✅ Import the new page
+import ResetPassword from "./pages/ResetPassword";
+import VerificationPage from "./pages/VerificationPage"; // ✅ Import the new page
 
 function App() {
-  // Initialize state directly from localStorage to prevent "flicker" on reload
+  // Initialize state directly from localStorage
   const [token, setToken] = useState(localStorage.getItem("auth_token"));
 
   const handleLogin = (newToken) => {
@@ -27,14 +28,15 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
-          {/* ✅ Route 1: Reset Password 
-             This matches the link sent in the email (e.g., /reset-password?token=...)
+          {/* ✅ PUBLIC ROUTE: Verification Page 
+             This allows anyone (Security Guards) to scan the QR code without logging in.
           */}
+          <Route path="/verify/:id" element={<VerificationPage />} />
+
+          {/* Route: Reset Password */}
           <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* ✅ Route 2: Login 
-             If user is already logged in, redirect them to Dashboard (/)
-          */}
+          {/* Route: Login */}
           <Route
             path="/login"
             element={
@@ -46,9 +48,7 @@ function App() {
             }
           />
 
-          {/* ✅ Route 3: Dashboard (Protected) 
-             If user is NOT logged in, redirect them to /login
-          */}
+          {/* Route: Dashboard (Protected) */}
           <Route
             path="/"
             element={
@@ -60,7 +60,7 @@ function App() {
             }
           />
 
-          {/* Catch-all: Redirect unknown URLs to Home */}
+          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

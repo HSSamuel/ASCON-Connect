@@ -228,8 +228,15 @@ class AuthService {
   Future<void> _saveUserSession(String token, Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
+    
     if (user['fullName'] != null) {
       await prefs.setString('user_name', user['fullName']);
+    }
+    
+    // ✅ FIX: Save the Alumni ID so the Home Screen can read it
+    if (user['alumniId'] != null) {
+      await prefs.setString('alumni_id', user['alumniId']);
+      print("✅ Saved Alumni ID: ${user['alumniId']}"); // Debug log
     }
   }
 

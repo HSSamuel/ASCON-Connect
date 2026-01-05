@@ -43,8 +43,7 @@ const userSchema = new mongoose.Schema({
   organization: { type: String, default: "" },
   bio: { type: String, default: "" },
   linkedin: { type: String, default: "" },
-
-  // ✅ NEW: Remembers if they have seen the Welcome Dialog (Permanent Fix)
+  alumniId: { type: String, default: "" },
   hasSeenWelcome: { type: Boolean, default: false },
 
   // Admin & Security Fields

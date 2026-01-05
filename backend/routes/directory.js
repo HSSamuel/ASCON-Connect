@@ -5,18 +5,15 @@ const User = require("../models/User");
 // @desc    Get alumni (Searchable)
 router.get("/", async (req, res) => {
   try {
-    const { search } = req.query; // Grab '?search=...' from URL
+    const { search } = req.query;
 
-    // 1. Base Query: Always require verified users
     let query = { isVerified: true };
 
     if (search) {
       const isYear = !isNaN(search);
-
       if (isYear) {
         query.yearOfAttendance = Number(search);
       } else {
-        // ✅ USE TEXT SEARCH (Fast)
         query.$text = { $search: search };
       }
     }
@@ -29,6 +26,32 @@ router.get("/", async (req, res) => {
     res.json(alumniList);
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ ADD THIS: Verification Route
+// @route   GET /api/directory/verify/:id
+// @desc    Public endpoint to verify a user by Alumni ID
+router.get("/verify/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // The ID comes in as "ASC-2026-0052" (dashes)
+    // We convert it to "ASC/2026/0052" (slashes) to match the DB
+    const formattedId = id.replace(/-/g, "/");
+
+    const user = await User.findOne({ alumniId: formattedId }).select(
+      "fullName programmeTitle yearOfAttendance profilePicture alumniId isVerified"
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "ID not found" });
+    }
+
+    res.json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server Error" });
   }
 });
 

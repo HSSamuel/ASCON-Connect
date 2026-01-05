@@ -6,7 +6,7 @@ class DigitalIDCard extends StatelessWidget {
   final String userName;
   final String programme;
   final String year;
-  final String alumniID;
+  final String alumniID; // ✅ This is the ID we want to show
   final String imageUrl;
 
   const DigitalIDCard({
@@ -20,8 +20,10 @@ class DigitalIDCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Official ASCON Green
     const Color cardGreen = Color(0xFF1B5E3A);
+
+    // Generate Verification Link for QR
+    final String verificationLink = "https://asconadmin.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -68,8 +70,6 @@ class DigitalIDCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
-                            // ✅ CENTRALISED HERE
-                            // Changed alignment from centerLeft to center
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               alignment: Alignment.center, 
@@ -77,7 +77,7 @@ class DigitalIDCard extends StatelessWidget {
                                 "ADMINISTRATIVE STAFF COLLEGE OF NIGERIA",
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 20, // ✅ REDUCED TEXT SIZE
+                                  fontSize: 20,
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 0.5,
                                 ),
@@ -85,9 +85,8 @@ class DigitalIDCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          // Logo
                           SizedBox(
-                            height: isDesktop ? 45 : 30, // Slightly smaller logo
+                            height: isDesktop ? 45 : 30,
                             width: isDesktop ? 45 : 30,
                             child: Image.asset(
                               'assets/logo.png',
@@ -112,12 +111,14 @@ class DigitalIDCard extends StatelessWidget {
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
                                 child: CircleAvatar(
-                                  radius: isDesktop ? 50 : 30, // Slightly reduced avatar
+                                  radius: isDesktop ? 50 : 30,
                                   backgroundColor: Colors.grey[200],
                                   backgroundImage: _getImageProvider(imageUrl),
                                 ),
                               ),
                               SizedBox(height: isDesktop ? 16 : 10),
+                              
+                              // QR Code Container
                               Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
@@ -125,9 +126,9 @@ class DigitalIDCard extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: QrImageView(
-                                  data: alumniID,
+                                  data: verificationLink,
                                   version: QrVersions.auto,
-                                  size: isDesktop ? 80.0 : 45.0, // Slightly reduced QR
+                                  size: isDesktop ? 80.0 : 45.0,
                                   padding: EdgeInsets.zero,
                                   backgroundColor: Colors.white,
                                 ),
@@ -147,14 +148,13 @@ class DigitalIDCard extends StatelessWidget {
                                   "ASCON ALUMNI",
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    fontSize: 11, // Reduced size
+                                    fontSize: 11,
                                     letterSpacing: 1.5,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 SizedBox(height: isDesktop ? 6 : 4),
                                 
-                                // ✅ NAME (Auto-Resize but smaller max size)
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
                                   alignment: Alignment.centerLeft,
@@ -162,7 +162,6 @@ class DigitalIDCard extends StatelessWidget {
                                     userName.toUpperCase(),
                                     style: TextStyle(
                                       color: Colors.white,
-                                      // ✅ REDUCED TEXT SIZE: 32 on Desktop (was 40)
                                       fontSize: isDesktop ? 32 : 20, 
                                       fontWeight: FontWeight.bold,
                                       height: 1.1,
@@ -176,11 +175,31 @@ class DigitalIDCard extends StatelessWidget {
                                   programme,
                                   style: TextStyle(
                                     color: Colors.white70,
-                                    // ✅ REDUCED TEXT SIZE: 16 on Desktop (was 18)
                                     fontSize: isDesktop ? 16 : 12,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
+                                ),
+
+                                SizedBox(height: isDesktop ? 12 : 8),
+
+                                // ✅ NEW: VISIBLE ALUMNI ID TEXT
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(4)
+                                  ),
+                                  child: Text(
+                                    "ID: $alumniID", // Shows "ID: ASC/2025/0002"
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: isDesktop ? 14 : 11,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1.0,
+                                      fontFamily: "monospace"
+                                    ),
+                                  ),
                                 ),
                                 
                                 SizedBox(height: isDesktop ? 16 : 10),
@@ -198,7 +217,7 @@ class DigitalIDCard extends StatelessWidget {
                                     "CLASS OF $year",
                                     style: TextStyle(
                                       color: cardGreen,
-                                      fontSize: isDesktop ? 12 : 10, // Reduced size
+                                      fontSize: isDesktop ? 12 : 10,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),

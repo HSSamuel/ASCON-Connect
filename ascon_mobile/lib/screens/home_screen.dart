@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert'; // Required for base64Decode
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ Required for Local Cache
 import '../services/data_service.dart'; 
 import '../services/auth_service.dart'; 
 import 'directory_screen.dart';
@@ -93,45 +94,75 @@ class _DashboardViewState extends State<_DashboardView> {
   late Future<List<dynamic>> _eventsFuture;
   late Future<List<dynamic>> _programmesFuture;
 
-  // ✅ DYNAMIC VARIABLES (Default values while loading)
+  // ✅ DYNAMIC VARIABLES
   String? _profileImage;
   String _programme = "Member"; 
   String _year = "....";
-  String _alumniID = "PENDING";
+  String _alumniID = "PENDING"; // Default until loaded
   int _unreadNotifications = 2; 
 
   @override
   void initState() {
     super.initState();
-    _refreshData();
+    _loadLocalData(); // 1. Load cached ID immediately for speed
+    _refreshData();   // 2. Fetch fresh data from API
+  }
+
+  // ✅ STEP 1: Load from Local Storage (Fast)
+  Future<void> _loadLocalData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localId = prefs.getString('alumni_id');
+    if (localId != null && mounted) {
+      setState(() {
+        _alumniID = localId;
+        print("✅ Home Screen loaded ID from storage: $_alumniID");
+      });
+    }
   }
 
   void _refreshData() {
     setState(() {
       _eventsFuture = _dataService.fetchEvents();
       _programmesFuture = _authService.getProgrammes();
-      _loadUserProfile(); // ✅ Renamed to load FULL profile
+      _loadUserProfile(); 
     });
   }
 
+  // ✅ STEP 2: Sync with Backend (Authentic Source of Truth)
   Future<void> _loadUserProfile() async {
-    final profile = await _dataService.fetchProfile();
-    if (mounted && profile != null) {
-      setState(() {
-        // 1. Get Image
-        _profileImage = profile['profilePicture'];
+    try {
+      final profile = await _dataService.fetchProfile();
+      if (mounted && profile != null) {
         
-        // 2. Get Programme
-        _programme = profile['programmeTitle'] ?? "Member";
-        if (_programme.isEmpty) _programme = "Member";
+        // 1. Get ID from Profile
+        String? apiId = profile['alumniId'];
+        
+        // 2. Update UI State (Synchronous)
+        setState(() {
+          // Get Image
+          _profileImage = profile['profilePicture'];
+          
+          // Get Programme
+          _programme = profile['programmeTitle'] ?? "Member";
+          if (_programme.isEmpty) _programme = "Member";
 
-        // 3. Get Year
-        _year = profile['yearOfAttendance']?.toString() ?? "....";
+          // Get Year
+          _year = profile['yearOfAttendance']?.toString() ?? "....";
 
-        // 4. Get ID (Use real ID if available, otherwise generate a placeholder from DB ID)
-        // If your backend doesn't send 'alumniId', we use 'ASC/PENDING'
-        _alumniID = profile['alumniId'] ?? "ASC/AL/${_year}/${profile['_id']?.toString().substring(0, 4).toUpperCase() ?? '000'}";
-      });
+          // Set ID variable if valid
+          if (apiId != null && apiId.isNotEmpty && apiId != "PENDING") {
+             _alumniID = apiId;
+          }
+        });
+
+        // 3. Save to Storage (Asynchronous - MUST be outside setState)
+        if (apiId != null && apiId.isNotEmpty && apiId != "PENDING") {
+           final prefs = await SharedPreferences.getInstance();
+           await prefs.setString('alumni_id', apiId);
+        }
+      }
+    } catch (e) {
+      print("⚠️ Error loading profile: $e");
     }
   }
 
@@ -304,9 +335,9 @@ class _DashboardViewState extends State<_DashboardView> {
                 // ✅ 1. DYNAMIC DIGITAL ID CARD
                 DigitalIDCard(
                     userName: widget.userName, 
-                    programme: _programme, // ✅ Now uses real data
-                    year: _year,           // ✅ Now uses real data
-                    alumniID: _alumniID,   // ✅ Now uses real data
+                    programme: _programme,
+                    year: _year,
+                    alumniID: _alumniID,   // ✅ Shows Local first, then updates to Real API ID
                     imageUrl: _profileImage ?? "", 
                 ),
 
@@ -571,7 +602,7 @@ class _DashboardViewState extends State<_DashboardView> {
         formattedDate = DateFormat("EEE, d MMM, y • h:mm a").format(dateObj);
       }
     } catch (e) {
-      // Keep default if parsing fails
+      // Keep default
     }
 
     String type = data['type'] ?? 'News';

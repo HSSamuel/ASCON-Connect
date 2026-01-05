@@ -8,16 +8,26 @@ const app = express();
 dotenv.config();
 
 // 2. Security Configuration (CORS)
+// ✅ Define strictly who is allowed to talk to this backend
 const allowedOrigins = [
-  "http://localhost:3000", // Local Admin
-  "http://localhost:5000", // Local Server Testing
-  "https://asconadmin.netlify.app", // Your Live Admin Panel
-  // "https://ascon-alumni-91df2.web.app" // Uncomment if you deploy Flutter Web
+  "http://localhost:3000", // Your Local Admin Testing
+  "http://localhost:5000", // Your Local Server Testing
+  "https://asconadmin.netlify.app", // ✅ Your Live Admin Panel
 ];
 
 app.use(
   cors({
-    origin: "*", // ⚠️ Allows ANYONE to connect. Use only for testing.
+    origin: function (origin, callback) {
+      // ✅ Allow requests with no origin (Mobile Apps, Postman, Curl)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg =
+          "The CORS policy for this site does not allow access from the specified Origin.";
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "auth-token"],
     credentials: true,

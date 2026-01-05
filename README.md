@@ -1,168 +1,108 @@
-# ASCON Alumni Connect
+# ASCON Alumni Association Platform
 
-ASCON Alumni Connect is a comprehensive platform designed to bridge the gap between the Administrative Staff College of Nigeria (ASCON) and its alumni network. It features a cross-platform mobile application for alumni, a web-based administration portal, and a robust Node.js backend.
+**ASCON Alumni** is the official digital platform for the Administrative Staff College of Nigeria (ASCON) Alumni. It bridges the gap between the institution and its graduates, providing Digital Identity, Networking, and Verification services.
 
----
+## 🚀 Project Architecture
 
-## 🚀 Project Structure
+The project is a **Full-Stack Application** divided into three distinct parts:
 
-The repository is organized into three main components:
-
-- **ascon_mobile/**  
-  Flutter-based mobile application (Android, iOS, Web) for alumni to connect, view events, and access the directory.
-
-- **ascon_web_admin/**  
-  React.js web portal for administrators to manage users, events, and system settings.
-
-- **backend/**  
-  Node.js & Express REST API powering both the mobile app and web admin, connected to a MongoDB database.
+| Folder                 | Tech Stack            | Description                                                                                   |
+| :--------------------- | :-------------------- | :-------------------------------------------------------------------------------------------- |
+| **`/ascon_mobile`**    | **Flutter (Dart)**    | The Android/iOS mobile app used by Alumni. Features Digital ID, News, and Profile Management. |
+| **`/ascon_web_admin`** | **React.js**          | The Admin Portal for ASCON staff to Approve users, Post Events, and Verify IDs.               |
+| **`/backend`**         | **Node.js & Express** | The central API connecting the App, Website, and MongoDB Database.                            |
 
 ---
 
-## 🛠 Tech Stack
+## 🛠️ Setup Instructions
 
-### Mobile App
+### 1. Backend API (The Brain)
 
-- Framework: Flutter (Dart)
-- State Management: setState
-- Authentication: JWT & Google Sign-In
-- HTTP Client: http package
-- Storage: shared_preferences
+_Located in `/backend`_
 
-### Web Admin
+1.  Navigate to the folder: `cd backend`
+2.  Install dependencies: `npm install`
+3.  **Environment Variables:** Create a `.env` file in the `backend` folder with these keys:
 
-- Framework: React.js
-- Styling: CSS
-- Routing: React Router
+    ```env
+    DB_CONNECT = mongodb+srv://YOUR_MONGO_URL
+    JWT_SECRET = your_super_secret_key_123
+    PORT = 5000
 
-### Backend
+    # Email Service (Brevo API)
+    EMAIL_USER = your_brevo_account_email
+    EMAIL_PASS = your_xkeysib_api_key_here
 
-- Runtime: Node.js
-- Framework: Express.js
-- Database: MongoDB (via Mongoose)
-- Authentication: JSON Web Tokens (JWT) & Google OAuth
-- Image Storage: Cloudinary
+    # Google Auth (Optional)
+    GOOGLE_CLIENT_ID = your_google_client_id
+    ```
 
----
+4.  Start the server: `npm start`
+5.  _Server runs on: `http://localhost:5000`_
 
-## 📋 Prerequisites
+### 2. Admin Portal (The Dashboard)
 
-- Node.js
-- Flutter SDK
-- MongoDB (Atlas)
-- Cloudinary account
-- Google Cloud Console project
+_Located in `/ascon_web_admin`_
 
----
+1.  Navigate to the folder: `cd ascon_web_admin`
+2.  Install dependencies: `npm install`
+3.  **Configuration:** Ensure `.env` points to your backend:
+    ```env
+    REACT_APP_API_URL=http://localhost:5000
+    ```
+4.  Start the dashboard: `npm start`
+5.  _Access at: `http://localhost:3000`_
 
-## 🔧 Setup & Installation
+### 3. Mobile App (The Client)
 
-### Backend Setup
+_Located in `/ascon_mobile`_
 
-```bash
-cd backend
-npm install
-npx nodemon server.js
-```
+1.  Navigate to the folder: `cd ascon_mobile`
+2.  Install packages: `flutter pub get`
 
-Create a `.env` file:
-
-```env
-PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret_key
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-CLOUDINARY_API_KEY=your_api_key
-CLOUDINARY_API_SECRET=your_api_secret
-GOOGLE_CLIENT_ID=your_google_web_client_id
-```
-
-Start server:
-
-```bash
-npm start
-```
+3.  **API Connection:**
+    - Open `lib/config.dart` (or `auth_service.dart`) and ensure `baseUrl` matches your backend.
+    - _For Emulator:_ Use `http://10.0.2.2:5000`
+    - _For Real Device:_ Use your Render/Heroku URL.
+4.  Run the app: `flutter run`
+5.  Run the app: `flutter run -d chrome`
+6.  Clean the project: `flutter clean`
+7.  Build the Release APK: `flutter build apk -- release`
+8.  Build the Release APK: `flutter run -d chrome --web-browser-flag "--disable-web-security"`
 
 ---
 
-### Mobile App Setup
+## 🔐 Key Features
 
-```bash
-cd ascon_mobile
-flutter clean
-flutter pub get
-flutter pub run flutter_launcher_icons
-flutter run -d chrome
-flutter run -d chrome --web-browser-flag "--disable-web-security"
-flutter run -d chrome --web-port=5001
-flutter build apk --release
-```
+### 1. Auto-Generated Digital ID
 
----
+- **Logic:** Upon registration, every user is automatically assigned a unique Alumni ID (e.g., `ASC/2025/0042`).
+- **Visual:** The mobile app renders a realistic ID card with a QR Code.
+- **Security:** The QR Code contains a secure verification link (`/verify/ASC-...`) that cannot be faked.
 
-### Web Admin Setup
+### 2. Role-Based Access Control (RBAC)
 
-```bash
-cd ascon_web_admin
-npm install
-npm start
-```
+- **User:** Can view profile, news, and Digital ID.
+- **Admin:** Can view user lists and approve requests.
+- **Super Admin:** Can manage other admins and edit core data.
+- _Security:_ Backend routes are protected via JWT Tokens.
+
+### 3. Verification System
+
+- New accounts are **Auto-Verified** (for MVP speed) but can be set to "Pending" in `auth.js` if stricter control is needed.
+- Admins can manually revoke verification or ban users via the Dashboard.
 
 ---
 
-## 📱 Features
+## 📦 Deployment
 
-### Alumni
-
-- Secure authentication
-- Alumni directory
-- Events & news
-- Profile management
-
-### Admins
-
-- Dashboard overview
-- User management
-- Event management
-- Broadcast notifications (planned)
+- **Backend:** Deployed on **Render** (Node.js Web Service).
+- **Admin Panel:** Deployed on **Netlify** (React Static Site).
+- **Database:** Hosted on **MongoDB Atlas**.
+- **Mobile App:** Built as `app-release.apk` for Android distribution.
 
 ---
 
-## 📡 API Endpoints Overview
+## 🤝 Contribution
 
-Method,Endpoint,Description,Access
-POST,/api/auth/register,Create account,Public
-POST,/api/auth/login,Login & get Token,Public
-GET,/api/events,Fetch all events,Public
-GET,/api/admin/users,List all users,Admin
-PUT,/api/admin/users/:id/verify,Approve a user,Admin
-POST,/api/admin/events,Create new event,Admin
-POST,/api/admin/programmes,Add new course,Admin
-
-## 🚀 Deployment
-
-- Backend: Render
-- Mobile: Flutter build for Android, iOS, Web
-- Web Admin: Netlify
-
----
-
-## 🤝 Contributing
-
-Standard GitHub workflow with feature branches and pull requests.
-
----
-
-## 📄 License
-
-Proprietary software of the Administrative Staff College of Nigeria (ASCON).
-Unauthorized use is prohibited.
-
----
-
-## 📄 Persona
-
-taskkill /F /IM java.exe
-
-flutter build apk --release
-flutter build appbundle
+Developed by **[HUNSA S. Samuel]** for ASCON.

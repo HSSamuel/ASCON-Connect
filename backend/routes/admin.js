@@ -56,19 +56,16 @@ const verifyEditor = (req, res, next) => {
 // GET ALL USERS (With Pagination)
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
-    // 1. Get Page & Limit from URL (default to Page 1, 20 users per page)
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    // 2. Fetch Users with Skip/Limit
     const users = await User.find()
       .select("-password")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // 3. Get Total Count (so frontend knows when to stop)
     const total = await User.countDocuments();
 
     res.json({
@@ -82,7 +79,7 @@ router.get("/users", verifyAdmin, async (req, res) => {
   }
 });
 
-// DELETE USER (Write Action: Needs verifyEditor)
+// DELETE USER
 router.delete("/users/:id", verifyEditor, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
@@ -92,12 +89,11 @@ router.delete("/users/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ NEW: TOGGLE EDIT PERMISSION (Super Admin Action)
-// Allows an Editor to give edit rights to another admin
+// TOGGLE EDIT PERMISSION
 router.put("/users/:id/toggle-edit", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
-    user.canEdit = !user.canEdit; // Toggle
+    user.canEdit = !user.canEdit;
     await user.save();
     res.json({
       message: `Edit permission ${user.canEdit ? "GRANTED" : "REVOKED"}`,
@@ -108,23 +104,53 @@ router.put("/users/:id/toggle-edit", verifyEditor, async (req, res) => {
   }
 });
 
-// TOGGLE ADMIN STATUS (Super Admin Only)
+// TOGGLE ADMIN STATUS
 router.put("/users/:id/toggle-admin", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
-    
-    // Safety: Prevent removing admin rights from yourself if you are the only one!
-    // (Optional logic, but good practice)
-    
-    user.isAdmin = !user.isAdmin; // Switch between true/false
-    
-    // If we demote an Admin, we should also remove their Edit rights to be safe
-    if (!user.isAdmin) {
-      user.canEdit = false;
+    user.isAdmin = !user.isAdmin;
+    if (!user.isAdmin) user.canEdit = false;
+    await user.save();
+    res.json({
+      message: `Admin Access ${user.isAdmin ? "GRANTED" : "REVOKED"}`,
+      user,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ THIS WAS MISSING: VERIFY USER ROUTE
+// (Essential backup for manual approvals)
+router.put("/users/:id/verify", verifyEditor, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: "User is already verified." });
     }
 
+    // Auto-Generate ID if missing
+    if (!user.alumniId) {
+      const lastUser = await User.findOne({ alumniId: { $ne: "" } }).sort({
+        _id: -1,
+      });
+      let nextNum = 1;
+      if (lastUser && lastUser.alumniId) {
+        const parts = lastUser.alumniId.split("/");
+        const lastNum = parseInt(parts[parts.length - 1]);
+        if (!isNaN(lastNum)) nextNum = lastNum + 1;
+      }
+      const currentYear = new Date().getFullYear();
+      const paddedNum = nextNum.toString().padStart(4, "0");
+      user.alumniId = `ASC/${currentYear}/${paddedNum}`;
+    }
+
+    user.isVerified = true;
     await user.save();
-    res.json({ message: `Admin Access ${user.isAdmin ? "GRANTED" : "REVOKED"}`, user });
+
+    res.json({ message: "User Verified Successfully!", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -134,11 +160,9 @@ router.put("/users/:id/toggle-admin", verifyEditor, async (req, res) => {
 // 2. EVENT MANAGEMENT
 // ==========================================
 
-// CREATE EVENT (Write Action: Needs verifyEditor)
 router.post("/events", verifyEditor, async (req, res) => {
   try {
     const { title, description, date, location, type, image } = req.body;
-
     const newEvent = new Event({
       title,
       description,
@@ -147,7 +171,6 @@ router.post("/events", verifyEditor, async (req, res) => {
       type,
       image,
     });
-
     await newEvent.save();
     res.status(201).json({ message: "Event created!", event: newEvent });
   } catch (err) {
@@ -155,7 +178,6 @@ router.post("/events", verifyEditor, async (req, res) => {
   }
 });
 
-// UPDATE EVENT (Write Action: Needs verifyEditor)
 router.put("/events/:id", verifyEditor, async (req, res) => {
   try {
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -169,7 +191,6 @@ router.put("/events/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// DELETE EVENT (Write Action: Needs verifyEditor)
 router.delete("/events/:id", verifyEditor, async (req, res) => {
   try {
     await Event.findByIdAndDelete(req.params.id);
@@ -183,7 +204,6 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 // 3. PROGRAMME MANAGEMENT
 // ==========================================
 
-// GET PROGRAMMES (Public)
 router.get("/programmes", async (req, res) => {
   try {
     const programmes = await Programme.find().sort({ title: 1 });
@@ -193,24 +213,20 @@ router.get("/programmes", async (req, res) => {
   }
 });
 
-// ADD PROGRAMME (Write Action: Needs verifyEditor)
 router.post("/programmes", verifyEditor, async (req, res) => {
   try {
     const { title, code, description } = req.body;
     const exists = await Programme.findOne({ title });
     if (exists)
       return res.status(400).json({ message: "Programme already exists." });
-
     const newProg = new Programme({ title, code, description });
     await newProg.save();
-
     res.status(201).json({ message: "Programme added!", programme: newProg });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// DELETE PROGRAMME (Write Action: Needs verifyEditor)
 router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   try {
     await Programme.findByIdAndDelete(req.params.id);
@@ -220,19 +236,49 @@ router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// UPDATE PROGRAMME (Write Action: Needs verifyEditor)
 router.put("/programmes/:id", verifyEditor, async (req, res) => {
   try {
-    const { title, code, description } = req.body;
-    
-    // Find the programme by ID and update it
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
       { title, code, description },
-      { new: true } // This ensures we get back the *new* updated version
+      { new: true }
     );
-
     res.json({ message: "Programme updated!", programme: updatedProg });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ FORCE FIX ID ROUTE
+// Usage: PUT /api/admin/users/:id/fix-id
+// Body: { "year": "2005" }
+router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
+  try {
+    const { year } = req.body;
+    const user = await User.findById(req.params.id);
+    
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 1. Generate CORRECT ID
+    const targetYear = year ? year.toString() : new Date().getFullYear().toString();
+    const regex = new RegExp(`ASC/${targetYear}/`);
+    const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort({ _id: -1 });
+
+    let nextNum = 1;
+    if (lastUser && lastUser.alumniId) {
+      const parts = lastUser.alumniId.split("/");
+      const lastNum = parseInt(parts[parts.length - 1]);
+      if (!isNaN(lastNum)) nextNum = lastNum + 1;
+    }
+    const paddedNum = nextNum.toString().padStart(4, "0");
+    const newId = `ASC/${targetYear}/${paddedNum}`;
+
+    // 2. Update User
+    user.alumniId = newId;
+    user.yearOfAttendance = targetYear;
+    await user.save();
+
+    res.json({ message: "ID Fixed Successfully!", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
