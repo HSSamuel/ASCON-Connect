@@ -5,24 +5,28 @@ import Toast from "./Toast";
 import ConfirmModal from "./ConfirmModal";
 import logo from "./assets/logo.png";
 
-// ✅ CONFIG: Change this to your live URL when deploying
-const BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000"
-    : "https://ascon.onrender.com";
+// Import Sub-Components
+import UsersTab from "./components/UsersTab";
+import EventsTab from "./components/EventsTab";
+import ProgrammesTab from "./components/ProgrammesTab";
+
+// ✅ USE ENV VARIABLE
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 function AdminDashboard({ token, onLogout }) {
-  const [activeTab, setActiveTab] = useState("users"); // users | events | programmes
-
-  // --- STATE: PERMISSIONS ---
+  const [activeTab, setActiveTab] = useState("users");
   const [currentUser, setCurrentUser] = useState(null);
 
-  // --- STATE: DATA LISTS ---
+  // --- PAGINATION STATE ---
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // --- DATA LISTS ---
   const [usersList, setUsersList] = useState([]);
   const [eventsList, setEventsList] = useState([]);
   const [programmesList, setProgrammesList] = useState([]);
 
-  // --- STATE: UI ---
+  // --- UI STATE ---
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({
     show: false,
@@ -30,7 +34,7 @@ function AdminDashboard({ token, onLogout }) {
     type: null,
   });
 
-  // --- STATE: FORMS ---
+  // --- FORMS STATE ---
   const [editingId, setEditingId] = useState(null);
   const [eventForm, setEventForm] = useState({
     title: "",
@@ -45,7 +49,7 @@ function AdminDashboard({ token, onLogout }) {
     setToast({ message: msg, type });
   };
 
-  // --- 1. DECODE TOKEN ON LOAD (Check Permissions) ---
+  // --- 1. AUTH CHECK ---
   useEffect(() => {
     if (token) {
       try {
@@ -55,9 +59,7 @@ function AdminDashboard({ token, onLogout }) {
           window
             .atob(base64)
             .split("")
-            .map(function (c) {
-              return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-            })
+            .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
             .join("")
         );
         setCurrentUser(JSON.parse(jsonPayload));
@@ -67,17 +69,14 @@ function AdminDashboard({ token, onLogout }) {
     }
   }, [token]);
 
-  // Helper variable
   const canEdit = currentUser?.canEdit || false;
 
-  // --- API CONFIG (With Auto-Logout Interceptor) ---
+  // --- 2. API SETUP ---
   const API = useMemo(() => {
     const instance = axios.create({
       baseURL: `${BASE_URL}/api`,
       headers: { "auth-token": token },
     });
-
-    // ✅ NEW: Intercept 401/403 errors -> Force Logout
     instance.interceptors.response.use(
       (response) => response,
       (error) => {
@@ -85,12 +84,11 @@ function AdminDashboard({ token, onLogout }) {
           error.response &&
           (error.response.status === 401 || error.response.status === 403)
         ) {
-          onLogout(); // Kick user out
+          onLogout();
         }
         return Promise.reject(error);
       }
     );
-
     return instance;
   }, [token, onLogout]);
 
@@ -98,8 +96,18 @@ function AdminDashboard({ token, onLogout }) {
   const fetchData = useCallback(async () => {
     try {
       if (activeTab === "users") {
-        const res = await API.get("/admin/users");
-        setUsersList(res.data);
+        const res = await API.get(`/admin/users?page=${page}&limit=20`);
+
+        // ✅ SAFETY FIX: Check what format the backend sent
+        if (Array.isArray(res.data)) {
+          // OLD FORMAT (Just an array)
+          setUsersList(res.data);
+          setTotalPages(1);
+        } else {
+          // NEW FORMAT (Object with pagination)
+          setUsersList(res.data.users || []); // Default to [] if missing
+          setTotalPages(res.data.pages || 1);
+        }
       } else if (activeTab === "events") {
         const res = await API.get("/events");
         setEventsList(res.data.events || res.data);
@@ -110,16 +118,17 @@ function AdminDashboard({ token, onLogout }) {
     } catch (err) {
       console.error(err);
     }
-  }, [activeTab, API]);
+  }, [activeTab, API, page]); // Re-run when page changes
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // --- HELPER: SWITCH TABS & CLEAR FORMS ---
+  // --- TABS & ACTIONS ---
   const switchTab = (tab) => {
     setActiveTab(tab);
     setEditingId(null);
+    setPage(1); // Reset page when switching tabs
     setEventForm({
       title: "",
       description: "",
@@ -151,7 +160,6 @@ function AdminDashboard({ token, onLogout }) {
     }
   };
 
-  // ✅ NEW: Toggle Admin Status
   const toggleAdmin = async (id) => {
     try {
       await API.put(`/admin/users/${id}/toggle-admin`);
@@ -162,9 +170,8 @@ function AdminDashboard({ token, onLogout }) {
     }
   };
 
-  const deleteUserClick = (id) => {
+  const deleteUserClick = (id) =>
     setDeleteModal({ show: true, id: id, type: "user" });
-  };
 
   // --- EVENT ACTIONS ---
   const startEditEvent = (event) => {
@@ -178,7 +185,6 @@ function AdminDashboard({ token, onLogout }) {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
   const cancelEditEvent = () => {
     setEditingId(null);
     setEventForm({
@@ -189,20 +195,16 @@ function AdminDashboard({ token, onLogout }) {
       image: "",
     });
   };
-
   const handleEventSubmit = async (e) => {
     e.preventDefault();
     try {
       if (editingId) {
         await API.put(`/admin/events/${editingId}`, eventForm);
-        showToast(`Updated: "${eventForm.title}"`, "success");
+        showToast("Event updated", "success");
         setEditingId(null);
       } else {
-        await API.post("/admin/events", {
-          ...eventForm,
-          date: new Date(),
-        });
-        showToast(`Published: "${eventForm.title}"`, "success");
+        await API.post("/admin/events", { ...eventForm, date: new Date() });
+        showToast("Event published", "success");
       }
       setEventForm({
         title: "",
@@ -216,95 +218,56 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Failed to save event.", "error");
     }
   };
-
-  const deleteEventClick = (id) => {
+  const deleteEventClick = (id) =>
     setDeleteModal({ show: true, id: id, type: "event" });
-  };
 
-  // --- PROGRAMME ACTIONS (UPDATED) ---
-
-  // 1. Start Editing
+  // --- PROGRAMME ACTIONS ---
   const startEditProgramme = (prog) => {
     setEditingId(prog._id);
-    setProgForm({
-      title: prog.title,
-      code: prog.code || "",
-    });
+    setProgForm({ title: prog.title, code: prog.code || "" });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  // 2. Cancel Editing
   const cancelEditProgramme = () => {
     setEditingId(null);
     setProgForm({ title: "", code: "" });
   };
-
-  // 3. Handle Submit (Add OR Update)
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
     try {
       if (editingId) {
-        // UPDATE LOGIC
         await API.put(`/admin/programmes/${editingId}`, progForm);
-        showToast("Programme updated successfully!", "success");
+        showToast("Programme updated", "success");
         setEditingId(null);
       } else {
-        // ADD LOGIC
         await API.post("/admin/programmes", progForm);
-        showToast("Programme added successfully!", "success");
+        showToast("Programme added", "success");
       }
-
-      // Reset Form & Refresh
       setProgForm({ title: "", code: "" });
       fetchData();
     } catch (err) {
-      showToast(
-        err.response?.data?.message || "Failed to save programme.",
-        "error"
-      );
+      showToast(err.response?.data?.message || "Failed.", "error");
     }
   };
-
-  const deleteProgrammeClick = (id) => {
+  const deleteProgrammeClick = (id) =>
     setDeleteModal({ show: true, id: id, type: "programme" });
-  };
 
-  // --- UNIVERSAL DELETE CONFIRM ---
+  // --- GLOBAL DELETE ---
   const confirmDelete = async () => {
     const { id, type } = deleteModal;
     setDeleteModal({ show: false, id: null, type: null });
-
     try {
       if (type === "event") await API.delete(`/admin/events/${id}`);
       if (type === "programme") await API.delete(`/admin/programmes/${id}`);
       if (type === "user") await API.delete(`/admin/users/${id}`);
-
-      showToast(
-        `${type.charAt(0).toUpperCase() + type.slice(1)} deleted.`,
-        "success"
-      );
+      showToast("Item deleted.", "success");
       fetchData();
     } catch (err) {
-      showToast("Failed to delete item.", "error");
+      showToast("Failed to delete.", "error");
     }
-  };
-
-  const renderAvatar = (imagePath) => {
-    if (!imagePath) return <div className="avatar-placeholder">👤</div>;
-    if (imagePath.startsWith("http"))
-      return <img src={imagePath} alt="Avatar" className="avatar" />;
-    return (
-      <img
-        src={`data:image/png;base64,${imagePath}`}
-        alt="Avatar"
-        className="avatar"
-      />
-    );
   };
 
   return (
     <div className="admin-container">
-      {/* HEADER */}
       <div className="header-centered">
         <div style={{ position: "absolute", right: 20, top: 20 }}>
           <button
@@ -315,7 +278,6 @@ function AdminDashboard({ token, onLogout }) {
             LOGOUT
           </button>
         </div>
-
         <img src={logo} alt="ASCON Logo" className="admin-logo-main" />
         <h1 className="admin-title" style={{ color: "#1B5E3A" }}>
           ASCON Admin Portal
@@ -325,37 +287,19 @@ function AdminDashboard({ token, onLogout }) {
         </p>
 
         <div className="tabs-centered">
-          <button
-            onClick={() => switchTab("users")}
-            className={`approve-btn ${activeTab === "users" ? "" : "inactive"}`}
-            style={{
-              backgroundColor: activeTab === "users" ? "#1B5E3A" : "#ccc",
-            }}
-          >
-            Users
-          </button>
-          <button
-            onClick={() => switchTab("events")}
-            className={`approve-btn ${
-              activeTab === "events" ? "" : "inactive"
-            }`}
-            style={{
-              backgroundColor: activeTab === "events" ? "#1B5E3A" : "#ccc",
-            }}
-          >
-            Events
-          </button>
-          <button
-            onClick={() => switchTab("programmes")}
-            className={`approve-btn ${
-              activeTab === "programmes" ? "" : "inactive"
-            }`}
-            style={{
-              backgroundColor: activeTab === "programmes" ? "#1B5E3A" : "#ccc",
-            }}
-          >
-            Programmes
-          </button>
+          {["users", "events", "programmes"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => switchTab(tab)}
+              className={`approve-btn ${activeTab === tab ? "" : "inactive"}`}
+              style={{
+                backgroundColor: activeTab === tab ? "#1B5E3A" : "#ccc",
+                textTransform: "capitalize",
+              }}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -375,437 +319,48 @@ function AdminDashboard({ token, onLogout }) {
         onConfirm={confirmDelete}
       />
 
-      {/* TAB 1: USERS */}
+      {/* RENDER ACTIVE TAB */}
       {activeTab === "users" && (
-        <div>
-          {/* ✅ WRAPPED FOR SCROLLABLE TABLE */}
-          <div className="table-responsive">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Photo</th>
-                  <th>Full Name</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usersList.map((user) => (
-                  <tr key={user._id}>
-                    <td data-label="Photo">
-                      {renderAvatar(user.profilePicture)}
-                    </td>
-                    <td data-label="Full Name">
-                      <strong>{user.fullName}</strong>
-                      <div style={{ fontSize: "12px", color: "#666" }}>
-                        {user.email}
-                      </div>
-                      {/* Visual indicators */}
-                      <div style={{ marginTop: "5px" }}>
-                        {user.isAdmin && (
-                          <span
-                            className="tag"
-                            style={{
-                              backgroundColor: "#007bff",
-                              color: "white",
-                              fontSize: "10px",
-                              marginRight: "5px",
-                            }}
-                          >
-                            ADMIN
-                          </span>
-                        )}
-                        {user.canEdit && (
-                          <span
-                            className="tag"
-                            style={{
-                              backgroundColor: "#d4af37",
-                              color: "white",
-                              fontSize: "10px",
-                            }}
-                          >
-                            EDITOR
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td data-label="Status">
-                      <span
-                        className={`status-badge ${
-                          user.isVerified ? "verified" : "pending"
-                        }`}
-                      >
-                        {user.isVerified ? "Verified" : "Pending"}
-                      </span>
-                    </td>
-                    <td data-label="Action">
-                      {/* ✅ SIDE-BY-SIDE BUTTONS LAYOUT */}
-                      {canEdit ? (
-                        <div className="action-buttons-container">
-                          {!user.isVerified && (
-                            <button
-                              onClick={() =>
-                                approveUser(user._id, user.fullName)
-                              }
-                              className="approve-btn compact-btn"
-                              title="Verify User"
-                            >
-                              VERIFY
-                            </button>
-                          )}
-
-                          {/* ✅ TOGGLE ADMIN BUTTON */}
-                          <button
-                            onClick={() => toggleAdmin(user._id)}
-                            className="approve-btn compact-btn"
-                            style={{
-                              backgroundColor: user.isAdmin
-                                ? "#444"
-                                : "#007bff",
-                            }}
-                            title={user.isAdmin ? "Revoke Admin" : "Make Admin"}
-                          >
-                            {user.isAdmin ? "REVOKE ADMIN" : "MAKE ADMIN"}
-                          </button>
-
-                          {/* Grant/Revoke Edit Rights (Only if Admin) */}
-                          {user.isAdmin && (
-                            <button
-                              onClick={() => toggleEditPermission(user._id)}
-                              className="approve-btn compact-btn"
-                              style={{
-                                backgroundColor: user.canEdit
-                                  ? "#555"
-                                  : "purple",
-                              }}
-                              title={
-                                user.canEdit ? "Revoke Edit" : "Grant Edit"
-                              }
-                            >
-                              {user.canEdit ? "REVOKE EDIT" : "GRANT EDIT"}
-                            </button>
-                          )}
-
-                          <button
-                            onClick={() => deleteUserClick(user._id)}
-                            className="delete-btn compact-btn"
-                            title="Delete User"
-                          >
-                            DELETE
-                          </button>
-                        </div>
-                      ) : (
-                        <span style={{ color: "#999", fontSize: "12px" }}>
-                          View Only
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <UsersTab
+          usersList={usersList}
+          canEdit={canEdit}
+          approveUser={approveUser}
+          toggleAdmin={toggleAdmin}
+          toggleEditPermission={toggleEditPermission}
+          deleteUserClick={deleteUserClick}
+          // ✅ Pass Pagination Props
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+        />
       )}
 
-      {/* TAB 2: EVENTS */}
       {activeTab === "events" && (
-        <div>
-          {canEdit ? (
-            <div
-              className="empty-state"
-              style={{
-                textAlign: "left",
-                marginBottom: "30px",
-                backgroundColor: "white",
-                border: "1px solid #ddd",
-              }}
-            >
-              <h2
-                style={{
-                  color: editingId ? "#d4af37" : "#1B5E3A",
-                  marginTop: 0,
-                }}
-              >
-                {editingId ? "✏️ Edit Announcement" : "📢 Post Announcement"}
-              </h2>
-
-              <form onSubmit={handleEventSubmit}>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <input
-                    style={{ flex: 2, padding: "10px", marginBottom: "10px" }}
-                    placeholder="Event Title"
-                    value={eventForm.title}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, title: e.target.value })
-                    }
-                    required
-                  />
-                  <select
-                    style={{ flex: 1, padding: "10px", marginBottom: "10px" }}
-                    value={eventForm.type}
-                    onChange={(e) =>
-                      setEventForm({ ...eventForm, type: e.target.value })
-                    }
-                  >
-                    <option>News</option>
-                    <option>Reunion</option>
-                    <option>Seminar</option>
-                    <option>Webinar</option>
-                  </select>
-                </div>
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    marginBottom: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="Image URL (e.g. https://imgur.com/...)"
-                  value={eventForm.image}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, image: e.target.value })
-                  }
-                />
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    marginBottom: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="Location"
-                  value={eventForm.location}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, location: e.target.value })
-                  }
-                  required
-                />
-                <textarea
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    marginBottom: "10px",
-                    height: "80px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="Details..."
-                  value={eventForm.description}
-                  onChange={(e) =>
-                    setEventForm({ ...eventForm, description: e.target.value })
-                  }
-                  required
-                />
-
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    type="submit"
-                    className="approve-btn"
-                    style={{
-                      flex: 1,
-                      padding: "12px",
-                      backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
-                    }}
-                  >
-                    {editingId ? "UPDATE EVENT" : "PUBLISH POST"}
-                  </button>
-                  {editingId && (
-                    <button
-                      type="button"
-                      onClick={cancelEditEvent}
-                      className="delete-btn"
-                      style={{ flex: 0.3, backgroundColor: "#666" }}
-                    >
-                      CANCEL
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
-          ) : (
-            <div className="empty-state">🔒 View-Only Mode enabled.</div>
-          )}
-
-          {/* ✅ WRAPPED FOR SCROLLABLE TABLE */}
-          <div className="table-responsive">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Image</th>
-                  <th>Date</th>
-                  <th>Title</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {eventsList.map((event) => (
-                  <tr key={event._id}>
-                    <td data-label="Image">
-                      <img
-                        src={event.image || "https://via.placeholder.com/50"}
-                        alt="banner"
-                        style={{
-                          width: "50px",
-                          height: "30px",
-                          objectFit: "cover",
-                          borderRadius: "4px",
-                        }}
-                      />
-                    </td>
-                    <td
-                      data-label="Date"
-                      style={{ fontSize: "13px", color: "#555" }}
-                    >
-                      {new Date(event.date).toLocaleDateString()}
-                    </td>
-                    <td data-label="Title">
-                      <div style={{ fontWeight: "bold" }}>{event.title}</div>
-                      <span className="tag">{event.type}</span>
-                    </td>
-                    <td data-label="Action">
-                      {canEdit ? (
-                        <div className="action-buttons-container">
-                          <button
-                            onClick={() => startEditEvent(event)}
-                            className="approve-btn compact-btn"
-                            style={{ backgroundColor: "#3498db" }}
-                          >
-                            EDIT
-                          </button>
-                          <button
-                            className="delete-btn compact-btn"
-                            onClick={() => deleteEventClick(event._id)}
-                          >
-                            DELETE
-                          </button>
-                        </div>
-                      ) : (
-                        <span style={{ color: "#ccc" }}>🔒</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <EventsTab
+          eventsList={eventsList}
+          canEdit={canEdit}
+          editingId={editingId}
+          eventForm={eventForm}
+          setEventForm={setEventForm}
+          handleEventSubmit={handleEventSubmit}
+          cancelEditEvent={cancelEditEvent}
+          startEditEvent={startEditEvent}
+          deleteEventClick={deleteEventClick}
+        />
       )}
 
-      {/* TAB 3: PROGRAMMES (✅ UPDATED FOR EDITING) */}
       {activeTab === "programmes" && (
-        <div>
-          {canEdit ? (
-            <div
-              className="empty-state"
-              style={{
-                textAlign: "left",
-                marginBottom: "30px",
-                backgroundColor: "white",
-                border: "1px solid #ddd",
-              }}
-            >
-              <h2
-                style={{
-                  color: editingId ? "#d4af37" : "#1B5E3A",
-                  marginTop: 0,
-                }}
-              >
-                {editingId ? "✏️ Edit Programme" : "🎓 Add New Programme"}
-              </h2>
-              <form
-                onSubmit={handleProgrammeSubmit}
-                style={{ display: "flex", gap: "10px" }}
-              >
-                <input
-                  style={{ flex: 3, padding: "10px" }}
-                  placeholder="Programme Title"
-                  value={progForm.title}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, title: e.target.value })
-                  }
-                  required
-                />
-                <input
-                  style={{ flex: 1, padding: "10px" }}
-                  placeholder="Code"
-                  value={progForm.code}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, code: e.target.value })
-                  }
-                />
-                <button
-                  type="submit"
-                  className="approve-btn"
-                  style={{
-                    backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
-                  }}
-                >
-                  {editingId ? "UPDATE" : "ADD"}
-                </button>
-
-                {/* ✅ CANCEL BUTTON FOR PROGRAMMES */}
-                {editingId && (
-                  <button
-                    type="button"
-                    onClick={cancelEditProgramme}
-                    className="delete-btn"
-                    style={{ backgroundColor: "#666" }}
-                  >
-                    CANCEL
-                  </button>
-                )}
-              </form>
-            </div>
-          ) : (
-            <div className="empty-state">🔒 View-Only Mode enabled.</div>
-          )}
-
-          {/* ✅ WRAPPED FOR SCROLLABLE TABLE */}
-          <div className="table-responsive">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Code</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {programmesList.map((prog) => (
-                  <tr key={prog._id}>
-                    <td data-label="Title">
-                      <strong>{prog.title}</strong>
-                    </td>
-                    <td data-label="Code">{prog.code || "-"}</td>
-                    <td data-label="Action">
-                      {canEdit ? (
-                        <div className="action-buttons-container">
-                          {/* ✅ EDIT BUTTON FOR PROGRAMMES */}
-                          <button
-                            onClick={() => startEditProgramme(prog)}
-                            className="approve-btn compact-btn"
-                            style={{ backgroundColor: "#3498db" }}
-                          >
-                            EDIT
-                          </button>
-
-                          <button
-                            className="delete-btn compact-btn"
-                            onClick={() => deleteProgrammeClick(prog._id)}
-                          >
-                            REMOVE
-                          </button>
-                        </div>
-                      ) : (
-                        <span style={{ color: "#ccc" }}>🔒</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ProgrammesTab
+          programmesList={programmesList}
+          canEdit={canEdit}
+          editingId={editingId}
+          progForm={progForm}
+          setProgForm={setProgForm}
+          handleProgrammeSubmit={handleProgrammeSubmit}
+          cancelEditProgramme={cancelEditProgramme}
+          startEditProgramme={startEditProgramme}
+          deleteProgrammeClick={deleteProgrammeClick}
+        />
       )}
     </div>
   );

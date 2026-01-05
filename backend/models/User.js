@@ -61,4 +61,7 @@ const userSchema = new mongoose.Schema({
   },
 });
 
+// ✅ CREATE TEXT INDEX for fast searching
+userSchema.index({ fullName: "text", jobTitle: "text", organization: "text" });
+
 module.exports = mongoose.model("User", userSchema);

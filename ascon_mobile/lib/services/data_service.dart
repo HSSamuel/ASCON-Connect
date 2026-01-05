@@ -1,10 +1,11 @@
 import 'dart:convert';
+import 'dart:io'; // For SocketException
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
-import '../main.dart'; // ✅ Required for navigatorKey
-import '../screens/login_screen.dart'; // ✅ Required for redirection
+import '../main.dart'; // Required for navigatorKey
+import '../screens/login_screen.dart'; // Required for redirection
 
 class DataService {
   
@@ -14,39 +15,45 @@ class DataService {
     final token = prefs.getString('auth_token') ?? '';
     return {
       'Content-Type': 'application/json',
-      'auth-token': token, // Standard header
-      'Authorization': 'Bearer $token', // Backup standard
+      'auth-token': token, 
+      'Authorization': 'Bearer $token', 
     };
   }
 
-  // ✅ ROBUST ERROR HANDLER
-  // Handles 401 (Session Expired) by kicking the user out to Login
+  // ✅ Helper: Save Data to Cache
+  Future<void> _cacheData(String key, dynamic data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(data));
+  }
+
+  // ✅ Helper: Get Data from Cache
+  Future<dynamic> _getCachedData(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? cachedString = prefs.getString(key);
+    if (cachedString != null) {
+      print("📱 Loaded $key from Cache (Offline Mode)");
+      return jsonDecode(cachedString);
+    }
+    return null;
+  }
+
   dynamic _handleResponse(http.Response response) {
-    // 1. Session Expired / Unauthorized
     if (response.statusCode == 401 || response.statusCode == 403) {
       _forceLogout();
       throw Exception('Session expired'); 
     }
-
-    // 2. Success
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return null;
       return jsonDecode(response.body);
     } 
-    
-    // 3. Other Errors
     else {
-      print("⚠️ API Error: ${response.statusCode} - ${response.body}");
       throw Exception('Failed to load data: ${response.statusCode}');
     }
   }
 
-  // ✅ Helper to Force Logout
   Future<void> _forceLogout() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Clear token
-
-    // Use global key to navigate without context
+    await prefs.clear(); 
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
@@ -58,23 +65,23 @@ class DataService {
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
-      
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      // Handle wrapper object if exists (e.g. { success: true, data: {...} })
       if (data is Map<String, dynamic> && data.containsKey('data')) {
         return data['data'];
       }
-      return data; // Return direct map
+      return data;
     } catch (e) {
-      print("Error fetching profile: $e");
-      return null;
+      print("⚠️ Network Error. Trying Cache...");
+      return null; // Profile is harder to cache simply, usually strictly online
     }
   }
 
-  // --- 2. EVENTS ---
+  // --- 2. EVENTS (Offline Ready) ---
   Future<List<dynamic>> fetchEvents() async {
+    const String cacheKey = 'cached_events';
+
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/events');
@@ -82,26 +89,36 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
       
-      // ✅ Handle different backend formats safely
-      if (data == null) return [];
-      
+      List<dynamic> events = [];
       if (data is List) {
-        return data;
+        events = data;
       } else if (data is Map && data.containsKey('events')) {
-        return data['events'];
+        events = data['events'];
       } else if (data is Map && data.containsKey('data')) {
-        return data['data']; // Common standard wrapper
+        events = data['data'];
       }
-      
-      return [];
+
+      // ✅ SUCCESS: Save to Cache
+      await _cacheData(cacheKey, events);
+      return events;
+
     } catch (e) {
-      print("Error fetching events: $e");
-      return []; 
+      // ✅ FAILURE: Load from Cache
+      print("⚠️ Offline Mode: Loading cached events.");
+      final cached = await _getCachedData(cacheKey);
+      if (cached != null && cached is List) {
+        return cached;
+      }
+      return []; // No internet AND no cache
     }
   }
 
-  // --- 3. DIRECTORY ---
+  // --- 3. DIRECTORY (Offline Ready) ---
   Future<List<dynamic>> fetchDirectory({String query = ""}) async {
+    // Only cache the "full" directory (empty query). Don't cache search results.
+    final bool isDefaultFetch = query.isEmpty;
+    const String cacheKey = 'cached_directory';
+
     try {
       final headers = await _getHeaders();
       String endpoint = '${AppConfig.baseUrl}/api/directory';
@@ -109,21 +126,30 @@ class DataService {
       
       final url = Uri.parse(endpoint);
       final response = await http.get(url, headers: headers);
-
       final data = _handleResponse(response);
       
-      // ✅ Handle different backend formats safely
-      if (data == null) return [];
-
+      List<dynamic> alumni = [];
       if (data is List) {
-        return data;
+        alumni = data;
       } else if (data is Map && data.containsKey('data')) {
-        return data['data']; // Handle wrapper { success: true, data: [] }
+        alumni = data['data']; 
       }
       
-      return [];
+      // ✅ SUCCESS: Save to Cache (only if default list)
+      if (isDefaultFetch) {
+        await _cacheData(cacheKey, alumni);
+      }
+      return alumni;
+
     } catch (e) {
-      print("Error fetching directory: $e");
+      // ✅ FAILURE: Load from Cache (only if trying to fetch default list)
+      if (isDefaultFetch) {
+        print("⚠️ Offline Mode: Loading cached directory.");
+        final cached = await _getCachedData(cacheKey);
+        if (cached != null && cached is List) {
+          return cached;
+        }
+      }
       return [];
     }
   }

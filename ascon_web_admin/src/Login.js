@@ -5,12 +5,8 @@ import { jwtDecode } from "jwt-decode";
 import "./App.css";
 import logo from "./assets/logo.png";
 
-// ✅ DYNAMIC URL CONFIGURATION
-// Automatically switches between Localhost and Live Server based on where the app is running.
-const BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000" // Development (Local)
-    : "https://ascon.onrender.com"; // Production (Live)
+// ✅ USE ENV VARIABLE (Standardized)
+const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -128,7 +124,6 @@ function Login({ onLogin }) {
           </button>
         </form>
 
-        {/* --- DIVIDER --- */}
         <div
           style={{ display: "flex", alignItems: "center", margin: "20px 0" }}
         >
@@ -143,7 +138,6 @@ function Login({ onLogin }) {
           ></div>
         </div>
 
-        {/* --- GOOGLE BUTTON --- */}
         <div style={{ display: "flex", justifyContent: "center" }}>
           <GoogleLogin
             onSuccess={handleGoogleSuccess}

@@ -4,25 +4,27 @@ import 'package:firebase_core/firebase_core.dart';
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart'; // ✅ Import the new Splash Screen
 import 'config/theme.dart'; // ✅ Import the new Theme File
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load the .env file
+  await dotenv.load(fileName: ".env");
 
-  // ✅ FIX: Conditionally initialize Firebase
   if (kIsWeb) {
     await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: "AIzaSyBBteJZoirarB77b3Cgo67njG6meoGNq_U", 
-        appId: "1:826004672204:web:4352aaeba03118fb68fc69", 
-        messagingSenderId: "826004672204", 
-        projectId: "ascon-alumni-91df2",
-        storageBucket: "ascon-alumni-91df2.firebasestorage.app", 
+      options: FirebaseOptions(
+        apiKey: dotenv.env['FIREBASE_API_KEY'] ?? "",
+        appId: dotenv.env['FIREBASE_APP_ID'] ?? "",
+        messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? "",
+        projectId: dotenv.env['FIREBASE_PROJECT_ID'] ?? "",
+        storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? "",
       ),
     );
   } else {
-    // Android/iOS uses google-services.json automatically
     await Firebase.initializeApp();
   }
 

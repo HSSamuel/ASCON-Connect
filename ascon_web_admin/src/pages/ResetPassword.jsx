@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
-// CSS is now loaded globally from App.css
+// 👇 IMPORT LOGO HERE (Adjust path if your logo is elsewhere)
+import logo from "../assets/logo.png";
 
 export default function ResetPassword() {
   const [token, setToken] = useState("");
@@ -19,8 +20,10 @@ export default function ResetPassword() {
   const query = useQuery();
   const navigate = useNavigate();
 
+  // ✅ USE ENV VARIABLE
+  const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
   useEffect(() => {
-    // Extract token from URL (e.g., ?token=abc123...)
     const tokenParam = query.get("token");
     if (tokenParam) {
       setToken(tokenParam);
@@ -47,10 +50,8 @@ export default function ResetPassword() {
 
     setIsLoading(true);
     try {
-      // ⚠️ ENSURE THIS MATCHES YOUR LIVE BACKEND URL
-      const API_URL = "https://ascon.onrender.com/api/auth/reset-password";
-
-      await axios.post(API_URL, {
+      // ✅ Use Dynamic URL here
+      await axios.post(`${BASE_URL}/api/auth/reset-password`, {
         token: token,
         newPassword: newPassword,
       });
@@ -58,7 +59,6 @@ export default function ResetPassword() {
       setError(false);
       setMessage("Success! Redirecting to login...");
 
-      // Redirect after 2 seconds
       setTimeout(() => {
         navigate("/login");
       }, 2000);
@@ -73,6 +73,15 @@ export default function ResetPassword() {
   return (
     <div className="reset-container">
       <div className="reset-card">
+        {/* ✅ LOGO ADDED HERE */}
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <img
+            src={logo}
+            alt="ASCON Logo"
+            style={{ width: "100px", height: "auto" }} // Adjust width as needed
+          />
+        </div>
+
         <h2 className="reset-title">Reset Password</h2>
         <p className="reset-subtitle">Enter your new password below.</p>
 

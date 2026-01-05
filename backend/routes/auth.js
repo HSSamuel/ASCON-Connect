@@ -2,17 +2,42 @@ const router = require("express").Router();
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
+const Joi = require("joi");
+const axios = require("axios"); // ✅ Using Axios for API calls
 
 // Initialize Google Client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // ---------------------------------------------------------
-// 1. REGISTER (Standard)
+// VALIDATION SCHEMAS
+// ---------------------------------------------------------
+const registerSchema = Joi.object({
+  fullName: Joi.string().min(6).required(),
+  email: Joi.string().min(6).required().email(),
+  password: Joi.string().min(6).required(),
+  phoneNumber: Joi.string().required(),
+  programmeTitle: Joi.string().optional().allow(""),
+  yearOfAttendance: Joi.alternatives()
+    .try(Joi.string(), Joi.number())
+    .optional()
+    .allow(null, ""),
+  customProgramme: Joi.string().optional().allow(""),
+});
+
+const loginSchema = Joi.object({
+  email: Joi.string().min(6).required().email(),
+  password: Joi.string().min(6).required(),
+});
+
+// ---------------------------------------------------------
+// 1. REGISTER
 // ---------------------------------------------------------
 router.post("/register", async (req, res) => {
+  const { error } = registerSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.details[0].message });
+
   try {
     const {
       fullName,
@@ -20,20 +45,17 @@ router.post("/register", async (req, res) => {
       password,
       phoneNumber,
       yearOfAttendance,
-      programmeTitle, // This comes from your dropdown
-      customProgramme, // ✅ Ensure custom programme is handled if sent
+      programmeTitle,
+      customProgramme,
     } = req.body;
 
-    // Check if email exists
-    const emailExist = await User.findOne({ email: email });
+    const emailExist = await User.findOne({ email });
     if (emailExist)
       return res.status(400).json({ message: "Email already registered." });
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create User
     const newUser = new User({
       fullName,
       email,
@@ -41,14 +63,12 @@ router.post("/register", async (req, res) => {
       phoneNumber,
       yearOfAttendance,
       programmeTitle,
-      customProgramme: customProgramme || "", // Handle custom input
-      isVerified: true, // No Longer Pending Admin Approval
-      hasSeenWelcome: false, // Default for new users
+      customProgramme: customProgramme || "",
+      isVerified: true,
+      hasSeenWelcome: false,
     });
 
     const savedUser = await newUser.save();
-
-    // Create Token immediately so they don't have to login manually
     const token = jwt.sign(
       { _id: savedUser._id, isAdmin: false, canEdit: false },
       process.env.JWT_SECRET,
@@ -62,7 +82,7 @@ router.post("/register", async (req, res) => {
         id: savedUser._id,
         fullName: savedUser.fullName,
         email: savedUser.email,
-        hasSeenWelcome: false, // Explicitly send this
+        hasSeenWelcome: false,
       },
     });
   } catch (err) {
@@ -71,26 +91,24 @@ router.post("/register", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. LOGIN (Standard)
+// 2. LOGIN
 // ---------------------------------------------------------
 router.post("/login", async (req, res) => {
+  const { error } = loginSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.details[0].message });
+
   try {
     const { email, password } = req.body;
-
-    const user = await User.findOne({ email: email });
+    const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Email is not found." });
 
     const validPass = await bcrypt.compare(password, user.password);
     if (!validPass)
       return res.status(400).json({ message: "Invalid Password." });
 
-    if (user.isVerified === false) {
-      return res
-        .status(403)
-        .json({ message: "Account pending approval. Please contact Admin." });
-    }
+    if (user.isVerified === false)
+      return res.status(403).json({ message: "Account pending approval." });
 
-    // Add permissions to token
     const token = jwt.sign(
       {
         _id: user._id,
@@ -101,7 +119,6 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    // ✅ UPDATE: Send 'hasSeenWelcome' to frontend
     res.header("auth-token", token).json({
       token: token,
       user: {
@@ -111,8 +128,6 @@ router.post("/login", async (req, res) => {
         isAdmin: user.isAdmin,
         canEdit: user.canEdit,
         profilePicture: user.profilePicture,
-
-        // ✅ CRITICAL FIX: Explicitly send this field
         hasSeenWelcome: user.hasSeenWelcome || false,
       },
     });
@@ -122,7 +137,7 @@ router.post("/login", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. GOOGLE LOGIN (Hybrid Flow)
+// 3. GOOGLE LOGIN
 // ---------------------------------------------------------
 router.post("/google", async (req, res) => {
   try {
@@ -133,8 +148,7 @@ router.post("/google", async (req, res) => {
     });
     const { name, email, picture } = ticket.getPayload();
 
-    let user = await User.findOne({ email: email });
-
+    let user = await User.findOne({ email });
     if (user) {
       if (!user.isVerified)
         return res.status(403).json({ message: "Account pending approval." });
@@ -149,7 +163,6 @@ router.post("/google", async (req, res) => {
         { expiresIn: "1h" }
       );
 
-      // ✅ UPDATE: Send 'hasSeenWelcome' here too
       return res.json({
         message: "Login Success",
         token: authToken,
@@ -160,16 +173,16 @@ router.post("/google", async (req, res) => {
           isAdmin: user.isAdmin,
           canEdit: user.canEdit,
           profilePicture: user.profilePicture,
-
-          // ✅ CRITICAL FIX
           hasSeenWelcome: user.hasSeenWelcome || false,
         },
       });
     } else {
-      return res.status(404).json({
-        message: "User not found",
-        googleData: { fullName: name, email: email, photo: picture },
-      });
+      return res
+        .status(404)
+        .json({
+          message: "User not found",
+          googleData: { fullName: name, email: email, photo: picture },
+        });
     }
   } catch (err) {
     console.error(err);
@@ -178,79 +191,73 @@ router.post("/google", async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. FORGOT PASSWORD (LINK VERSION)
+// 4. FORGOT PASSWORD (✅ NUCLEAR OPTION: HTTP API)
 // ---------------------------------------------------------
 router.post("/forgot-password", async (req, res) => {
   try {
+    if (!req.body.email)
+      return res.status(400).json({ message: "Email is required" });
+
     const user = await User.findOne({ email: req.body.email });
     if (!user) return res.status(400).json({ message: "Email not found" });
 
-    // 1. Generate Secure Token
+    // 1. Generate Token
     const token = crypto.randomBytes(20).toString("hex");
-
-    // 2. Save Token to Database
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
     await user.save();
 
-    // 3. Create the Reset Link
+    // 2. Create Link
     const resetUrl = `https://asconadmin.netlify.app/reset-password?token=${token}`;
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+    // 3. Send via Brevo API (No SMTP, No Ports, No Blockers)
+    await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
+        to: [{ email: user.email, name: user.fullName }],
+        subject: "ASCON Alumni - Password Reset",
+        htmlContent: `
+          <h3>Password Reset Request</h3>
+          <p>Hello ${user.fullName},</p>
+          <p>Please click the link below to reset your password:</p>
+          <p><a href="${resetUrl}" style="background-color: #1B5E3A; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
+          <p>Or copy this link: ${resetUrl}</p>
+        `,
       },
-    });
-
-    // 4. Send HTML Email with Link
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: user.email,
-      subject: "ASCON Connect - Password Reset",
-      html: `
-        <h3>Password Reset Request</h3>
-        <p>Hello ${user.fullName},</p>
-        <p>Please click the link below to reset your password:</p>
-        <p>
-           <a href="${resetUrl}" style="background-color: #1B5E3A; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
-        </p>
-        <p>Or copy this link into your browser:</p>
-        <p>${resetUrl}</p>
-        <p><i>This link expires in 1 hour.</i></p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
+      {
+        headers: {
+          "api-key": process.env.EMAIL_PASS, // Uses the 'xkeysib-' key from Env Vars
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
     res.json({ message: "Reset link sent to your email!" });
   } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({ message: "Email could not be sent. Try again later." });
+    console.error(
+      "Brevo API Error:",
+      err.response ? err.response.data : err.message
+    );
+    res.status(500).json({ message: "Could not send email. Try again later." });
   }
 });
 
 // ---------------------------------------------------------
-// 5. RESET PASSWORD (SECURE)
+// 5. RESET PASSWORD
 // ---------------------------------------------------------
 router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6)
+      return res.status(400).json({ message: "Password too short." });
 
-    // Find user with this token AND check if valid
     const user = await User.findOne({
       resetPasswordToken: token,
       resetPasswordExpires: { $gt: Date.now() },
     });
-
-    if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Password reset link is invalid or has expired." });
-    }
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired token." });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
@@ -260,7 +267,6 @@ router.post("/reset-password", async (req, res) => {
     user.resetPasswordExpires = undefined;
 
     await user.save();
-
     res.json({ message: "Password updated successfully! Please login." });
   } catch (err) {
     res.status(500).json({ message: err.message });

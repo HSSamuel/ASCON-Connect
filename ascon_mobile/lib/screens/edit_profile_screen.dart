@@ -86,10 +86,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+ Future<void> _pickImage() async {
+    // 1. Create the picker instance locally
+    final ImagePicker picker = ImagePicker(); 
 
+    // 2. Pick the image with optimization settings
+    final XFile? pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 50,  // ✅ Compress image quality
+      maxWidth: 800,     // ✅ Resize to save data
+    );
+
+    // 3. Update state if an image was picked
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
       setState(() {

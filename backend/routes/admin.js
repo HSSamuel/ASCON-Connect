@@ -53,25 +53,30 @@ const verifyEditor = (req, res, next) => {
 // 1. USER MANAGEMENT
 // ==========================================
 
-// GET ALL USERS (Read-Only: verifyAdmin is enough)
+// GET ALL USERS (With Pagination)
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
-    const users = await User.find().select("-password").sort({ createdAt: -1 });
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    // 1. Get Page & Limit from URL (default to Page 1, 20 users per page)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-// VERIFY USER (Write Action: Needs verifyEditor)
-router.put("/users/:id/verify", verifyEditor, async (req, res) => {
-  try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { isVerified: true },
-      { new: true }
-    );
-    res.json({ message: "User verified successfully!", user });
+    // 2. Fetch Users with Skip/Limit
+    const users = await User.find()
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // 3. Get Total Count (so frontend knows when to stop)
+    const total = await User.countDocuments();
+
+    res.json({
+      users,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
