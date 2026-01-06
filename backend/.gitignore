@@ -4,3 +4,4 @@ node_modules/
 /ascon_mobile/build/
 .env
 .DS_Store
+serviceAccountKey.json

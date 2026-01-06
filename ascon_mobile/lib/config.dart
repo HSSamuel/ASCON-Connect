@@ -1,25 +1,29 @@
-import 'package:flutter/foundation.dart'; // ✅ Import this for kIsWeb
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ Import dotenv
+import 'package:flutter/foundation.dart';
 
 class AppConfig {
   // =========================================================
-  // 🚀 PRODUCTION MODE: ON
+  // 🌍 BASE URL (Dynamic)
   // =========================================================
-  static const bool isProduction = true; 
-
-  // 🌍 The Online Server
-  static const String onlineUrl = 'https://ascon.onrender.com';
-
-  // 💻 Local Backup
-  static const String localUrl = 'http://10.231.185.203:5000'; 
-
+  // This now pulls directly from your .env file.
+  // To switch between Local and Online, just edit the .env file!
   static String get baseUrl {
-    return isProduction ? onlineUrl : localUrl;
+    final String? url = dotenv.env['API_URL'];
+
+    if (url == null || url.isEmpty) {
+      // ⚠️ Safety Fallback if .env fails to load
+      // You can keep this as your production URL just in case
+      return 'https://ascon.onrender.com';
+    }
+    return url;
   }
 
   // =========================================================
-  // 🔑 SECRETS (Added for Auth)
+  // 🔑 SECRETS
   // =========================================================
-  static const String googleWebClientId = '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com';
+  static String get googleWebClientId {
+    return dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '';
+  }
   
   static String? get googleClientId {
     return kIsWeb ? googleWebClientId : null; 

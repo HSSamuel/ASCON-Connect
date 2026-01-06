@@ -11,6 +11,59 @@ function UsersTab({
   setPage,
   totalPages,
 }) {
+  // ✅ 1. NEW: EXPORT TO CSV FUNCTION
+  const exportToCSV = () => {
+    if (!usersList || usersList.length === 0) {
+      alert("No data to export.");
+      return;
+    }
+
+    // A. Define Headers
+    const headers = [
+      "Full Name",
+      "Email",
+      "Phone Number",
+      "Programme",
+      "Class Year",
+      "Alumni ID",
+      "Status",
+      "Is Admin",
+      "Can Edit",
+    ];
+
+    // B. Map Data to Rows
+    const rows = usersList.map((user) => [
+      `"${user.fullName || ""}"`, // Wrap in quotes to handle commas in names
+      `"${user.email || ""}"`,
+      `"${user.phoneNumber || ""}"`,
+      `"${user.programmeTitle || ""}"`,
+      `"${user.yearOfAttendance || ""}"`,
+      `"${user.alumniId || ""}"`,
+      user.isVerified ? "Verified" : "Pending",
+      user.isAdmin ? "Yes" : "No",
+      user.canEdit ? "Yes" : "No",
+    ]);
+
+    // C. Combine Headers and Rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    // D. Trigger Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `ascon_alumni_export_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Helper to display profile pictures
   const renderAvatar = (imagePath) => {
     if (!imagePath) return <div className="avatar-placeholder">👤</div>;
@@ -27,6 +80,28 @@ function UsersTab({
 
   return (
     <div>
+      {/* ✅ EXPORT BUTTON HEADER */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginBottom: "15px",
+        }}
+      >
+        <button
+          onClick={exportToCSV}
+          className="approve-btn"
+          style={{
+            backgroundColor: "#1B5E3A",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          📥 Export to Excel
+        </button>
+      </div>
+
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
@@ -46,6 +121,19 @@ function UsersTab({
                   <div style={{ fontSize: "12px", color: "#666" }}>
                     {user.email}
                   </div>
+                  {/* Shows ID if available */}
+                  {user.alumniId && (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#1B5E3A",
+                        fontWeight: "bold",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {user.alumniId}
+                    </div>
+                  )}
                   <div style={{ marginTop: "5px" }}>
                     {user.isAdmin && (
                       <span

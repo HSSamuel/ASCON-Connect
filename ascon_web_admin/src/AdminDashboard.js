@@ -3,7 +3,7 @@ import axios from "axios";
 import "./App.css";
 import Toast from "./Toast";
 import ConfirmModal from "./ConfirmModal";
-import logo from "./assets/logo.png";
+import NavBar from "./components/NavBar";
 
 // Import Sub-Components
 import UsersTab from "./components/UsersTab";
@@ -11,15 +11,16 @@ import EventsTab from "./components/EventsTab";
 import ProgrammesTab from "./components/ProgrammesTab";
 
 // ✅ USE ENV VARIABLE
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
 
 function AdminDashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
   const [currentUser, setCurrentUser] = useState(null);
 
-  // --- PAGINATION STATE ---
+  // --- PAGINATION & SEARCH STATE ---
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState("");
 
   // --- DATA LISTS ---
   const [usersList, setUsersList] = useState([]);
@@ -70,21 +71,33 @@ function AdminDashboard({ token, onLogout }) {
   }, [token]);
 
   const canEdit = currentUser?.canEdit || false;
+  const userRole = canEdit ? "Super Admin" : "Viewer";
 
-  // --- 2. API SETUP ---
+  // --- 2. API SETUP (WITH SMART ERROR HANDLING) ---
   const API = useMemo(() => {
     const instance = axios.create({
       baseURL: `${BASE_URL}/api`,
       headers: { "auth-token": token },
     });
+
+    // ✅ INTERCEPTOR: Catch Session Expiry (401, 403 OR 400 "Invalid Token")
     instance.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (
-          error.response &&
-          (error.response.status === 401 || error.response.status === 403)
-        ) {
-          onLogout();
+        // Check for Auth Errors
+        if (error.response) {
+          const status = error.response.status;
+          const msg = error.response.data?.message || "";
+
+          // Backend sends 400 "Invalid Token" when expired
+          if (
+            status === 401 ||
+            status === 403 ||
+            (status === 400 && msg === "Invalid Token")
+          ) {
+            // alert("Session Expired. Please Login Again."); // Optional Alert
+            onLogout(); // Force Logout
+          }
         }
         return Promise.reject(error);
       }
@@ -92,20 +105,18 @@ function AdminDashboard({ token, onLogout }) {
     return instance;
   }, [token, onLogout]);
 
-  // --- FETCH DATA ---
+  // --- FETCH DATA (With Search) ---
   const fetchData = useCallback(async () => {
     try {
       if (activeTab === "users") {
-        const res = await API.get(`/admin/users?page=${page}&limit=20`);
-
-        // ✅ SAFETY FIX: Check what format the backend sent
+        const res = await API.get(
+          `/admin/users?page=${page}&limit=20&search=${search}`
+        );
         if (Array.isArray(res.data)) {
-          // OLD FORMAT (Just an array)
           setUsersList(res.data);
           setTotalPages(1);
         } else {
-          // NEW FORMAT (Object with pagination)
-          setUsersList(res.data.users || []); // Default to [] if missing
+          setUsersList(res.data.users || []);
           setTotalPages(res.data.pages || 1);
         }
       } else if (activeTab === "events") {
@@ -117,18 +128,23 @@ function AdminDashboard({ token, onLogout }) {
       }
     } catch (err) {
       console.error(err);
+      // Don't toast on fetch errors to avoid spamming the user
     }
-  }, [activeTab, API, page]); // Re-run when page changes
+  }, [activeTab, API, page, search]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const delayDebounceFn = setTimeout(() => {
+      fetchData();
+    }, 500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [fetchData, search]);
 
-  // --- TABS & ACTIONS ---
+  // --- HELPERS (Switch Tab) ---
   const switchTab = (tab) => {
     setActiveTab(tab);
     setEditingId(null);
-    setPage(1); // Reset page when switching tabs
+    setPage(1);
+    setSearch("");
     setEventForm({
       title: "",
       description: "",
@@ -139,14 +155,18 @@ function AdminDashboard({ token, onLogout }) {
     setProgForm({ title: "", code: "" });
   };
 
-  // --- USER ACTIONS ---
+  // --- ACTIONS ---
   const approveUser = async (id, name) => {
     try {
       await API.put(`/admin/users/${id}/verify`);
       showToast(`${name} has been verified!`, "success");
       fetchData();
     } catch (err) {
-      showToast("Failed to verify user.", "error");
+      // ✅ DISPLAY ACTUAL SERVER ERROR
+      showToast(
+        err.response?.data?.message || "Failed to verify user.",
+        "error"
+      );
     }
   };
 
@@ -156,7 +176,10 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Permissions updated", "success");
       fetchData();
     } catch (err) {
-      showToast("Failed to update permissions", "error");
+      showToast(
+        err.response?.data?.message || "Failed to update permissions",
+        "error"
+      );
     }
   };
 
@@ -166,7 +189,10 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Admin access updated", "success");
       fetchData();
     } catch (err) {
-      showToast("Failed to update admin status", "error");
+      showToast(
+        err.response?.data?.message || "Failed to update admin status",
+        "error"
+      );
     }
   };
 
@@ -195,6 +221,7 @@ function AdminDashboard({ token, onLogout }) {
       image: "",
     });
   };
+
   const handleEventSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -215,7 +242,11 @@ function AdminDashboard({ token, onLogout }) {
       });
       fetchData();
     } catch (err) {
-      showToast("Failed to save event.", "error");
+      // ✅ DISPLAY ACTUAL SERVER ERROR (e.g. "Invalid Token" or "Title missing")
+      showToast(
+        err.response?.data?.message || "Failed to save event.",
+        "error"
+      );
     }
   };
   const deleteEventClick = (id) =>
@@ -245,13 +276,15 @@ function AdminDashboard({ token, onLogout }) {
       setProgForm({ title: "", code: "" });
       fetchData();
     } catch (err) {
-      showToast(err.response?.data?.message || "Failed.", "error");
+      showToast(
+        err.response?.data?.message || "Failed to save programme.",
+        "error"
+      );
     }
   };
   const deleteProgrammeClick = (id) =>
     setDeleteModal({ show: true, id: id, type: "programme" });
 
-  // --- GLOBAL DELETE ---
   const confirmDelete = async () => {
     const { id, type } = deleteModal;
     setDeleteModal({ show: false, id: null, type: null });
@@ -262,47 +295,71 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Item deleted.", "success");
       fetchData();
     } catch (err) {
-      showToast("Failed to delete.", "error");
+      showToast(err.response?.data?.message || "Failed to delete.", "error");
     }
   };
 
   return (
     <div className="admin-container">
-      <div className="header-centered">
-        <div style={{ position: "absolute", right: 20, top: 20 }}>
-          <button
-            onClick={onLogout}
-            className="delete-btn"
-            style={{ fontSize: "12px" }}
-          >
-            LOGOUT
-          </button>
-        </div>
-        <img src={logo} alt="ASCON Logo" className="admin-logo-main" />
-        <h1 className="admin-title" style={{ color: "#1B5E3A" }}>
-          ASCON Admin Portal
-        </h1>
-        <p className="admin-subtitle">
-          {canEdit ? "Super Admin Dashboard" : "View-Only Dashboard"}
-        </p>
+      {/* 2. NAVBAR */}
+      <NavBar
+        activeTab={activeTab}
+        setActiveTab={switchTab}
+        onLogout={onLogout}
+        userRole={userRole}
+      />
 
-        <div className="tabs-centered">
-          {["users", "events", "programmes"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => switchTab(tab)}
-              className={`approve-btn ${activeTab === tab ? "" : "inactive"}`}
+      {/* 3. SEARCH BAR (Floating below Navbar, Centered) */}
+      {activeTab === "users" && (
+        <div
+          style={{
+            marginTop: "20px",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              maxWidth: "400px",
+              width: "100%",
+              margin: "0 20px",
+            }}
+          >
+            <span
               style={{
-                backgroundColor: activeTab === tab ? "#1B5E3A" : "#ccc",
-                textTransform: "capitalize",
+                position: "absolute",
+                left: "15px",
+                top: "12px",
+                fontSize: "16px",
               }}
             >
-              {tab}
-            </button>
-          ))}
+              🔍
+            </span>
+            <input
+              type="text"
+              placeholder="Search by Name, Email or ID..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              style={{
+                padding: "12px 12px 12px 45px",
+                width: "100%",
+                borderRadius: "30px",
+                border: "1px solid #ddd",
+                outline: "none",
+                fontSize: "14px",
+                boxShadow: "0 4px 6px rgba(0,0,0,0.05)",
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* TOAST & MODAL */}
       {toast && (
         <Toast
           message={toast.message}
@@ -310,7 +367,6 @@ function AdminDashboard({ token, onLogout }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Confirm Deletion"
@@ -320,48 +376,55 @@ function AdminDashboard({ token, onLogout }) {
       />
 
       {/* RENDER ACTIVE TAB */}
-      {activeTab === "users" && (
-        <UsersTab
-          usersList={usersList}
-          canEdit={canEdit}
-          approveUser={approveUser}
-          toggleAdmin={toggleAdmin}
-          toggleEditPermission={toggleEditPermission}
-          deleteUserClick={deleteUserClick}
-          // ✅ Pass Pagination Props
-          page={page}
-          setPage={setPage}
-          totalPages={totalPages}
-        />
-      )}
+      <div
+        className="content-padding"
+        style={{
+          padding: "0 20px",
+          marginTop: activeTab === "users" ? "0px" : "30px",
+        }}
+      >
+        {activeTab === "users" && (
+          <UsersTab
+            usersList={usersList}
+            canEdit={canEdit}
+            approveUser={approveUser}
+            toggleAdmin={toggleAdmin}
+            toggleEditPermission={toggleEditPermission}
+            deleteUserClick={deleteUserClick}
+            page={page}
+            setPage={setPage}
+            totalPages={totalPages}
+          />
+        )}
 
-      {activeTab === "events" && (
-        <EventsTab
-          eventsList={eventsList}
-          canEdit={canEdit}
-          editingId={editingId}
-          eventForm={eventForm}
-          setEventForm={setEventForm}
-          handleEventSubmit={handleEventSubmit}
-          cancelEditEvent={cancelEditEvent}
-          startEditEvent={startEditEvent}
-          deleteEventClick={deleteEventClick}
-        />
-      )}
+        {activeTab === "events" && (
+          <EventsTab
+            eventsList={eventsList}
+            canEdit={canEdit}
+            editingId={editingId}
+            eventForm={eventForm}
+            setEventForm={setEventForm}
+            handleEventSubmit={handleEventSubmit}
+            cancelEditEvent={cancelEditEvent}
+            startEditEvent={startEditEvent}
+            deleteEventClick={deleteEventClick}
+          />
+        )}
 
-      {activeTab === "programmes" && (
-        <ProgrammesTab
-          programmesList={programmesList}
-          canEdit={canEdit}
-          editingId={editingId}
-          progForm={progForm}
-          setProgForm={setProgForm}
-          handleProgrammeSubmit={handleProgrammeSubmit}
-          cancelEditProgramme={cancelEditProgramme}
-          startEditProgramme={startEditProgramme}
-          deleteProgrammeClick={deleteProgrammeClick}
-        />
-      )}
+        {activeTab === "programmes" && (
+          <ProgrammesTab
+            programmesList={programmesList}
+            canEdit={canEdit}
+            editingId={editingId}
+            progForm={progForm}
+            setProgForm={setProgForm}
+            handleProgrammeSubmit={handleProgrammeSubmit}
+            cancelEditProgramme={cancelEditProgramme}
+            startEditProgramme={startEditProgramme}
+            deleteProgrammeClick={deleteProgrammeClick}
+          />
+        )}
+      </div>
     </div>
   );
 }

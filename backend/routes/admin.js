@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Event = require("../models/Event");
 const Programme = require("../models/Programme");
 const jwt = require("jsonwebtoken");
+const admin = require("../config/firebase");
 
 // ==========================================
 // MIDDLEWARE
@@ -35,7 +36,6 @@ const verifyEditor = (req, res, next) => {
     if (!verified.isAdmin)
       return res.status(403).json({ message: "Admin access required" });
 
-    // ✅ CHECK: Is this admin allowed to edit?
     if (!verified.canEdit) {
       return res
         .status(403)
@@ -53,20 +53,34 @@ const verifyEditor = (req, res, next) => {
 // 1. USER MANAGEMENT
 // ==========================================
 
-// GET ALL USERS (With Pagination)
+// GET ALL USERS (With Search & Pagination)
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
+    const search = req.query.search || ""; // ✅ Added Search
+
+    // Build Query
+    let query = {};
+    if (search) {
+      query = {
+        $or: [
+          { fullName: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { alumniId: { $regex: search, $options: "i" } },
+        ],
+      };
+    }
+
     const skip = (page - 1) * limit;
 
-    const users = await User.find()
+    const users = await User.find(query)
       .select("-password")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const total = await User.countDocuments();
+    const total = await User.countDocuments(query);
 
     res.json({
       users,
@@ -120,8 +134,7 @@ router.put("/users/:id/toggle-admin", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ THIS WAS MISSING: VERIFY USER ROUTE
-// (Essential backup for manual approvals)
+// ✅ VERIFY USER (With Smart ID Generation)
 router.put("/users/:id/verify", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -131,20 +144,31 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
       return res.status(400).json({ message: "User is already verified." });
     }
 
-    // Auto-Generate ID if missing
+    // ✅ AUTO-GENERATE ID (Smart Logic)
     if (!user.alumniId) {
-      const lastUser = await User.findOne({ alumniId: { $ne: "" } }).sort({
-        _id: -1,
-      });
+      // 1. Determine Year (Use User's class year, or current year)
+      const targetYear = user.yearOfAttendance
+        ? user.yearOfAttendance.toString()
+        : new Date().getFullYear().toString();
+
+      // 2. Find last user of THIS SPECIFIC YEAR
+      const regex = new RegExp(`ASC/${targetYear}/`);
+      const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort(
+        { _id: -1 }
+      );
+
       let nextNum = 1;
       if (lastUser && lastUser.alumniId) {
         const parts = lastUser.alumniId.split("/");
         const lastNum = parseInt(parts[parts.length - 1]);
         if (!isNaN(lastNum)) nextNum = lastNum + 1;
       }
-      const currentYear = new Date().getFullYear();
+
       const paddedNum = nextNum.toString().padStart(4, "0");
-      user.alumniId = `ASC/${currentYear}/${paddedNum}`;
+      user.alumniId = `ASC/${targetYear}/${paddedNum}`;
+
+      // Sync year just in case
+      if (!user.yearOfAttendance) user.yearOfAttendance = targetYear;
     }
 
     user.isVerified = true;
@@ -163,6 +187,8 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
 router.post("/events", verifyEditor, async (req, res) => {
   try {
     const { title, description, date, location, type, image } = req.body;
+
+    // 1. Save Event to DB
     const newEvent = new Event({
       title,
       description,
@@ -172,7 +198,44 @@ router.post("/events", verifyEditor, async (req, res) => {
       image,
     });
     await newEvent.save();
-    res.status(201).json({ message: "Event created!", event: newEvent });
+
+    // ✅ 2. SEND PUSH NOTIFICATION (The "Broadcast")
+    // Find all users who have a phone token
+    const usersWithTokens = await User.find({
+      fcmToken: { $exists: true, $ne: "" },
+    });
+
+    if (usersWithTokens.length > 0) {
+      const tokens = usersWithTokens.map((u) => u.fcmToken);
+
+      // Construct the message
+      const message = {
+        notification: {
+          title: `New Event: ${title}`,
+          body: `Join us at ${location}! ${description.substring(0, 50)}...`,
+        },
+        data: {
+          route: "event_detail",
+          eventId: newEvent._id.toString(), // Send ID so app can open it
+        },
+        tokens: tokens,
+      };
+
+      // Send via Firebase
+      try {
+        const response = await admin.messaging().sendMulticast(message);
+        console.log(
+          `📣 Notification sent! Success: ${response.successCount}, Fail: ${response.failureCount}`
+        );
+      } catch (notifyError) {
+        console.error("⚠️ Notification failed:", notifyError);
+        // We don't stop the request, just log the error
+      }
+    }
+
+    res
+      .status(201)
+      .json({ message: "Event created & Notified!", event: newEvent });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -219,6 +282,7 @@ router.post("/programmes", verifyEditor, async (req, res) => {
     const exists = await Programme.findOne({ title });
     if (exists)
       return res.status(400).json({ message: "Programme already exists." });
+
     const newProg = new Programme({ title, code, description });
     await newProg.save();
     res.status(201).json({ message: "Programme added!", programme: newProg });
@@ -236,8 +300,11 @@ router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
+// ✅ FIXED: Missing Variable Extraction
 router.put("/programmes/:id", verifyEditor, async (req, res) => {
   try {
+    const { title, code, description } = req.body; // 👈 This line was missing!
+
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
       { title, code, description },
@@ -250,19 +317,21 @@ router.put("/programmes/:id", verifyEditor, async (req, res) => {
 });
 
 // ✅ FORCE FIX ID ROUTE
-// Usage: PUT /api/admin/users/:id/fix-id
-// Body: { "year": "2005" }
 router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
   try {
     const { year } = req.body;
     const user = await User.findById(req.params.id);
-    
+
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // 1. Generate CORRECT ID
-    const targetYear = year ? year.toString() : new Date().getFullYear().toString();
+    const targetYear = year
+      ? year.toString()
+      : new Date().getFullYear().toString();
     const regex = new RegExp(`ASC/${targetYear}/`);
-    const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort({ _id: -1 });
+    const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort({
+      _id: -1,
+    });
 
     let nextNum = 1;
     if (lastUser && lastUser.alumniId) {

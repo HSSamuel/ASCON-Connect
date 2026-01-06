@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // ✅ PERFORMANCE UPGRADE
 import 'dart:convert';
 
 class DigitalIDCard extends StatelessWidget {
   final String userName;
   final String programme;
   final String year;
-  final String alumniID; // ✅ This is the ID we want to show
+  final String alumniID; // ✅ Shows the official ID
   final String imageUrl;
 
   const DigitalIDCard({
@@ -23,6 +24,7 @@ class DigitalIDCard extends StatelessWidget {
     const Color cardGreen = Color(0xFF1B5E3A);
 
     // Generate Verification Link for QR
+    // Replaces slashes (/) with dashes (-) for URL safety if needed
     final String verificationLink = "https://asconadmin.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
 
     return LayoutBuilder(
@@ -47,7 +49,7 @@ class DigitalIDCard extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                // Watermark
+                // Watermark Background
                 Positioned(
                   bottom: -20,
                   right: -20,
@@ -113,7 +115,16 @@ class DigitalIDCard extends StatelessWidget {
                                 child: CircleAvatar(
                                   radius: isDesktop ? 50 : 30,
                                   backgroundColor: Colors.grey[200],
-                                  backgroundImage: _getImageProvider(imageUrl),
+                                  
+                                  // ✅ 1. Try Loading Cached Image (if URL is valid)
+                                  backgroundImage: (imageUrl.isNotEmpty && !imageUrl.startsWith('data:'))
+                                      ? CachedNetworkImageProvider(imageUrl)
+                                      : null,
+
+                                  // ✅ 2. Fallback for Empty or Base64 Images
+                                  child: (imageUrl.isEmpty || imageUrl.startsWith('data:'))
+                                      ? _buildFallbackImage(imageUrl, isDesktop) 
+                                      : null,
                                 ),
                               ),
                               SizedBox(height: isDesktop ? 16 : 10),
@@ -183,15 +194,15 @@ class DigitalIDCard extends StatelessWidget {
 
                                 SizedBox(height: isDesktop ? 12 : 8),
 
-                                // ✅ NEW: VISIBLE ALUMNI ID TEXT
+                                // ✅ VISIBLE ALUMNI ID TEXT
                                 Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.black.withOpacity(0.2),
                                     borderRadius: BorderRadius.circular(4)
                                   ),
                                   child: Text(
-                                    "ID: $alumniID", // Shows "ID: ASC/2025/0002"
+                                    "ID: $alumniID", // e.g., "ID: ASC/2025/0002"
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: isDesktop ? 14 : 11,
@@ -238,13 +249,24 @@ class DigitalIDCard extends StatelessWidget {
     );
   }
 
-  ImageProvider? _getImageProvider(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) return null;
-    if (imagePath.startsWith('http')) return NetworkImage(imagePath);
-    try {
-      return MemoryImage(base64Decode(imagePath));
-    } catch (e) {
-      return null;
+  // ✅ HELPER: Handles Base64 Images & Missing Photos
+  Widget _buildFallbackImage(String imagePath, bool isDesktop) {
+    if (imagePath.startsWith('data:')) {
+      try {
+        return ClipOval(
+          child: Image.memory(
+            base64Decode(imagePath.split(',').last),
+            fit: BoxFit.cover,
+            width: isDesktop ? 100 : 60,
+            height: isDesktop ? 100 : 60,
+          ),
+        );
+      } catch (e) {
+        // Fallback if Base64 is corrupt
+        return Icon(Icons.person, color: Colors.grey, size: isDesktop ? 50 : 30);
+      }
     }
+    // Default Icon if completely empty
+    return Icon(Icons.person, color: Colors.grey, size: isDesktop ? 50 : 30);
   }
 }
