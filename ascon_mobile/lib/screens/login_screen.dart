@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
+import '../services/notification_service.dart'; // ✅ Import Notification Service
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'welcome_dialog.dart'; 
@@ -31,11 +32,20 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true; 
 
-  // ... (Helper methods: _handleLoginSuccess, _markWelcomeAsSeen, _navigateToHome remain the same) ...
-  // ... (For brevity, I am keeping the logic sections collapsed as they didn't change. 
-  //      If you need the full file again, let me know!) ...
+  // --- HELPER METHODS ---
 
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
+    // ✅ CRITICAL FIX: Force Token Sync immediately after login
+    // This ensures the server gets the FCM token now that we have an Auth Token.
+    if (!kIsWeb) {
+      try {
+        await NotificationService().init();
+        debugPrint("🔔 Token sync triggered after login");
+      } catch (e) {
+        debugPrint("⚠️ Failed to sync token on login: $e");
+      }
+    }
+
     bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
     if (hasSeenWelcome) {
       _navigateToHome(user['fullName']);
@@ -69,6 +79,8 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // --- LOGIN LOGIC ---
+
   Future<void> loginUser() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill in all fields"), backgroundColor: Colors.orange));
@@ -90,7 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> signInWithGoogle() async {
-    // ... (Google Sign In Logic remains exactly the same) ...
     try {
       setState(() => _isLoading = true);
       GoogleSignInAccount? googleUser;
@@ -141,27 +152,25 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 
-                // ✅ UPDATED LOGO: Shadow added back, but NO Padding
+                // ✅ UPDATED LOGO
                 Center(
                   child: Container(
                     height: 100, 
                     width: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      // ✅ Shadow Effect (Subtle in Dark Mode, Standard in Light Mode)
                       boxShadow: [
                         BoxShadow(
                           color: isDark ? Colors.black38 : Colors.black12,
                           blurRadius: 15,
-                          offset: const Offset(0, 8), // Drops the shadow downwards
+                          offset: const Offset(0, 8), 
                         )
                       ],
                     ),
-                    // ✅ ClipOval ensures the image stays circular
                     child: ClipOval(
                       child: Image.asset(
                         'assets/logo.png',
-                        fit: BoxFit.cover, // Fills the circle completely
+                        fit: BoxFit.cover, 
                         errorBuilder: (c, o, s) => Icon(Icons.school, size: 80, color: primaryColor),
                       ),
                     ),

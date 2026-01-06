@@ -33,7 +33,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // ✅ HARDCODED LIST
   final List<String> _programmes = [
     "Management Programme",
     "Computer Programme",
@@ -58,11 +57,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController = TextEditingController(text: widget.prefilledEmail ?? '');
   }
 
-  // ✅ NEW: Beautiful Success Dialog (Dynamic Colors)
+  // ✅ Success Dialog (With Navigation Fix)
   void _showSuccessDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = Theme.of(context).cardColor;
-    // final textColor = Theme.of(context).textTheme.bodyLarge?.color; // Unused variable removed
+    final primaryColor = Theme.of(context).primaryColor;
 
     showDialog(
       context: context,
@@ -70,32 +69,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
       builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          backgroundColor: bgColor, // ✅ Dynamic Background
+          backgroundColor: bgColor,
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Success Icon
                 Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.green[900] : Colors.green[50], // ✅ Dynamic
+                    color: isDark ? Colors.green[900] : Colors.green[50],
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.check_circle, color: Colors.green, size: 60),
                 ),
                 const SizedBox(height: 20),
                 
-                // Title
                 Text(
                   "Registration Successful!",
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: primaryColor),
                 ),
                 const SizedBox(height: 10),
                 
-                // Message
                 Text(
                   "Your account has been created successfully.\nPlease login to continue.",
                   textAlign: TextAlign.center,
@@ -103,19 +99,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 25),
                 
-                // Login Button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context); 
-                      Navigator.pushReplacement(
+                      // ✅ Clear stack to prevent back button loops
+                      Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).primaryColor,
+                      backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -175,16 +172,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Dynamic Theme Colors
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      // Background handled by Theme
       appBar: AppBar(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor, // ✅ Matches background
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: primaryColor),
@@ -200,13 +195,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 
-                // ✅ UPDATED LOGO: Matches Login Screen (No Padding, Large, Shadowed)
+                // ✅ LOGO
                 Center(
                   child: Container(
                     height: 100, width: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      // Shadow Effect
                       boxShadow: [
                         BoxShadow(
                           color: isDark ? Colors.black38 : Colors.black12,
@@ -215,11 +209,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         )
                       ],
                     ),
-                    // ClipOval for clean circle cut
                     child: ClipOval(
                       child: Image.asset(
                         'assets/logo.png', 
-                        fit: BoxFit.cover, // Fills the circle
+                        fit: BoxFit.cover,
                         errorBuilder: (c,o,s) => Icon(Icons.school, size: 80, color: primaryColor)
                       ),
                     ),
@@ -228,7 +221,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 
                 const SizedBox(height: 20),
 
-                // 2. HEADER TEXT
                 Text(
                   "Create Account",
                   textAlign: TextAlign.center,
@@ -249,21 +241,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _buildTextField("Phone Number", _phoneController, Icons.phone_outlined, isNumber: true),
                 const SizedBox(height: 16),
                 
-                // ✅ DROPDOWN (Now Dynamic)
+                // ✅ DROPDOWN (Matches Text Field Style)
                 DropdownButtonFormField<String>(
                   value: _selectedProgramme,
-                  dropdownColor: Theme.of(context).cardColor, // ✅ Fixes dropdown background
+                  dropdownColor: Theme.of(context).cardColor, 
                   decoration: InputDecoration(
                     labelText: "Programme Attended",
                     labelStyle: TextStyle(fontSize: 13, color: subTextColor),
                     prefixIcon: Icon(Icons.school_outlined, color: primaryColor, size: 20),
+                    // ✅ Added Border to match TextFields
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   items: _programmes.map((prog) {
                     return DropdownMenuItem(
                       value: prog,
                       child: Text(
                         prog,
-                        style: TextStyle(fontSize: 14, color: textColor), // ✅ Dynamic text
+                        style: TextStyle(fontSize: 14, color: textColor),
                         overflow: TextOverflow.ellipsis,
                       ),
                     );
@@ -310,7 +304,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     Text("Already a member? ", style: TextStyle(color: subTextColor)),
                     GestureDetector(
-                      onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                      onTap: () {
+                        // ✅ Clear stack to prevent loop
+                        Navigator.pushAndRemoveUntil(
+                          context, 
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false
+                        );
+                      },
                       child: Text("Login", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
                     ),
                   ],
@@ -324,7 +325,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ Updated Helper: Uses Global Theme automatically
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPassword = false, bool isNumber = false}) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -334,12 +334,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       controller: controller,
       obscureText: isPassword ? _obscurePassword : false,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: TextStyle(fontSize: 14, color: textColor), // ✅ Input Text
+      style: TextStyle(fontSize: 14, color: textColor),
       validator: (value) => value == null || value.isEmpty ? 'Field required' : null,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(fontSize: 13, color: subTextColor),
         prefixIcon: Icon(icon, color: primaryColor, size: 20),
+        // ✅ Added Border to match Login Screen style
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         suffixIcon: isPassword 
           ? IconButton(
               icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
