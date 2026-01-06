@@ -127,7 +127,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
                 // 2. THE GLOWING TEXT
                 Text(
-                  "... the natural place for human capacity building",
+                  "... the natural place for human capacity building.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16, 

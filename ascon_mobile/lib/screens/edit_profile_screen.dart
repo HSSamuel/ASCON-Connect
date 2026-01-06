@@ -1,9 +1,8 @@
-import 'dart:io'; // ✅ Required for File
+// ❌ REMOVE: import 'dart:io'; 
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../services/data_service.dart'; // ✅ Import DataService
-import '../services/auth_service.dart'; // Optional, for logout if needed
+import '../services/data_service.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -16,7 +15,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final DataService _dataService = DataService(); // ✅ Use the Service
+  final DataService _dataService = DataService(); 
   bool _isLoading = false;
 
   late TextEditingController _bioController;
@@ -28,8 +27,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _otherProgrammeController;
 
   String? _selectedProgramme;
-  Uint8List? _selectedImageBytes; // For Preview
-  XFile? _pickedFile; // For Upload
+  Uint8List? _selectedImageBytes; 
+  XFile? _pickedFile; // ✅ We keep this as XFile
   String? _currentUrl;
 
   final List<String> _programmeOptions = [
@@ -50,7 +49,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ Pre-fill data
     _bioController = TextEditingController(text: widget.userData['bio'] ?? '');
     _jobController = TextEditingController(text: widget.userData['jobTitle'] ?? '');
     _orgController = TextEditingController(text: widget.userData['organization'] ?? '');
@@ -103,14 +101,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // ✅ NEW CLEAN SAVE FUNCTION
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // 1. Prepare Data Map
       final Map<String, String> fields = {
         'bio': _bioController.text.trim(),
         'jobTitle': _jobController.text.trim(),
@@ -120,7 +116,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'yearOfAttendance': _yearController.text.trim(),
       };
 
-      // 2. Handle Programme Logic
       if (_selectedProgramme == "Other") {
         fields['programmeTitle'] = "Other";
         fields['customProgramme'] = _otherProgrammeController.text.trim();
@@ -129,20 +124,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         fields['customProgramme'] = "";
       }
 
-      // 3. Prepare Image File (Convert XFile to File)
-      File? imageFile;
-      if (_pickedFile != null) {
-        imageFile = File(_pickedFile!.path);
-      }
-
-      // 4. Call Service
-      // This handles all the HTTP Multipart complexity for us!
-      final bool success = await _dataService.updateProfile(fields, imageFile);
+      // ✅ FIX: PASS XFILE DIRECTLY (Do not convert to File)
+      final bool success = await _dataService.updateProfile(fields, _pickedFile);
 
       if (!mounted) return;
 
       if (success) {
-        Navigator.pop(context, true); // Return 'true' so ProfileScreen reloads
+        Navigator.pop(context, true); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Profile Updated Successfully!")),
         );
@@ -169,7 +157,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
-  // ✅ Updated Helper: Uses Global Theme
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false}) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -219,7 +206,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           key: _formKey,
           child: Column(
             children: [
-              // --- AVATAR ---
               Center(
                 child: Stack(
                   children: [
@@ -251,13 +237,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 20),
 
-              // --- FIELDS ---
               _buildTextField("Job Title", _jobController, Icons.work),
               const SizedBox(height: 12),
               _buildTextField("Organization", _orgController, Icons.business),
               const SizedBox(height: 12),
 
-              // --- PROGRAMME DROPDOWN ---
               DropdownButtonFormField<String>(
                 value: _selectedProgramme,
                 isExpanded: true,
@@ -299,7 +283,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               const SizedBox(height: 12),
 
-              // SIDE-BY-SIDE: Class Year & Phone
               Row(
                 children: [
                   Expanded(
@@ -316,7 +299,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               _buildTextField("LinkedIn URL", _linkedinController, Icons.link),
               const SizedBox(height: 12),
               
-              // ✅ BIO FIELD (Ensures saving works)
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
 
               const SizedBox(height: 24),

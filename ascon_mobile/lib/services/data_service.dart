@@ -1,15 +1,17 @@
 import 'dart:convert';
-import 'dart:io'; // For SocketException, File
+// ❌ REMOVE: import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart'; 
+import 'package:http_parser/http_parser.dart'; // ✅ REQUIRED for MediaType
+import 'package:mime/mime.dart'; // Optional: If you want auto-detection, but hardcoding 'image/jpeg' is often safer for Cloudinary if you compress
 import '../config.dart';
-import '../main.dart'; // Required for navigatorKey
-import '../screens/login_screen.dart'; // Required for redirection
+import '../main.dart'; 
+import '../screens/login_screen.dart'; 
 
 class DataService {
   
-  // Helper to get headers with the token
   Future<Map<String, String>> _getHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth_token') ?? '';
@@ -20,13 +22,11 @@ class DataService {
     };
   }
 
-  // ✅ Helper: Save Data to Cache
   Future<void> _cacheData(String key, dynamic data) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, jsonEncode(data));
   }
 
-  // ✅ Helper: Get Data from Cache
   Future<dynamic> _getCachedData(String key) async {
     final prefs = await SharedPreferences.getInstance();
     final String? cachedString = prefs.getString(key);
@@ -74,13 +74,12 @@ class DataService {
       return data;
     } catch (e) {
       print("⚠️ Network Error. Trying Cache...");
-      return null; // Profile is harder to cache simply, usually strictly online
+      return null; 
     }
   }
 
-  // ✅ 4. UPDATE PROFILE (Supports Image + Text)
-  // This was the missing piece!
-  Future<bool> updateProfile(Map<String, String> fields, File? imageFile) async {
+  // ✅ 4. UPDATE PROFILE (With Strict Content-Type)
+  Future<bool> updateProfile(Map<String, String> fields, XFile? imageFile) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -88,26 +87,36 @@ class DataService {
 
       final uri = Uri.parse('${AppConfig.baseUrl}/api/profile/update');
       
-      // We use MultipartRequest because the backend expects file upload logic
       final request = http.MultipartRequest('PUT', uri);
 
-      // Headers
       request.headers.addAll({
         'auth-token': token,
       });
 
-      // Add Text Fields (Bio, Name, etc.)
       request.fields.addAll(fields);
 
-      // Add Image File (if user selected one)
       if (imageFile != null) {
-        request.files.add(await http.MultipartFile.fromPath(
-          'profilePicture', // Must match backend field name
-          imageFile.path,
+        final bytes = await imageFile.readAsBytes();
+        
+        // ✅ FIX: Explicitly tell Cloudinary this is an Image
+        // This ensures the backend treats it as 'image/jpeg' or 'image/png'
+        // instead of 'application/octet-stream' (which Cloudinary rejects).
+        
+        String mimeType = "image/jpeg"; // Default
+        if (imageFile.name.toLowerCase().endsWith(".png")) {
+          mimeType = "image/png";
+        }
+        
+        var type = MediaType.parse(mimeType);
+
+        request.files.add(http.MultipartFile.fromBytes(
+          'profilePicture',
+          bytes,
+          filename: imageFile.name,
+          contentType: type, // ✅ EXPLICIT CONTENT TYPE
         ));
       }
 
-      // Send Request
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
@@ -124,14 +133,12 @@ class DataService {
     }
   }
 
-  // --- 2. EVENTS (Offline Ready) ---
+  // --- 2. EVENTS ---
   Future<List<dynamic>> fetchEvents() async {
     const String cacheKey = 'cached_events';
-
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/events');
-
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
       
@@ -143,27 +150,19 @@ class DataService {
       } else if (data is Map && data.containsKey('data')) {
         events = data['data'];
       }
-
-      // ✅ SUCCESS: Save to Cache
       await _cacheData(cacheKey, events);
       return events;
-
     } catch (e) {
-      // ✅ FAILURE: Load from Cache
-      print("⚠️ Offline Mode: Loading cached events.");
       final cached = await _getCachedData(cacheKey);
-      if (cached != null && cached is List) {
-        return cached;
-      }
-      return []; // No internet AND no cache
+      if (cached != null && cached is List) return cached;
+      return []; 
     }
   }
 
-  // --- 3. DIRECTORY (Offline Ready) ---
+  // --- 3. DIRECTORY ---
   Future<List<dynamic>> fetchDirectory({String query = ""}) async {
     final bool isDefaultFetch = query.isEmpty;
     const String cacheKey = 'cached_directory';
-
     try {
       final headers = await _getHeaders();
       String endpoint = '${AppConfig.baseUrl}/api/directory';
@@ -180,18 +179,12 @@ class DataService {
         alumni = data['data']; 
       }
       
-      if (isDefaultFetch) {
-        await _cacheData(cacheKey, alumni);
-      }
+      if (isDefaultFetch) await _cacheData(cacheKey, alumni);
       return alumni;
-
     } catch (e) {
       if (isDefaultFetch) {
-        print("⚠️ Offline Mode: Loading cached directory.");
         final cached = await _getCachedData(cacheKey);
-        if (cached != null && cached is List) {
-          return cached;
-        }
+        if (cached != null && cached is List) return cached;
       }
       return [];
     }

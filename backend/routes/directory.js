@@ -2,7 +2,7 @@ const router = require("express").Router();
 const User = require("../models/User");
 
 // =========================================================
-// 1. PUBLIC DIRECTORY SEARCH (With Privacy Shield)
+// 1. PUBLIC DIRECTORY SEARCH
 // =========================================================
 // @route   GET /api/directory
 router.get("/", async (req, res) => {
@@ -11,7 +11,6 @@ router.get("/", async (req, res) => {
 
     let query = { isVerified: true };
 
-    // ✅ Retaining your Search Logic
     if (search) {
       const isYear = !isNaN(search);
       if (isYear) {
@@ -21,20 +20,29 @@ router.get("/", async (req, res) => {
       }
     }
 
-    // Fetch users (Sorting & Limit kept same as original)
+    // Fetch users
     const alumniList = await User.find(query)
       .sort({ yearOfAttendance: -1 })
       .limit(50);
 
-    // ✅ PRIVACY SHIELD:
-    // Instead of sending the whole user object, we only send these specific fields.
-    // This protects emails, phone numbers, and passwords.
+    // ✅ FIXED PRIVACY SHIELD:
+    // We ADD 'bio', 'jobTitle', 'organization', etc. here.
+    // If you don't add them, the mobile app receives "undefined".
     const safeList = alumniList.map((user) => ({
+      _id: user._id,
       fullName: user.fullName,
       profilePicture: user.profilePicture,
       programmeTitle: user.programmeTitle,
       yearOfAttendance: user.yearOfAttendance,
       alumniId: user.alumniId,
+
+      // 👇 THESE WERE MISSING - ADD THEM NOW 👇
+      jobTitle: user.jobTitle,
+      organization: user.organization,
+      bio: user.bio,
+      linkedin: user.linkedin,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
     }));
 
     res.json(safeList);
@@ -44,35 +52,32 @@ router.get("/", async (req, res) => {
 });
 
 // =========================================================
-// 2. VERIFICATION ENDPOINT (For QR Codes)
+// 2. VERIFICATION ENDPOINT
 // =========================================================
-// @route   GET /api/directory/verify/:id
 router.get("/verify/:id", async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Convert "ASC-2025-0002" -> "ASC/2025/0002"
     const formattedId = id.replace(/-/g, "/");
-
     const user = await User.findOne({ alumniId: formattedId });
 
     if (!user) {
       return res.status(404).json({ message: "ID not found" });
     }
 
-    // ✅ STATUS LOGIC (Dynamic)
     let status = "Active";
     if (!user.isVerified) status = "Pending";
-    // if (user.isSuspended) status = "Suspended"; // (Future-proof line)
 
-    // ✅ PRIVACY SHIELD: Explicitly construct public profile
     const publicProfile = {
       fullName: user.fullName,
       profilePicture: user.profilePicture,
       programmeTitle: user.programmeTitle,
       yearOfAttendance: user.yearOfAttendance,
       alumniId: user.alumniId,
-      status: status, // Send calculated status (Active/Pending)
+      status: status,
+
+      // ✅ Add these here too for QR code scanning
+      jobTitle: user.jobTitle,
+      organization: user.organization,
     };
 
     res.json(publicProfile);

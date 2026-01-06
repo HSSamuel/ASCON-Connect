@@ -9,7 +9,7 @@ class EventDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ AUTO-DETECT THEME COLORS
+    // ✅ Dynamic Theme Colors
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
@@ -18,7 +18,7 @@ class EventDetailScreen extends StatelessWidget {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dividerColor = Theme.of(context).dividerColor;
 
-    // Extract data safely
+    // Extract data
     final String image = eventData['image'] ?? 'https://via.placeholder.com/600';
     final String title = eventData['title'] ?? 'Event Details';
     final String location = eventData['location'] ?? 'ASCON Complex';
@@ -26,47 +26,52 @@ class EventDetailScreen extends StatelessWidget {
         ? eventData['description']!
         : "No detailed description available for this event.";
 
-    String formattedDate = eventData['date'] ?? 'TBA';
+    // Date Parsing logic
+    String formattedDate = eventData['date'] ?? 'Date to be announced';
     String rawDateString = eventData['rawDate'] ?? eventData['date'] ?? '';
 
     if (rawDateString.isNotEmpty) {
       try {
         DateTime dt = DateTime.parse(rawDateString);
-        formattedDate = DateFormat("EEE, d MMM y\n'at' h:mm a").format(dt); 
+        // Full Elegant Date: "Saturday, 12 Dec 2025"
+        formattedDate = DateFormat("EEEE, d MMM y").format(dt); 
+        // Optional: Add Time if available in your DB
+        // formattedDate += "\n${DateFormat('h:mm a').format(dt)}"; 
       } catch (e) {
         // Keep original if parsing fails
       }
     }
 
     return Scaffold(
-      backgroundColor: scaffoldBg, // ✅ Dynamic Background
+      backgroundColor: scaffoldBg,
       body: CustomScrollView(
         slivers: [
-          // --- 1. COMPACT APP BAR ---
+          // --- 1. HERO HEADER ---
           SliverAppBar(
-            expandedHeight: 220.0,
+            expandedHeight: 250.0, // Taller image for impact
             pinned: true,
-            backgroundColor: primaryColor, // ✅ Dynamic Primary Color
+            backgroundColor: primaryColor,
+            elevation: 0,
             leading: IconButton(
               icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Colors.black26, 
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3), 
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_back, color: Colors.white, size: 18),
+                child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
               ),
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
               IconButton(
                 icon: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                    color: Colors.black26,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.share, color: Colors.white, size: 18),
+                  child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
                 ),
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -74,7 +79,7 @@ class EventDetailScreen extends StatelessWidget {
                   );
                 },
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
@@ -83,17 +88,19 @@ class EventDetailScreen extends StatelessWidget {
                   Image.network(
                     image,
                     fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(color: Colors.grey[800]), // Dark placeholder
+                    errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
                   ),
+                  // Dark Gradient from bottom
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.black.withOpacity(0.4),
                           Colors.transparent,
+                          Colors.black.withOpacity(0.7),
                         ],
+                        stops: const [0.6, 1.0],
                       ),
                     ),
                   ),
@@ -102,154 +109,142 @@ class EventDetailScreen extends StatelessWidget {
             ),
           ),
 
-          // --- 2. MAIN CONTENT SHEET ---
+          // --- 2. CONTENT BODY ---
           SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -20), 
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cardColor, // ✅ Dynamic Content Background
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                  boxShadow: [
-                    if (!isDark) // Only show shadow in light mode
-                      const BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, -4))
-                  ],
-                ),
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: dividerColor, // ✅ Dynamic Handle Color
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Category Tag
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: Container(
+              transform: Matrix4.translationValues(0, -20, 0), // Pull up overlap
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Drag Handle / Decor
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
                       decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: primaryColor.withOpacity(0.2)),
-                      ),
-                      child: Text(
-                        "OFFICIAL EVENT",
-                        style: GoogleFonts.inter(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: primaryColor,
-                          letterSpacing: 0.5,
-                        ),
+                        color: dividerColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                  ),
+                  const SizedBox(height: 20),
 
-                    // Title
-                    Text(
-                      title,
+                  // Category Tag
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      "OFFICIAL EVENT",
                       style: GoogleFonts.inter(
-                        fontSize: 22,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        color: textColor, // ✅ Dynamic Title Color
-                        height: 1.2,
+                        color: primaryColor,
+                        letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                  ),
+                  const SizedBox(height: 12),
 
-                    // --- INFO GRID ROW (SIDE-BY-SIDE) ---
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start, 
-                      children: [
-                        Expanded(
-                          child: _buildInfoItem(context, Icons.calendar_today, "Date", formattedDate),
-                        ),
-                        const SizedBox(width: 12), 
-                        Expanded(
-                          child: _buildInfoItem(context, Icons.location_on_outlined, "Location", location),
-                        ),
-                      ],
+                  // MAIN TITLE
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: textColor,
+                      height: 1.2,
                     ),
+                  ),
+                  const SizedBox(height: 24),
 
-                    const SizedBox(height: 24), 
-                    Divider(color: dividerColor, thickness: 1), // ✅ Dynamic Divider
-                    const SizedBox(height: 16),
+                  // --- CLEAN INFO ROWS (No Boxes) ---
+                  _buildInfoRow(context, Icons.calendar_today_outlined, "Date", formattedDate),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(color: dividerColor.withOpacity(0.5), height: 1),
+                  ),
+                  _buildInfoRow(context, Icons.location_on_outlined, "Location", location),
+                  
+                  const SizedBox(height: 30),
 
-                    // --- DESCRIPTION SECTION ---
-                    Text(
-                      "About Event",
-                      style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor
-                      ),
+                  // --- DESCRIPTION ---
+                  Text(
+                    "About Event",
+                    style: GoogleFonts.inter(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      description,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        height: 1.5,
-                        color: subTextColor, // ✅ Dynamic Text Color
-                      ),
-                      textAlign: TextAlign.justify, 
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    description,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      height: 1.6,
+                      color: subTextColor,
                     ),
-                    
-                    const SizedBox(height: 30), 
-                  ],
-                ),
+                    textAlign: TextAlign.justify, 
+                  ),
+                  
+                  const SizedBox(height: 100), // Spacing for bottom bar
+                ],
               ),
             ),
           ),
         ],
       ),
 
-      // --- 3. COMPACT BOTTOM BAR ---
+      // --- 3. FLOATING BOTTOM BAR ---
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: cardColor, // ✅ Dynamic Bottom Bar
+          color: cardColor,
           boxShadow: [
-            if (!isDark)
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, -3))
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
+            )
           ],
         ),
         child: SafeArea(
           child: Row(
             children: [
+              // Add to Calendar Button
               Container(
-                width: 45, 
-                height: 45,
                 decoration: BoxDecoration(
                   color: primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: IconButton(
-                  icon: Icon(Icons.calendar_month, color: primaryColor, size: 20),
-                  padding: EdgeInsets.zero,
+                  icon: Icon(Icons.calendar_month_outlined, color: primaryColor),
                   onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Add to Calendar coming soon!")),
-                      );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Calendar integration coming soon!")),
+                    );
                   },
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               
+              // Register Button
               Expanded(
                 child: SizedBox(
-                  height: 45,
+                  height: 50,
                   child: ElevatedButton(
                     onPressed: () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: const Text("Registration Portal Opening Soon!"),
+                          content: const Text("Registration Opening Soon"),
                           backgroundColor: primaryColor,
                         ),
                       );
@@ -257,12 +252,15 @@ class EventDetailScreen extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Text(
                       "Register Now",
-                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.inter(
+                        fontSize: 16, 
+                        fontWeight: FontWeight.bold
+                      ),
                     ),
                   ),
                 ),
@@ -274,50 +272,51 @@ class EventDetailScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER WIDGET ---
-  Widget _buildInfoItem(BuildContext context, IconData icon, String label, String value) {
-    // ✅ Dynamic Colors for Info Box
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final boxColor = isDark ? Colors.grey[800] : Colors.grey[50];
-    final borderColor = Theme.of(context).dividerColor;
-    final labelColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final valueColor = Theme.of(context).textTheme.bodyLarge?.color;
+  // --- HELPER: Cleaner Info Row ---
+  Widget _buildInfoRow(BuildContext context, IconData icon, String label, String value) {
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final primaryColor = Theme.of(context).primaryColor;
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 80),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: boxColor, // ✅ Dynamic Background
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borderColor), // ✅ Dynamic Border
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: primaryColor.withOpacity(0.05),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: primaryColor),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 14, color: labelColor), 
-              const SizedBox(width: 5),
               Text(
-                label,
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: labelColor),
+                label.toUpperCase(),
+                style: GoogleFonts.inter(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: subTextColor?.withOpacity(0.7),
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                  height: 1.3,
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 3, 
-            overflow: TextOverflow.ellipsis, 
-            style: GoogleFonts.inter(
-              fontSize: 13, 
-              fontWeight: FontWeight.bold, 
-              color: valueColor, // ✅ Dynamic Text
-              height: 1.2, 
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

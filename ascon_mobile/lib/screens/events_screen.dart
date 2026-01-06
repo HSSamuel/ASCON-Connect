@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart'; 
 import '../services/data_service.dart'; 
 import 'event_detail_screen.dart';
 
@@ -41,14 +42,15 @@ class _EventsScreenState extends State<EventsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           "News & Events", 
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18)
         ),
-        // ✅ Background color is now handled by the Theme (Green in Day, Dark Green in Night)
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
       ),
-      backgroundColor: scaffoldBg, // ✅ Dynamic
+      backgroundColor: scaffoldBg,
       
       body: RefreshIndicator(
         onRefresh: _loadEvents,
@@ -57,9 +59,10 @@ class _EventsScreenState extends State<EventsScreen> {
             ? Center(child: CircularProgressIndicator(color: primaryColor))
             : _events.isEmpty
                 ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(12),
+                : ListView.separated( 
+                    padding: const EdgeInsets.all(16),
                     itemCount: _events.length,
+                    separatorBuilder: (ctx, i) => const SizedBox(height: 20),
                     itemBuilder: (context, index) {
                       return _buildEventCard(_events[index]);
                     },
@@ -69,18 +72,17 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Widget _buildEmptyState() {
-    // ✅ Dynamic Colors for Empty State
     final color = Theme.of(context).textTheme.bodyMedium?.color;
 
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.event_note, size: 50, color: color?.withOpacity(0.5)),
-          const SizedBox(height: 12),
+          Icon(Icons.event_note, size: 60, color: color?.withOpacity(0.3)),
+          const SizedBox(height: 16),
           Text(
             "No news or events yet.",
-            style: TextStyle(fontSize: 15, color: color),
+            style: GoogleFonts.inter(fontSize: 16, color: color, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -95,23 +97,36 @@ class _EventsScreenState extends State<EventsScreen> {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final primaryColor = Theme.of(context).primaryColor;
 
-    String dateString = "TBD";
+    // --- 1. SMART DATE PARSING ---
+    String month = "TBD";
+    String day = "--";
+    String fullDateString = "Date to be announced";
+    
     try {
       if (event['date'] != null) {
         final date = DateTime.parse(event['date']);
-        dateString = DateFormat('MMM dd, yyyy').format(date);
+        month = DateFormat('MMM').format(date).toUpperCase(); // e.g. DEC
+        day = DateFormat('dd').format(date); // e.g. 25
+        fullDateString = DateFormat('MMMM d, yyyy').format(date);
       }
     } catch (e) {
-      dateString = event['date'] ?? "Unknown";
+      // If parsing fails, stick to defaults
     }
 
+    final String title = event['title']?.toString() ?? 'No Title';
+    final String location = event['location']?.toString() ?? 'ASCON HQ';
+    final String imageUrl = event['image']?.toString() ?? 'https://via.placeholder.com/600x300';
+    final String type = event['type'] ?? 'News';
+    final String description = event['description']?.toString() ?? 'No details available.';
+
+    // Safe Data Payload for Detail Screen
     final Map<String, String> safeEventData = {
-      'title': event['title']?.toString() ?? 'No Title',
-      'date': dateString, 
+      'title': title,
+      'date': fullDateString, 
       'rawDate': event['date']?.toString() ?? '', 
-      'location': event['location']?.toString() ?? 'ASCON HQ',
-      'image': event['image']?.toString() ?? 'https://via.placeholder.com/600',
-      'description': event['description']?.toString() ?? 'No description available.',
+      'location': location,
+      'image': imageUrl,
+      'description': description,
     };
 
     return GestureDetector(
@@ -121,105 +136,135 @@ class _EventsScreenState extends State<EventsScreen> {
           MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
         );
       },
-      child: Card(
-        color: cardColor, // ✅ Dynamic Background
-        margin: const EdgeInsets.only(bottom: 12),
-        elevation: isDark ? 0 : 1, // Remove shadow in dark mode for cleaner look
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: isDark ? BorderSide(color: Colors.grey[800]!) : BorderSide.none, // Subtle border in dark mode
+      child: Container(
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              )
+          ],
         ),
+        clipBehavior: Clip.antiAlias, // Ensures image doesn't bleed out
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Green Line
-            Container(
-              height: 4,
-              decoration: BoxDecoration(
-                color: primaryColor,
-                borderRadius: const BorderRadius.only(topLeft: Radius.circular(10), topRight: Radius.circular(10)),
-              ),
+            // --- 2. HERO IMAGE TOP SECTION ---
+            Stack(
+              children: [
+                Container(
+                  height: 150,
+                  width: double.infinity,
+                  color: isDark ? Colors.grey[800] : Colors.grey[200],
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => Icon(Icons.image_not_supported, color: Colors.grey[400], size: 50),
+                  ),
+                ),
+                // Gradient Overlay for readability
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.6),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Type Badge (News/Event)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: primaryColor,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    ),
+                    child: Text(
+                      type.toUpperCase(),
+                      style: GoogleFonts.inter(
+                        fontSize: 10, 
+                        fontWeight: FontWeight.bold, 
+                        color: Colors.white,
+                        letterSpacing: 0.5
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            
+
+            // --- 3. CARD CONTENT ---
             Padding(
-              padding: const EdgeInsets.all(12.0), 
-              child: Column(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // ✅ Dynamic Badge Background
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : Colors.green[50], 
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          event['type'] ?? 'News', 
-                          style: TextStyle(
-                            fontSize: 10, 
-                            fontWeight: FontWeight.bold, 
-                            color: isDark ? Colors.green[300] : primaryColor
+                  // CALENDAR LEAF (Date Badge)
+                  _buildDateBadge(context, month, day),
+                  
+                  const SizedBox(width: 16),
+                  
+                  // INFO COLUMN
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: textColor,
+                            height: 1.3
                           ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      Text(
-                        dateString,
-                        style: TextStyle(fontSize: 11, color: subTextColor),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 8),
-
-                  Text(
-                    event['title'] ?? 'No Title',
-                    style: TextStyle(
-                      fontSize: 16, 
-                      fontWeight: FontWeight.bold, 
-                      color: textColor, // ✅ Dynamic Text
-                      height: 1.3
-                    ),
-                  ),
-
-                  const SizedBox(height: 6),
-
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, size: 12, color: subTextColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        event['location'] ?? 'Publication Dept',
-                        style: TextStyle(fontSize: 12, color: subTextColor),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    event['description'] ?? '',
-                    maxLines: 3, 
-                    overflow: TextOverflow.ellipsis, 
-                    textAlign: TextAlign.justify, 
-                    style: TextStyle(
-                      fontSize: 13, 
-                      color: isDark ? Colors.grey[400] : Colors.grey[800], // ✅ Readable Grey
-                      height: 1.5
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 10),
-
-                  Text(
-                    "Read More",
-                    style: TextStyle(
-                      fontSize: 12, 
-                      fontWeight: FontWeight.w600, 
-                      color: primaryColor,
-                      decoration: TextDecoration.underline
+                        const SizedBox(height: 6),
+                        
+                        Row(
+                          children: [
+                            Icon(Icons.location_on, size: 14, color: subTextColor),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                location,
+                                style: GoogleFonts.inter(fontSize: 12, color: subTextColor),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 12),
+                        
+                        // "View Details" Link
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            "View Details →",
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: primaryColor,
+                            ),
+                          ),
+                        )
+                      ],
                     ),
                   ),
                 ],
@@ -227,6 +272,52 @@ class _EventsScreenState extends State<EventsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // --- HELPER: The "Calendar Leaf" Badge ---
+  Widget _buildDateBadge(BuildContext context, String month, String day) {
+    final primaryColor = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      width: 55,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: primaryColor.withOpacity(0.2)),
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: primaryColor.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            month, 
+            style: GoogleFonts.inter(
+              fontSize: 12, 
+              fontWeight: FontWeight.bold, 
+              color: primaryColor
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            day, 
+            style: GoogleFonts.inter(
+              fontSize: 18, 
+              fontWeight: FontWeight.w900, 
+              color: Theme.of(context).textTheme.bodyLarge?.color
+            ),
+          ),
+        ],
       ),
     );
   }
