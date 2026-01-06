@@ -36,23 +36,32 @@ class AlumniDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
-    final cardColor = Theme.of(context).cardColor;
-    final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    
+    // ✅ FIX 1: FORCE VISIBLE COLORS
+    // Instead of relying on Theme (which might be wrong), we hardcode safe colors.
+    final scaffoldBg = isDark ? const Color(0xFF121212) : Colors.grey[50];
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final primaryColor = const Color(0xFF1B5E3A);
+    
+    // ✅ Main Text is Black (Light Mode) or White (Dark Mode)
+    final textColor = isDark ? Colors.white : Colors.black87;
+    // ✅ Sub Text is Grey
+    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
     final String fullName = alumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = alumniData['jobTitle'] ?? '';
     final String org = alumniData['organization'] ?? '';
-    final String bio = alumniData['bio'] ?? 'No biography provided.';
+    
+    // ✅ FIX 2: Handle Empty Bio Logic
+    String rawBio = alumniData['bio'] ?? '';
+    final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
+
     final String phone = alumniData['phoneNumber'] ?? '';
     final String linkedin = alumniData['linkedin'] ?? '';
     final String email = alumniData['email'] ?? '';
     final String year = alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
     final String imageString = alumniData['profilePicture'] ?? '';
     
-    // Unique Tag for the Zoom Animation
     final String zoomHeroTag = "zoom_profile_${alumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
 
     final String programme = (alumniData['programmeTitle'] != null && alumniData['programmeTitle'].toString().isNotEmpty) 
@@ -70,14 +79,12 @@ class AlumniDetailScreen extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 1. FIXED HEADER SECTION (Clickable!) ---
-            // We use a Container with explicit height so touches are registered
+            // --- 1. HEADER SECTION ---
             SizedBox(
-              height: 150, // 100 (Green) + 50 (Half Avatar overlap space)
+              height: 150, 
               child: Stack(
                 alignment: Alignment.topCenter,
                 children: [
-                  // Background Gradient (Top 100px)
                   Container(
                     width: double.infinity,
                     height: 100, 
@@ -90,12 +97,10 @@ class AlumniDetailScreen extends StatelessWidget {
                       borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
                     ),
                   ),
-                  
-                  // Avatar (Positioned precisely to bridge the gap)
                   Positioned(
-                    top: 55, // Pushes it down so it half-overlaps
+                    top: 55, 
                     child: GestureDetector(
-                      behavior: HitTestBehavior.opaque, // ✅ ENSURES CLICKS REGISTER
+                      behavior: HitTestBehavior.opaque,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -133,8 +138,6 @@ class AlumniDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
-
-            // We removed the old SizedBox(height: 55) because the Stack is now tall enough to hold everything.
             const SizedBox(height: 10), 
 
             // --- 2. IDENTITY SECTION ---
@@ -142,17 +145,19 @@ class AlumniDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
+                  // ✅ FULL NAME
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
                       fontSize: 22, 
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
+                      fontWeight: FontWeight.bold, 
+                      color: textColor // Uses our forced color
                     ),
                   ),
                   const SizedBox(height: 4),
                   
+                  // ✅ JOB & ORG
                   if (job.isNotEmpty || org.isNotEmpty)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -161,7 +166,7 @@ class AlumniDetailScreen extends StatelessWidget {
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            "$job at $org",
+                            "$job${(job.isNotEmpty && org.isNotEmpty) ? ' at ' : ''}$org",
                             style: GoogleFonts.inter(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                             textAlign: TextAlign.center,
                           ),
@@ -171,6 +176,7 @@ class AlumniDetailScreen extends StatelessWidget {
                   
                   const SizedBox(height: 10),
                   
+                  // ✅ CLASS OF (This was already working because color is hardcoded)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
@@ -180,11 +186,7 @@ class AlumniDetailScreen extends StatelessWidget {
                     ),
                     child: Text(
                       "Class of $year",
-                      style: GoogleFonts.inter(
-                        color: const Color(0xFFB8860B), 
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12 
-                      ),
+                      style: GoogleFonts.inter(color: const Color(0xFFB8860B), fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ),
                 ],
@@ -199,10 +201,8 @@ class AlumniDetailScreen extends StatelessWidget {
               children: [
                 if (linkedin.isNotEmpty)
                   _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
-                
                 if (email.isNotEmpty)
                   _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
-                
                 if (phone.isNotEmpty)
                   _buildCircleAction(context, Icons.phone, "Call", Colors.green[600]!, () => _launchURL("tel:$phone")),
               ],
@@ -241,6 +241,7 @@ class AlumniDetailScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 12),
+                        // ✅ BIO TEXT
                         Text(
                           bio,
                           style: GoogleFonts.inter(fontSize: 14, height: 1.6, color: subTextColor),
@@ -302,7 +303,6 @@ class AlumniDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
-            
             const SizedBox(height: 40),
           ],
         ),
@@ -312,7 +312,7 @@ class AlumniDetailScreen extends StatelessWidget {
 
   Widget _buildCircleAction(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = Theme.of(context).cardColor;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white; // ✅ Forced card color
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
