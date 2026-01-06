@@ -92,22 +92,25 @@ class NotificationService {
     );
   }
 
-  // ✅ SYNC TOKEN WITH BACKEND
+  // ✅ SYNC TOKEN WITH BACKEND (Improved)
   Future<void> _syncToken() async {
-    String? token = await _firebaseMessaging.getToken();
-    if (token == null) return;
+    try {
+      String? token = await _firebaseMessaging.getToken();
+      if (token == null) {
+        debugPrint("⚠️ FCM Token is null");
+        return;
+      }
 
-    debugPrint("🔥 FCM Token: $token");
+      debugPrint("🔥 FCM Token found: $token");
 
-    // Check if we have a logged-in user before sending to backend
-    final prefs = await SharedPreferences.getInstance();
-    final String? authToken = prefs.getString('auth_token');
+      final prefs = await SharedPreferences.getInstance();
+      final String? authToken = prefs.getString('auth_token');
 
-    if (authToken != null) {
-      // Send token to your Backend
-      try {
+      if (authToken != null) {
+        debugPrint("🚀 Sending token to: ${AppConfig.baseUrl}/api/notifications/save-token");
+        
         final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token');
-        await http.post(
+        final response = await http.post(
           url,
           headers: {
             'Content-Type': 'application/json',
@@ -115,10 +118,17 @@ class NotificationService {
           },
           body: '{"fcmToken": "$token"}',
         );
-        debugPrint("✅ FCM Token synced with server");
-      } catch (e) {
-        debugPrint("❌ Failed to sync FCM token: $e");
+
+        if (response.statusCode == 200) {
+          debugPrint("✅ Token synced successfully!");
+        } else {
+          debugPrint("❌ Server rejected token: ${response.statusCode} - ${response.body}");
+        }
+      } else {
+        debugPrint("⚠️ Cannot sync token: User not logged in yet.");
       }
+    } catch (e) {
+      debugPrint("❌ CRITICAL ERROR syncing token: $e");
     }
   }
 }

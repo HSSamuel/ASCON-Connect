@@ -1,11 +1,9 @@
+import 'dart:io'; // ✅ Required for File
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart'; 
-import 'dart:convert';
-import 'dart:typed_data'; 
-import 'package:image_picker/image_picker.dart'; 
-import 'package:shared_preferences/shared_preferences.dart';
-import '../config.dart';
+import 'package:image_picker/image_picker.dart';
+import '../services/data_service.dart'; // ✅ Import DataService
+import '../services/auth_service.dart'; // Optional, for logout if needed
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -18,6 +16,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  final DataService _dataService = DataService(); // ✅ Use the Service
   bool _isLoading = false;
 
   late TextEditingController _bioController;
@@ -29,9 +28,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _otherProgrammeController;
 
   String? _selectedProgramme;
-  Uint8List? _selectedImageBytes; 
-  XFile? _pickedFile; 
-  String? _currentUrl; 
+  Uint8List? _selectedImageBytes; // For Preview
+  XFile? _pickedFile; // For Upload
+  String? _currentUrl;
 
   final List<String> _programmeOptions = [
     "Management Programme",
@@ -51,6 +50,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ Pre-fill data
     _bioController = TextEditingController(text: widget.userData['bio'] ?? '');
     _jobController = TextEditingController(text: widget.userData['jobTitle'] ?? '');
     _orgController = TextEditingController(text: widget.userData['organization'] ?? '');
@@ -60,15 +60,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
-    
+
     if (_programmeOptions.contains(existingProg)) {
       _selectedProgramme = existingProg;
     } else {
       _selectedProgramme = null;
     }
-    
+
     if (existingProg == "Other" || (widget.userData['customProgramme'] != null && widget.userData['customProgramme'].toString().isNotEmpty)) {
-       _selectedProgramme = "Other";
+      _selectedProgramme = "Other";
     }
 
     _currentUrl = widget.userData['profilePicture'];
@@ -86,89 +86,77 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
- Future<void> _pickImage() async {
-    // 1. Create the picker instance locally
-    final ImagePicker picker = ImagePicker(); 
-
-    // 2. Pick the image with optimization settings
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 50,  // ✅ Compress image quality
-      maxWidth: 800,     // ✅ Resize to save data
+      imageQuality: 50,
+      maxWidth: 800,
     );
 
-    // 3. Update state if an image was picked
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
       setState(() {
-        _pickedFile = pickedFile; 
-        _selectedImageBytes = bytes; 
+        _pickedFile = pickedFile;
+        _selectedImageBytes = bytes;
       });
     }
   }
 
+  // ✅ NEW CLEAN SAVE FUNCTION
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-      final url = Uri.parse('${AppConfig.baseUrl}/api/profile/update');
+      // 1. Prepare Data Map
+      final Map<String, String> fields = {
+        'bio': _bioController.text.trim(),
+        'jobTitle': _jobController.text.trim(),
+        'organization': _orgController.text.trim(),
+        'linkedin': _linkedinController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),
+        'yearOfAttendance': _yearController.text.trim(),
+      };
 
-      var request = http.MultipartRequest('PUT', url);
-      request.headers['auth-token'] = token ?? '';
-
-      request.fields['bio'] = _bioController.text;
-      request.fields['jobTitle'] = _jobController.text;
-      request.fields['organization'] = _orgController.text;
-      request.fields['linkedin'] = _linkedinController.text;
-      request.fields['phoneNumber'] = _phoneController.text;
-      request.fields['yearOfAttendance'] = _yearController.text;
-
+      // 2. Handle Programme Logic
       if (_selectedProgramme == "Other") {
-        request.fields['programmeTitle'] = "Other";
-        request.fields['customProgramme'] = _otherProgrammeController.text.trim();
+        fields['programmeTitle'] = "Other";
+        fields['customProgramme'] = _otherProgrammeController.text.trim();
       } else if (_selectedProgramme != null) {
-        request.fields['programmeTitle'] = _selectedProgramme!;
-        request.fields['customProgramme'] = ""; 
+        fields['programmeTitle'] = _selectedProgramme!;
+        fields['customProgramme'] = "";
       }
 
-      if (_pickedFile != null && _selectedImageBytes != null) {
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'profilePicture', 
-            _selectedImageBytes!,
-            filename: _pickedFile!.name,
-            contentType: MediaType('image', 'jpeg'), 
-          ),
-        );
+      // 3. Prepare Image File (Convert XFile to File)
+      File? imageFile;
+      if (_pickedFile != null) {
+        imageFile = File(_pickedFile!.path);
       }
 
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
+      // 4. Call Service
+      // This handles all the HTTP Multipart complexity for us!
+      final bool success = await _dataService.updateProfile(fields, imageFile);
 
-      if (response.statusCode == 200) {
-        if (!mounted) return;
-        Navigator.pop(context, true); 
+      if (!mounted) return;
+
+      if (success) {
+        Navigator.pop(context, true); // Return 'true' so ProfileScreen reloads
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Profile Updated Successfully!")),
         );
-      } else if (response.statusCode == 400 || response.statusCode == 401) {
-        if (!mounted) return;
-        await prefs.clear(); 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Session expired. Please login again."), backgroundColor: Colors.red),
-        );
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
       } else {
-        throw Exception("Failed to update: ${response.body}");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to update profile. Please try again."),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error updating profile."), backgroundColor: Colors.red),
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -181,9 +169,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
+  // ✅ Updated Helper: Uses Global Theme
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false}) {
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: TextStyle(fontSize: 14, color: textColor),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+        prefixIcon: Icon(icon, color: primaryColor, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        alignLabelWithHint: maxLines > 1,
+      ),
+      validator: (value) {
+        if (label == "Specify Programme Name" && _selectedProgramme == "Other" && (value == null || value.isEmpty)) {
+          return "Please specify";
+        }
+        return null;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ Dynamic Theme Colors
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -191,10 +207,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final cardColor = Theme.of(context).cardColor;
 
     return Scaffold(
-      backgroundColor: scaffoldBg, // ✅ Dynamic Background
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
         title: const Text("Edit Profile"),
-        backgroundColor: primaryColor, // ✅ Dynamic Primary
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -237,16 +253,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               // --- FIELDS ---
               _buildTextField("Job Title", _jobController, Icons.work),
-              const SizedBox(height: 12), 
+              const SizedBox(height: 12),
               _buildTextField("Organization", _orgController, Icons.business),
               const SizedBox(height: 12),
-              
-              // --- PROGRAMME DROPDOWN (Dynamic) ---
+
+              // --- PROGRAMME DROPDOWN ---
               DropdownButtonFormField<String>(
                 value: _selectedProgramme,
                 isExpanded: true,
-                isDense: true, 
-                dropdownColor: cardColor, // ✅ Fixes dropdown background
+                isDense: true,
+                dropdownColor: cardColor,
                 decoration: InputDecoration(
                   labelText: "Programme Attended",
                   labelStyle: TextStyle(fontSize: 13, color: subTextColor),
@@ -259,7 +275,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     value: value,
                     child: Text(
                       value,
-                      style: TextStyle(fontSize: 13, color: textColor), // ✅ Dynamic Text
+                      style: TextStyle(fontSize: 13, color: textColor),
                       overflow: TextOverflow.ellipsis,
                     ),
                   );
@@ -275,15 +291,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               if (_selectedProgramme == "Other") ...[
                 const SizedBox(height: 12),
                 _buildTextField(
-                  "Specify Programme Name", 
-                  _otherProgrammeController, 
+                  "Specify Programme Name",
+                  _otherProgrammeController,
                   Icons.edit_note,
                 ),
               ],
-              
+
               const SizedBox(height: 12),
-              
-              // SIDE-BY-SIDE: Class Year & Phone Number
+
+              // SIDE-BY-SIDE: Class Year & Phone
               Row(
                 children: [
                   Expanded(
@@ -299,13 +315,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 12),
               _buildTextField("LinkedIn URL", _linkedinController, Icons.link),
               const SizedBox(height: 12),
+              
+              // ✅ BIO FIELD (Ensures saving works)
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
-              
+
               const SizedBox(height: 24),
-              
+
               SizedBox(
                 width: double.infinity,
-                height: 45, 
+                height: 45,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : saveProfile,
                   style: ElevatedButton.styleFrom(
@@ -313,7 +331,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: _isLoading 
+                  child: _isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : const Text("SAVE CHANGES"),
                 ),
@@ -322,35 +340,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  // ✅ Updated Helper: Uses Global Theme automatically
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false}) {
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final primaryColor = Theme.of(context).primaryColor;
-
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: TextStyle(fontSize: 14, color: textColor), // ✅ Input Text
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-        prefixIcon: Icon(icon, color: primaryColor, size: 20),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        isDense: true, 
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        alignLabelWithHint: maxLines > 1, 
-      ),
-      validator: (value) {
-        if (label == "Specify Programme Name" && _selectedProgramme == "Other" && (value == null || value.isEmpty)) {
-          return "Please specify";
-        }
-        return null;
-      },
     );
   }
 }

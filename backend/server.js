@@ -2,13 +2,18 @@ const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
-const helmet = require("helmet"); // ✅ SECURITY HEADERS
-const morgan = require("morgan"); // ✅ LOGGING
-const rateLimit = require("express-rate-limit"); // ✅ RATE LIMITING
-const compression = require("compression"); // ✅ SPEED OPTIMIZATION
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const compression = require("compression");
 
 // 1. Initialize the App
 const app = express();
+
+// ✅ FIX: TELL EXPRESS TO TRUST RENDER'S PROXY
+// This allows rate-limiter to see the real user IP instead of Render's IP
+app.set("trust proxy", 1);
+
 dotenv.config();
 
 // ==========================================
@@ -30,11 +35,14 @@ const limiter = rateLimit({
   max: 100, // Limit each IP to 100 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  // ⬇️ ADD THIS TO DISABLE THE "X-Forwarded-For" ERROR LOGS IF THEY PERSIST
+  validate: { xForwardedForHeader: false },
   message: {
     message:
       "Too many requests from this IP, please try again after 15 minutes.",
   },
 });
+
 app.use("/api", limiter); // Apply to all API routes
 
 // ==========================================

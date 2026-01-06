@@ -14,11 +14,11 @@ const userSchema = new mongoose.Schema({
   organization: { type: String, default: "" },
   bio: { type: String, default: "" },
   linkedin: { type: String, default: "" },
-  
-  // ✅ 1. NEW FIELD: Store the Phone's Notification Token
+
+  // ✅ NEW FIELD: Store the Phone's Notification Token
   fcmToken: { type: String, default: "" },
 
-  alumniId: { type: String, unique: true, sparse: true }, // Ensure this is the fixed version
+  alumniId: { type: String, unique: true, sparse: true },
   hasSeenWelcome: { type: Boolean, default: false },
 
   isAdmin: { type: Boolean, default: false },

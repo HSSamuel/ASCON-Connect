@@ -38,7 +38,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
-    // ✅ Dynamic Dialog
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final dialogBg = Theme.of(context).cardColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -75,7 +74,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Dynamic Theme Colors
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
@@ -92,9 +90,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final String email = _userProfile?['email'] ?? 'No Email';
     final String phone = (_userProfile?['phoneNumber']?.toString().isNotEmpty ?? false)
         ? _userProfile!['phoneNumber'] : 'Add Phone Number';
+    
+    // ✅ 1. EXTRACT BIO FROM DATA
+    final String bio = _userProfile?['bio'] ?? '';
 
     return Scaffold(
-      backgroundColor: scaffoldBg, // ✅ Dynamic Background
+      backgroundColor: scaffoldBg,
       extendBodyBehindAppBar: true, 
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -116,6 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
+                    // --- HEADER SECTION ---
                     Stack(
                       clipBehavior: Clip.none,
                       alignment: Alignment.center,
@@ -141,9 +143,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: cardColor, width: 4), // ✅ Border matches card color
+                              border: Border.all(color: cardColor, width: 4),
                               boxShadow: [
-                                if (!isDark) // Only shadow in light mode
+                                if (!isDark) 
                                   BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
                               ],
                             ),
@@ -160,6 +162,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 60), 
+                    
+                    // --- NAME & BADGES ---
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16), 
                       child: Column(
@@ -180,7 +184,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20), 
+                    const SizedBox(height: 25), 
+
+                    // ✅ 2. ADDED ABOUT ME SECTION
+                    if (bio.isNotEmpty) ...[
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.all(16),
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            if (!isDark)
+                              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("About Me", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
+                            const SizedBox(height: 8),
+                            Text(
+                              bio, 
+                              style: TextStyle(fontSize: 14, color: textColor, height: 1.4),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // --- EDIT BUTTON ---
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: SizedBox(
@@ -208,11 +243,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 20), 
+
+                    // --- CONTACT INFO ---
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16), 
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), 
                       decoration: BoxDecoration(
-                        color: cardColor, // ✅ Dynamic Card Background
+                        color: cardColor, 
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           if (!isDark) 
@@ -239,7 +276,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildBadge(IconData icon, String text, {bool isPlaceholder = false}) {
-    // ✅ Dynamic Badges
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
 
@@ -278,7 +314,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildContactRow(IconData icon, String label, String value) {
-    // ✅ Dynamic Contact Rows
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final iconBg = isDark ? Colors.grey[800] : Colors.grey[50];
     final labelColor = Theme.of(context).textTheme.bodyMedium?.color;

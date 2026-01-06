@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const User = require("../models/User");
-const verify = require("./verifyToken"); // Use your existing token verifier
+const verify = require("./verifyToken");
 
 // POST /api/notifications/save-token
 router.post("/save-token", verify, async (req, res) => {

@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io'; // For SocketException
+import 'dart:io'; // For SocketException, File
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -78,6 +78,52 @@ class DataService {
     }
   }
 
+  // ✅ 4. UPDATE PROFILE (Supports Image + Text)
+  // This was the missing piece!
+  Future<bool> updateProfile(Map<String, String> fields, File? imageFile) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) return false;
+
+      final uri = Uri.parse('${AppConfig.baseUrl}/api/profile/update');
+      
+      // We use MultipartRequest because the backend expects file upload logic
+      final request = http.MultipartRequest('PUT', uri);
+
+      // Headers
+      request.headers.addAll({
+        'auth-token': token,
+      });
+
+      // Add Text Fields (Bio, Name, etc.)
+      request.fields.addAll(fields);
+
+      // Add Image File (if user selected one)
+      if (imageFile != null) {
+        request.files.add(await http.MultipartFile.fromPath(
+          'profilePicture', // Must match backend field name
+          imageFile.path,
+        ));
+      }
+
+      // Send Request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200) {
+        print("✅ Profile Updated Successfully");
+        return true;
+      } else {
+        print("❌ Update Failed: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("❌ Update Error: $e");
+      return false;
+    }
+  }
+
   // --- 2. EVENTS (Offline Ready) ---
   Future<List<dynamic>> fetchEvents() async {
     const String cacheKey = 'cached_events';
@@ -115,7 +161,6 @@ class DataService {
 
   // --- 3. DIRECTORY (Offline Ready) ---
   Future<List<dynamic>> fetchDirectory({String query = ""}) async {
-    // Only cache the "full" directory (empty query). Don't cache search results.
     final bool isDefaultFetch = query.isEmpty;
     const String cacheKey = 'cached_directory';
 
@@ -135,14 +180,12 @@ class DataService {
         alumni = data['data']; 
       }
       
-      // ✅ SUCCESS: Save to Cache (only if default list)
       if (isDefaultFetch) {
         await _cacheData(cacheKey, alumni);
       }
       return alumni;
 
     } catch (e) {
-      // ✅ FAILURE: Load from Cache (only if trying to fetch default list)
       if (isDefaultFetch) {
         print("⚠️ Offline Mode: Loading cached directory.");
         final cached = await _getCachedData(cacheKey);

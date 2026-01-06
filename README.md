@@ -68,7 +68,7 @@ _Located in `/ascon_mobile`_
 5.  Run the app: `flutter run -d chrome`
 6.  Clean the project: `flutter clean`
 7.  Build the Release APK: `flutter build apk -- release`
-8.  Build the Release APK: `flutter run -d chrome --web-browser-flag "--disable-web-security"`
+8.  Run the App: `flutter run -d chrome --web-browser-flag "--disable-web-security"`
 
 ---
 

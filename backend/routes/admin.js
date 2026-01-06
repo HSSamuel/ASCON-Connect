@@ -199,38 +199,49 @@ router.post("/events", verifyEditor, async (req, res) => {
     });
     await newEvent.save();
 
-    // ✅ 2. SEND PUSH NOTIFICATION (The "Broadcast")
-    // Find all users who have a phone token
-    const usersWithTokens = await User.find({
-      fcmToken: { $exists: true, $ne: "" },
-    });
+    // ✅ 2. SEND PUSH NOTIFICATION (Updated for 2026)
+    try {
+      const usersWithTokens = await User.find({
+        fcmToken: { $exists: true, $ne: "" },
+      });
 
-    if (usersWithTokens.length > 0) {
-      const tokens = usersWithTokens.map((u) => u.fcmToken);
+      if (usersWithTokens.length > 0) {
+        console.log(`📣 Found ${usersWithTokens.length} users with tokens.`); // ✅ Log this!
 
-      // Construct the message
-      const message = {
-        notification: {
-          title: `New Event: ${title}`,
-          body: `Join us at ${location}! ${description.substring(0, 50)}...`,
-        },
-        data: {
-          route: "event_detail",
-          eventId: newEvent._id.toString(), // Send ID so app can open it
-        },
-        tokens: tokens,
-      };
+        const tokens = usersWithTokens.map((u) => u.fcmToken);
 
-      // Send via Firebase
-      try {
-        const response = await admin.messaging().sendMulticast(message);
+        const message = {
+          notification: {
+            title: `New Event: ${title}`,
+            body: `Join us at ${location}! ${description.substring(0, 50)}...`,
+          },
+          data: {
+            route: "event_detail",
+            eventId: newEvent._id.toString(),
+          },
+          tokens: tokens,
+        };
+
+        // 👇 CHANGED FROM sendMulticast TO sendEachForMulticast
+        const response = await admin.messaging().sendEachForMulticast(message);
         console.log(
           `📣 Notification sent! Success: ${response.successCount}, Fail: ${response.failureCount}`
         );
-      } catch (notifyError) {
-        console.error("⚠️ Notification failed:", notifyError);
-        // We don't stop the request, just log the error
+
+        if (response.failureCount > 0) {
+          const failedTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              failedTokens.push(tokens[idx]);
+            }
+          });
+          console.log("List of tokens that caused failures: " + failedTokens);
+        }
+      } else {
+        console.log("⚠️ No users found with FCM Tokens.");
       }
+    } catch (notifyError) {
+      console.error("⚠️ Notification failed:", notifyError);
     }
 
     res
