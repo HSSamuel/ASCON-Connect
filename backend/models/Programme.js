@@ -4,7 +4,7 @@ const programmeSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true,
-    unique: true, // Prevents duplicate course names
+    unique: true,
     trim: true,
   },
   code: {
@@ -15,6 +15,20 @@ const programmeSchema = new mongoose.Schema({
   description: {
     type: String,
     required: false,
+  },
+  duration: {
+    type: String,
+    required: false,
+  },
+  fee: {
+    type: String,
+    required: false,
+  },
+  // ✅ ADDED: Image URL field
+  image: {
+    type: String,
+    required: false,
+    default: "",
   },
   createdAt: {
     type: Date,

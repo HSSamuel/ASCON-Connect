@@ -5,10 +5,14 @@ import Toast from "./Toast";
 import ConfirmModal from "./ConfirmModal";
 import NavBar from "./components/NavBar";
 
+// ✅ IMPORT STAT CARD COMPONENT
+import StatCard from "./components/StatCard";
+
 // Import Sub-Components
 import UsersTab from "./components/UsersTab";
 import EventsTab from "./components/EventsTab";
 import ProgrammesTab from "./components/ProgrammesTab";
+import RegistrationsTab from "./components/RegistrationsTab"; // ✅ NEW IMPORT
 
 // ✅ USE ENV VARIABLE
 const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
@@ -26,9 +30,14 @@ function AdminDashboard({ token, onLogout }) {
   const [usersList, setUsersList] = useState([]);
   const [eventsList, setEventsList] = useState([]);
   const [programmesList, setProgrammesList] = useState([]);
+  
+  // ✅ REGISTRATIONS STATE
+  const [registrationsList, setRegistrationsList] = useState([]); // For Programmes
+  const [eventRegistrationsList, setEventRegistrationsList] = useState([]); // ✅ NEW: For Events
 
   // --- UI STATE ---
   const [toast, setToast] = useState(null);
+  const [loadingRegs, setLoadingRegs] = useState(false); // Loading state for regs
   const [deleteModal, setDeleteModal] = useState({
     show: false,
     id: null,
@@ -44,7 +53,14 @@ function AdminDashboard({ token, onLogout }) {
     type: "News",
     image: "",
   });
-  const [progForm, setProgForm] = useState({ title: "", code: "" });
+  const [progForm, setProgForm] = useState({
+    title: "",
+    code: "",
+    description: "",
+    duration: "",
+    fee: "",
+    image: "",
+  });
 
   const showToast = (msg, type = "success") => {
     setToast({ message: msg, type });
@@ -80,22 +96,19 @@ function AdminDashboard({ token, onLogout }) {
       headers: { "auth-token": token },
     });
 
-    // ✅ INTERCEPTOR: Catch Session Expiry (401, 403 OR 400 "Invalid Token")
+    // ✅ INTERCEPTOR: Catch Session Expiry
     instance.interceptors.response.use(
       (response) => response,
       (error) => {
-        // Check for Auth Errors
         if (error.response) {
           const status = error.response.status;
           const msg = error.response.data?.message || "";
 
-          // Backend sends 400 "Invalid Token" when expired
           if (
             status === 401 ||
             status === 403 ||
             (status === 400 && msg === "Invalid Token")
           ) {
-            // alert("Session Expired. Please Login Again."); // Optional Alert
             onLogout(); // Force Logout
           }
         }
@@ -105,9 +118,30 @@ function AdminDashboard({ token, onLogout }) {
     return instance;
   }, [token, onLogout]);
 
-  // --- FETCH DATA (With Search) ---
+  // --- FETCH DATA (Updated to fetch ALL Registrations) ---
   const fetchData = useCallback(async () => {
     try {
+      // ✅ 1. ALWAYS FETCH Events & Programmes (for Stat Cards)
+      const resEvents = await API.get("/events");
+      setEventsList(resEvents.data.events || resEvents.data);
+
+      const resProgs = await API.get("/admin/programmes");
+      setProgrammesList(resProgs.data);
+
+      // ✅ 2. FETCH REGISTRATIONS (Programmes + Events)
+      setLoadingRegs(true);
+      
+      // Fetch Programme Registrations
+      const resRegs = await API.get("/programme-interest");
+      setRegistrationsList(resRegs.data);
+
+      // Fetch Event Registrations
+      const resEventRegs = await API.get("/event-registration");
+      setEventRegistrationsList(resEventRegs.data);
+      
+      setLoadingRegs(false);
+
+      // ✅ 3. FETCH USERS only if on Users Tab (because it's Paginated/Heavy)
       if (activeTab === "users") {
         const res = await API.get(
           `/admin/users?page=${page}&limit=20&search=${search}`
@@ -119,16 +153,10 @@ function AdminDashboard({ token, onLogout }) {
           setUsersList(res.data.users || []);
           setTotalPages(res.data.pages || 1);
         }
-      } else if (activeTab === "events") {
-        const res = await API.get("/events");
-        setEventsList(res.data.events || res.data);
-      } else if (activeTab === "programmes") {
-        const res = await API.get("/admin/programmes");
-        setProgrammesList(res.data);
       }
     } catch (err) {
       console.error(err);
-      // Don't toast on fetch errors to avoid spamming the user
+      setLoadingRegs(false);
     }
   }, [activeTab, API, page, search]);
 
@@ -162,7 +190,6 @@ function AdminDashboard({ token, onLogout }) {
       showToast(`${name} has been verified!`, "success");
       fetchData();
     } catch (err) {
-      // ✅ DISPLAY ACTUAL SERVER ERROR
       showToast(
         err.response?.data?.message || "Failed to verify user.",
         "error"
@@ -242,7 +269,6 @@ function AdminDashboard({ token, onLogout }) {
       });
       fetchData();
     } catch (err) {
-      // ✅ DISPLAY ACTUAL SERVER ERROR (e.g. "Invalid Token" or "Title missing")
       showToast(
         err.response?.data?.message || "Failed to save event.",
         "error"
@@ -255,12 +281,26 @@ function AdminDashboard({ token, onLogout }) {
   // --- PROGRAMME ACTIONS ---
   const startEditProgramme = (prog) => {
     setEditingId(prog._id);
-    setProgForm({ title: prog.title, code: prog.code || "" });
+    setProgForm({
+      title: prog.title,
+      code: prog.code || "",
+      description: prog.description || "",
+      duration: prog.duration || "",
+      fee: prog.fee || "",
+      image: prog.image || "",
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelEditProgramme = () => {
     setEditingId(null);
-    setProgForm({ title: "", code: "" });
+    setProgForm({
+      title: "",
+      code: "",
+      description: "",
+      duration: "",
+      fee: "",
+      image: "",
+    });
   };
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
@@ -298,6 +338,13 @@ function AdminDashboard({ token, onLogout }) {
       showToast(err.response?.data?.message || "Failed to delete.", "error");
     }
   };
+
+  // ✅ STATS CALCULATION
+  const pendingUsers = usersList.filter((u) => !u.isVerified).length;
+  const totalEvents = eventsList.length;
+  const totalProgrammes = programmesList.length;
+  // Combine both lists for total count
+  const totalRegistrations = registrationsList.length + eventRegistrationsList.length;
 
   return (
     <div className="admin-container">
@@ -383,6 +430,43 @@ function AdminDashboard({ token, onLogout }) {
           marginTop: activeTab === "users" ? "0px" : "30px",
         }}
       >
+        {/* ✅ STAT CARDS DASHBOARD */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "20px",
+            marginBottom: "30px",
+            marginTop: "20px",
+          }}
+        >
+          <StatCard
+            title="Pending Approvals"
+            value={pendingUsers}
+            icon="⏳"
+            color="#fff3cd"
+          />
+          <StatCard
+            title="Active Events"
+            value={totalEvents}
+            icon="📅"
+            color="#d1e7dd"
+          />
+          <StatCard
+            title="Programmes"
+            value={totalProgrammes}
+            icon="🎓"
+            color="#cff4fc"
+          />
+          {/* ✅ UPDATED STAT CARD FOR TOTAL REGISTRATIONS */}
+          <StatCard
+            title="Total Registrations"
+            value={totalRegistrations}
+            icon="📋"
+            color="#E6E6FA"
+          />
+        </div>
+
         {activeTab === "users" && (
           <UsersTab
             usersList={usersList}
@@ -422,6 +506,15 @@ function AdminDashboard({ token, onLogout }) {
             cancelEditProgramme={cancelEditProgramme}
             startEditProgramme={startEditProgramme}
             deleteProgrammeClick={deleteProgrammeClick}
+          />
+        )}
+
+        {/* ✅ NEW REGISTRATIONS TAB RENDER */}
+        {activeTab === "registrations" && (
+          <RegistrationsTab
+            registrations={registrationsList}
+            eventRegistrations={eventRegistrationsList} // ✅ PASSING BOTH LISTS
+            isLoading={loadingRegs}
           />
         )}
       </div>

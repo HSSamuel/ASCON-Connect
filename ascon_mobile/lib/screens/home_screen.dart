@@ -10,6 +10,7 @@ import 'profile_screen.dart';
 import 'events_screen.dart';
 import 'about_screen.dart';
 import 'event_detail_screen.dart';
+import 'programme_detail_screen.dart'; // ✅ IMPORT NEW SCREEN
 import 'login_screen.dart';
 import '../widgets/digital_id_card.dart'; 
 
@@ -164,12 +165,6 @@ class _DashboardViewState extends State<_DashboardView> {
     } catch (e) {
       print("⚠️ Error loading profile: $e");
     }
-  }
-
-  ImageProvider? getProfileImage(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) return null;
-    if (imagePath.startsWith('http')) return NetworkImage(imagePath); 
-    try { return MemoryImage(base64Decode(imagePath)); } catch (e) { return null; }
   }
 
   void _showNotificationSheet() {
@@ -337,7 +332,7 @@ class _DashboardViewState extends State<_DashboardView> {
                     userName: widget.userName, 
                     programme: _programme,
                     year: _year,
-                    alumniID: _alumniID,   // ✅ Shows Local first, then updates to Real API ID
+                    alumniID: _alumniID,
                     imageUrl: _profileImage ?? "", 
                 ),
 
@@ -348,36 +343,19 @@ class _DashboardViewState extends State<_DashboardView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                        // FEATURED PROGRAMMES SECTION
+                        // ✅ FEATURED PROGRAMMES SECTION (RESPONSIVE GRID)
                         FutureBuilder<List<dynamic>>(
                           future: _programmesFuture,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Featured Programmes",
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  SizedBox(
-                                    height: 140,
-                                    child: ListView(
-                                      scrollDirection: Axis.horizontal,
-                                      children: [1,2,3].map((_) => _buildShimmerCard()).toList(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 25),
-                                ],
+                              return const Padding(
+                                padding: EdgeInsets.all(20.0),
+                                child: Center(child: CircularProgressIndicator()),
                               );
                             }
 
                             final programmes = snapshot.data ?? [];
-
-                            if (programmes.isEmpty) {
-                              return const SizedBox.shrink(); 
-                            }
+                            if (programmes.isEmpty) return const SizedBox.shrink();
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,18 +364,26 @@ class _DashboardViewState extends State<_DashboardView> {
                                   "Featured Programmes",
                                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                                 ),
-                                const SizedBox(height: 10),
-                                SizedBox(
-                                  height: 140, 
-                                  child: ListView.separated(
-                                    scrollDirection: Axis.horizontal,
-                                    itemCount: programmes.length,
-                                    separatorBuilder: (_, __) => const SizedBox(width: 12),
-                                    itemBuilder: (context, index) {
-                                      final prog = programmes[index];
-                                      return _buildProgrammeCard(prog);
-                                    },
-                                  ),
+                                const SizedBox(height: 15),
+                                
+                                // ✅ KEY CHANGE: Responsive Width Check
+                                // If screen width is small (< 600 mobile), make cards wider (180).
+                                // If screen is large (Windows), keep them compact (135).
+                                GridView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                                  // Mobile: 2 columns (200), Desktop: Compact (135)
+                                  maxCrossAxisExtent: MediaQuery.of(context).size.width < 600 ? 180 : 180,
+                                  crossAxisSpacing: 12,
+                                  mainAxisSpacing: 12,
+                                  // ✅ CHANGED: 0.82 makes the card SHORTER (Reduced height) while keeping width
+                                  childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.82 : 0.75, 
+                                ),
+                                  itemCount: programmes.length,
+                                  itemBuilder: (context, index) {
+                                    return _buildProgrammeCard(programmes[index]);
+                                  },
                                 ),
                                 const SizedBox(height: 25),
                               ],
@@ -464,96 +450,104 @@ class _DashboardViewState extends State<_DashboardView> {
   Widget _buildProgrammeCard(Map<String, dynamic> prog) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
-    final borderColor = Theme.of(context).dividerColor;
-    final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    
+    // ✅ GREEN TEXT COLOR (Dark Green on Light mode, Bright Green on Dark mode)
+    final titleColor = isDark ? Colors.greenAccent[400] : const Color(0xFF1B5E20);
+
+    final String? programmeImage = prog['image'] ?? prog['imageUrl'];
 
     return Container(
-      width: 220, 
-      margin: const EdgeInsets.only(bottom: 5), 
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor),
         boxShadow: [
           if (!isDark)
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1), 
+              blurRadius: 6, 
+              offset: const Offset(0, 3)
+            ),
         ],
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            // Optional: Handle tap
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProgrammeDetailScreen(programme: prog),
+              ),
+            );
           },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.08), 
-                        shape: BoxShape.circle,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 1️⃣ COMPACT IMAGE (70px)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: Container(
+                  height: 70,
+                  width: double.infinity,
+                  color: isDark ? Colors.grey[850] : Colors.grey[100],
+                  child: programmeImage != null && programmeImage.isNotEmpty
+                      ? Image.network(
+                          programmeImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (c, e, s) => Icon(Icons.image, color: Colors.grey[400], size: 35),
+                        )
+                      : Icon(Icons.school, color: Colors.grey[400], size: 35),
+                ),
+              ),
+
+              // 2️⃣ CONTENT SECTION
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center, // Groups text + pill together
+                    children: [
+                      // ✅ UPDATED TITLE: Bigger, Bolder, Green
+                      Text(
+                        prog['title'] ?? "Programme",
+                        textAlign: TextAlign.center,
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800, // Extra Bold
+                          fontSize: 13.0,              // ✅ Increased Size
+                          color: titleColor,           // ✅ Green Color
+                          height: 1.1,
+                        ),
                       ),
-                      child: Icon(Icons.school_rounded, color: primaryColor, size: 22),
-                    ),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300]),
-                  ],
-                ),
-                const Spacer(), 
-                Text(
-                  prog['title'] ?? "Programme",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700, 
-                    fontSize: 14,
-                    color: textColor, 
-                    height: 1.2, 
-                    letterSpacing: -0.3,
+
+                      const SizedBox(height: 5), 
+
+                      // CODE PILL
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : const Color(0xFFE8F5E9), 
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          prog['code']?.toUpperCase() ?? "PIC",
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.grey[800] : Colors.grey[100], 
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Text(
-                    prog['code']?.toUpperCase() ?? "ASCON",
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: subTextColor, 
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildShimmerCard() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: 150,
-      margin: const EdgeInsets.only(right: 10),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[800] : Colors.grey[100], 
-        borderRadius: BorderRadius.circular(12)
       ),
     );
   }

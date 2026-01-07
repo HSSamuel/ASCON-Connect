@@ -5,7 +5,8 @@ import "../App.css"; // Ensure CSS is imported
 const NavBar = ({ activeTab, setActiveTab, onLogout, userRole }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const navItems = ["users", "events", "programmes"];
+  // ✅ ADDED "registrations" TO THE LIST
+  const navItems = ["users", "events", "programmes", "registrations"];
 
   const handleTabClick = (tab) => {
     setActiveTab(tab);
@@ -41,6 +42,7 @@ const NavBar = ({ activeTab, setActiveTab, onLogout, userRole }) => {
             onClick={() => handleTabClick(tab)}
             className={`nav-item ${activeTab === tab ? "active" : ""}`}
           >
+            {/* Display "REGISTRATIONS" properly */}
             {tab.toUpperCase()}
           </button>
         ))}

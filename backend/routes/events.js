@@ -4,12 +4,11 @@ const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
 // @route   GET /api/events
-// @desc    Get all events (Sorted by closest date)
+// @desc    Get all events (Sorted by Newest First)
 router.get("/", async (req, res) => {
   try {
-    // Sort by Date (ascending/1 usually means oldest first, -1 is newest first)
-    // Depending on your need: 1 = Jan, Feb... | -1 = Dec, Nov...
-    const events = await Event.find().sort({ date: 1 });
+    // ✅ CHANGED: date: -1 (Descending) puts the Newest/Latest dates at the top
+    const events = await Event.find().sort({ date: -1 });
     res.json(events);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -26,7 +25,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     location: req.body.location,
     type: req.body.type,
     // ✅ NEW ADDITION: Make sure to capture the image from the request!
-    image: req.body.image 
+    image: req.body.image,
   });
 
   try {

@@ -287,14 +287,20 @@ router.get("/programmes", async (req, res) => {
   }
 });
 
+// POST: Create New Programme
 router.post("/programmes", verifyEditor, async (req, res) => {
   try {
-    const { title, code, description } = req.body;
+    // ✅ Extract 'image' along with other fields
+    const { title, code, description, duration, fee, image } = req.body;
+    
     const exists = await Programme.findOne({ title });
     if (exists)
       return res.status(400).json({ message: "Programme already exists." });
 
-    const newProg = new Programme({ title, code, description });
+    const newProg = new Programme({ 
+      title, code, description, duration, fee, image 
+    });
+    
     await newProg.save();
     res.status(201).json({ message: "Programme added!", programme: newProg });
   } catch (err) {
@@ -311,14 +317,15 @@ router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Missing Variable Extraction
+// PUT: Update Programme
 router.put("/programmes/:id", verifyEditor, async (req, res) => {
   try {
-    const { title, code, description } = req.body; // 👈 This line was missing!
+    // ✅ Extract 'image' here too
+    const { title, code, description, duration, fee, image } = req.body; 
 
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
-      { title, code, description },
+      { title, code, description, duration, fee, image },
       { new: true }
     );
     res.json({ message: "Programme updated!", programme: updatedProg });

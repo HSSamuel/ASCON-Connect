@@ -102,7 +102,7 @@ class AboutScreen extends StatelessWidget {
                     context,
                     icon: Icons.visibility_outlined,
                     title: "Our Vision",
-                    content: "To be a world-class Management Development Institute (MDI) using advanced technology and best practices for rapid and sustainable national development.",
+                    content: "To be the leading public administration training institution in Africa, setting the benchmark for excellence in civil service education, enhancing governmental effectiveness, and contributing to Nigeria’s sustainable development through capacity-building programs, leadership training, and policy research.",
                   ),
                   
                   const SizedBox(height: 16),
@@ -112,7 +112,7 @@ class AboutScreen extends StatelessWidget {
                     context,
                     icon: Icons.track_changes_outlined,
                     title: "Our Mission",
-                    content: "To consistently deliver excellent management training, consultancy, research, and related services to improve performance across all sectors of the Nigerian economy.",
+                    content: "To provide cutting-edge administrative training, policy research, and advisory services that foster efficiency, accountability, and innovation in Nigeria’s public sector. We strive to equip government officials with the right skills, ethical standards, and strategic thinking capabilities to meet the demands of modern governance.",
                   ),
                   
                   const SizedBox(height: 16),

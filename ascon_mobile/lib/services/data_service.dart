@@ -1,11 +1,9 @@
 import 'dart:convert';
-// ❌ REMOVE: import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart'; 
 import 'package:http_parser/http_parser.dart'; // ✅ REQUIRED for MediaType
-import 'package:mime/mime.dart'; // Optional: If you want auto-detection, but hardcoding 'image/jpeg' is often safer for Cloudinary if you compress
 import '../config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart'; 
@@ -99,9 +97,6 @@ class DataService {
         final bytes = await imageFile.readAsBytes();
         
         // ✅ FIX: Explicitly tell Cloudinary this is an Image
-        // This ensures the backend treats it as 'image/jpeg' or 'image/png'
-        // instead of 'application/octet-stream' (which Cloudinary rejects).
-        
         String mimeType = "image/jpeg"; // Default
         if (imageFile.name.toLowerCase().endsWith(".png")) {
           mimeType = "image/png";
@@ -187,6 +182,101 @@ class DataService {
         if (cached != null && cached is List) return cached;
       }
       return [];
+    }
+  }
+
+  // ✅ Register Programme Interest
+  Future<Map<String, dynamic>> registerProgrammeInterest({
+    required String programmeId,
+    required String fullName,
+    required String email,
+    required String phone,
+    required String sex,
+    required String addressStreet,
+    String? addressLine2,
+    required String city,
+    required String state,
+    required String country,
+    required String sponsoringOrganisation,
+    required String department,
+    required String jobTitle,
+    String? userId,
+  }) async {
+    final url = Uri.parse('${AppConfig.baseUrl}/api/programme-interest');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'programmeId': programmeId,
+          'fullName': fullName,
+          'email': email,
+          'phone': phone,
+          'sex': sex,
+          'addressStreet': addressStreet,
+          'addressLine2': addressLine2 ?? "",
+          'city': city,
+          'state': state,
+          'country': country,
+          'sponsoringOrganisation': sponsoringOrganisation,
+          'department': department,
+          'jobTitle': jobTitle,
+          if (userId != null) 'userId': userId,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 201) {
+        return {'success': true, 'message': data['message']};
+      } else {
+        return {'success': false, 'message': data['message'] ?? 'Failed.'};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error.'};
+    }
+  }
+
+  // ✅ NEW: Register for Events (Reunions, Webinars, etc.)
+  Future<Map<String, dynamic>> registerEventInterest({
+    required String eventId,
+    required String eventTitle,
+    required String eventType,
+    required String fullName,
+    required String email,
+    required String phone,
+    required String sex,
+    required String organization,
+    required String jobTitle,
+    String? specialRequirements,
+    String? userId,
+  }) async {
+    try {
+      // ✅ FIX: Use AppConfig.baseUrl and correct path
+      final url = Uri.parse('${AppConfig.baseUrl}/api/event-registration');
+
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "eventId": eventId,
+          "eventTitle": eventTitle,
+          "eventType": eventType,
+          "fullName": fullName,
+          "email": email,
+          "phone": phone,
+          "sex": sex,
+          "organization": organization,
+          "jobTitle": jobTitle,
+          "specialRequirements": specialRequirements,
+          "userId": userId,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      return {"success": response.statusCode == 201, "message": data['message'] ?? "Registration submitted"};
+    } catch (e) {
+      return {"success": false, "message": "Connection error. Please try again."};
     }
   }
 }
