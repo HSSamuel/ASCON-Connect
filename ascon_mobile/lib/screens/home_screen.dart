@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:convert'; // Required for base64Decode
+import 'dart:convert';
+import 'dart:math'; // Required for Animation
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ Required for Local Cache
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/data_service.dart'; 
 import '../services/auth_service.dart'; 
 import 'directory_screen.dart';
@@ -10,13 +11,13 @@ import 'profile_screen.dart';
 import 'events_screen.dart';
 import 'about_screen.dart';
 import 'event_detail_screen.dart';
-import 'programme_detail_screen.dart'; // ✅ IMPORT NEW SCREEN
+import 'programme_detail_screen.dart';
 import 'login_screen.dart';
 import '../widgets/digital_id_card.dart'; 
 
 class HomeScreen extends StatefulWidget {
-  final String userName;
-  const HomeScreen({super.key, required this.userName});
+  final String? userName;
+  const HomeScreen({super.key, this.userName});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -24,53 +25,101 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  
+  // ✅ 1. HISTORY STACK: Initialize with Home (0)
+  List<int> _tabHistory = [0];
+
   late List<Widget> _screens;
+  String _loadedName = "Alumni"; 
 
   @override
   void initState() {
     super.initState();
-    _screens = [
-      _DashboardView(userName: widget.userName),
-      const EventsScreen(),
-      const DirectoryScreen(),
-      ProfileScreen(userName: widget.userName),
-    ];
+    _resolveUserName();
+  }
+
+  void _resolveUserName() async {
+    if (widget.userName != null) {
+      setState(() => _loadedName = widget.userName!);
+    } else {
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('user_name');
+      if (savedName != null && mounted) {
+        setState(() => _loadedName = savedName);
+      }
+    }
+    
+    setState(() {
+      _screens = [
+        _DashboardView(userName: _loadedName),
+        const EventsScreen(),
+        const DirectoryScreen(),
+        ProfileScreen(userName: _loadedName),
+      ];
+    });
+  }
+
+  // ✅ 2. NEW NAVIGATION HANDLER
+  void _onTabTapped(int index) {
+    if (_currentIndex == index) return;
+    
+    setState(() {
+      _currentIndex = index;
+      // Add to history so we can go back
+      _tabHistory.add(index);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_screens.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final navBarColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final unselectedItemColor = Colors.grey;
 
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: navBarColor,
-          boxShadow: [
-            if (!isDark) 
-              const BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          selectedItemColor: primaryColor,
-          unselectedItemColor: unselectedItemColor,
-          backgroundColor: navBarColor, 
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          iconSize: 22,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: "Home"),
-            BottomNavigationBarItem(icon: Icon(Icons.event_outlined), activeIcon: Icon(Icons.event), label: "Events"),
-            BottomNavigationBarItem(icon: Icon(Icons.list_alt), activeIcon: Icon(Icons.list), label: "Directory"),
-            BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: "Profile"),
-          ],
+    // ✅ 3. WRAP WITH POP SCOPE to Intercept Back Button
+    return PopScope(
+      // Only allow app to close if we are at the start of history
+      canPop: _tabHistory.length <= 1,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        // Go back to previous tab
+        setState(() {
+          _tabHistory.removeLast();
+          _currentIndex = _tabHistory.last;
+        });
+      },
+      child: Scaffold(
+        body: _screens[_currentIndex],
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: navBarColor,
+            boxShadow: [
+              if (!isDark) 
+                const BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))
+            ],
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: _onTabTapped, // ✅ Use custom handler
+            selectedItemColor: primaryColor,
+            unselectedItemColor: unselectedItemColor,
+            backgroundColor: navBarColor, 
+            elevation: 0,
+            type: BottomNavigationBarType.fixed,
+            iconSize: 22,
+            selectedFontSize: 12,
+            unselectedFontSize: 12,
+            items: const [
+              BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: "Home"),
+              BottomNavigationBarItem(icon: Icon(Icons.event_outlined), activeIcon: Icon(Icons.event), label: "Events"),
+              BottomNavigationBarItem(icon: Icon(Icons.list_alt), activeIcon: Icon(Icons.list), label: "Directory"),
+              BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: "Profile"),
+            ],
+          ),
         ),
       ),
     );
@@ -78,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (The main Home Tab)
+// DASHBOARD VIEW (With Animated Bell)
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -88,35 +137,50 @@ class _DashboardView extends StatefulWidget {
   State<_DashboardView> createState() => _DashboardViewState();
 }
 
-class _DashboardViewState extends State<_DashboardView> {
+class _DashboardViewState extends State<_DashboardView> with SingleTickerProviderStateMixin {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
 
   late Future<List<dynamic>> _eventsFuture;
   late Future<List<dynamic>> _programmesFuture;
+  
+  late AnimationController _bellController;
 
-  // ✅ DYNAMIC VARIABLES
   String? _profileImage;
   String _programme = "Member"; 
   String _year = "....";
-  String _alumniID = "PENDING"; // Default until loaded
+  String _alumniID = "PENDING"; 
   int _unreadNotifications = 2; 
 
   @override
   void initState() {
     super.initState();
-    _loadLocalData(); // 1. Load cached ID immediately for speed
-    _refreshData();   // 2. Fetch fresh data from API
+    
+    _bellController = AnimationController(
+      duration: const Duration(milliseconds: 1000), 
+      vsync: this,
+    );
+
+    if (_unreadNotifications > 0) {
+      _bellController.repeat(reverse: true);
+    }
+
+    _loadLocalData();
+    _refreshData();
   }
 
-  // ✅ STEP 1: Load from Local Storage (Fast)
+  @override
+  void dispose() {
+    _bellController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
     final localId = prefs.getString('alumni_id');
     if (localId != null && mounted) {
       setState(() {
         _alumniID = localId;
-        print("✅ Home Screen loaded ID from storage: $_alumniID");
       });
     }
   }
@@ -129,34 +193,20 @@ class _DashboardViewState extends State<_DashboardView> {
     });
   }
 
-  // ✅ STEP 2: Sync with Backend (Authentic Source of Truth)
   Future<void> _loadUserProfile() async {
     try {
       final profile = await _dataService.fetchProfile();
       if (mounted && profile != null) {
-        
-        // 1. Get ID from Profile
         String? apiId = profile['alumniId'];
-        
-        // 2. Update UI State (Synchronous)
         setState(() {
-          // Get Image
           _profileImage = profile['profilePicture'];
-          
-          // Get Programme
           _programme = profile['programmeTitle'] ?? "Member";
           if (_programme.isEmpty) _programme = "Member";
-
-          // Get Year
           _year = profile['yearOfAttendance']?.toString() ?? "....";
-
-          // Set ID variable if valid
           if (apiId != null && apiId.isNotEmpty && apiId != "PENDING") {
              _alumniID = apiId;
           }
         });
-
-        // 3. Save to Storage (Asynchronous - MUST be outside setState)
         if (apiId != null && apiId.isNotEmpty && apiId != "PENDING") {
            final prefs = await SharedPreferences.getInstance();
            await prefs.setString('alumni_id', apiId);
@@ -194,7 +244,11 @@ class _DashboardViewState extends State<_DashboardView> {
                   TextButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      setState(() => _unreadNotifications = 0); 
+                      setState(() {
+                        _unreadNotifications = 0;
+                        _bellController.stop(); 
+                        _bellController.reset();
+                      }); 
                     },
                     child: const Text("Mark all read", style: TextStyle(color: Colors.grey)),
                   )
@@ -226,7 +280,11 @@ class _DashboardViewState extends State<_DashboardView> {
       },
     ).whenComplete(() {
       if (_unreadNotifications > 0) {
-          setState(() => _unreadNotifications = 0);
+          setState(() {
+             _unreadNotifications = 0;
+             _bellController.stop();
+             _bellController.reset();
+          });
       }
     });
   }
@@ -271,10 +329,10 @@ class _DashboardViewState extends State<_DashboardView> {
 
   Color _getTypeColor(String type) {
     switch (type) {
-      case 'Reunion': return const Color(0xFF1B5E3A); // Green
-      case 'Webinar': return Colors.blue[700]!;     // Blue
-      case 'Seminar': return Colors.purple[700]!;   // Purple
-      case 'News':    return Colors.orange[800]!;   // Orange
+      case 'Reunion': return const Color(0xFF1B5E3A); 
+      case 'Webinar': return Colors.blue[700]!;     
+      case 'Seminar': return Colors.purple[700]!;   
+      case 'News':    return Colors.orange[800]!;   
       default:        return Colors.grey[700]!;
     }
   }
@@ -286,6 +344,7 @@ class _DashboardViewState extends State<_DashboardView> {
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -303,15 +362,48 @@ class _DashboardViewState extends State<_DashboardView> {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
           ),
           Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: IconButton(
-              icon: Badge(
-                isLabelVisible: _unreadNotifications > 0,
-                label: Text('$_unreadNotifications', style: const TextStyle(fontSize: 10)),
-                backgroundColor: Colors.red,
-                child: Icon(Icons.notifications_none_outlined, color: primaryColor, size: 22),
+            padding: const EdgeInsets.only(right: 12.0),
+            child: GestureDetector(
+              onTap: _showNotificationSheet,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  RotationTransition(
+                    turns: Tween(begin: -0.05, end: 0.05).animate(
+                      CurvedAnimation(parent: _bellController, curve: Curves.easeInOut),
+                    ),
+                    child: Icon(
+                      _unreadNotifications > 0 ? Icons.notifications_active : Icons.notifications_none_outlined,
+                      color: _unreadNotifications > 0 ? const Color(0xFFD32F2F) : primaryColor,
+                      size: 26,
+                    ),
+                  ),
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      top: 8,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: cardColor, width: 1.5),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Center(
+                          child: Text(
+                            '$_unreadNotifications',
+                            style: const TextStyle(
+                              color: Colors.white, 
+                              fontSize: 9, 
+                              fontWeight: FontWeight.bold
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              onPressed: _showNotificationSheet, 
             ),
           ),
         ],
@@ -327,7 +419,6 @@ class _DashboardViewState extends State<_DashboardView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 
-                // ✅ 1. DYNAMIC DIGITAL ID CARD
                 DigitalIDCard(
                     userName: widget.userName, 
                     programme: _programme,
@@ -343,7 +434,6 @@ class _DashboardViewState extends State<_DashboardView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                        // ✅ FEATURED PROGRAMMES SECTION (RESPONSIVE GRID)
                         FutureBuilder<List<dynamic>>(
                           future: _programmesFuture,
                           builder: (context, snapshot) {
@@ -366,20 +456,15 @@ class _DashboardViewState extends State<_DashboardView> {
                                 ),
                                 const SizedBox(height: 15),
                                 
-                                // ✅ KEY CHANGE: Responsive Width Check
-                                // If screen width is small (< 600 mobile), make cards wider (180).
-                                // If screen is large (Windows), keep them compact (135).
                                 GridView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
                                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                                  // Mobile: 2 columns (200), Desktop: Compact (135)
-                                  maxCrossAxisExtent: MediaQuery.of(context).size.width < 600 ? 180 : 180,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  // ✅ CHANGED: 0.82 makes the card SHORTER (Reduced height) while keeping width
-                                  childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.82 : 0.75, 
-                                ),
+                                    maxCrossAxisExtent: 180,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.88 : 0.8, 
+                                  ),
                                   itemCount: programmes.length,
                                   itemBuilder: (context, index) {
                                     return _buildProgrammeCard(programmes[index]);
@@ -391,7 +476,6 @@ class _DashboardViewState extends State<_DashboardView> {
                           },
                         ),
 
-                        // --- EVENTS SECTION ---
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -450,10 +534,7 @@ class _DashboardViewState extends State<_DashboardView> {
   Widget _buildProgrammeCard(Map<String, dynamic> prog) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
-    
-    // ✅ GREEN TEXT COLOR (Dark Green on Light mode, Bright Green on Dark mode)
     final titleColor = isDark ? Colors.greenAccent[400] : const Color(0xFF1B5E20);
-
     final String? programmeImage = prog['image'] ?? prog['imageUrl'];
 
     return Container(
@@ -485,47 +566,40 @@ class _DashboardViewState extends State<_DashboardView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // 1️⃣ COMPACT IMAGE (70px)
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
-                  height: 70,
+                  height: 95, 
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
                   child: programmeImage != null && programmeImage.isNotEmpty
                       ? Image.network(
                           programmeImage,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => Icon(Icons.image, color: Colors.grey[400], size: 35),
+                          errorBuilder: (c, e, s) => Icon(Icons.image, color: Colors.grey[400], size: 40),
                         )
-                      : Icon(Icons.school, color: Colors.grey[400], size: 35),
+                      : Icon(Icons.school, color: Colors.grey[400], size: 40),
                 ),
               ),
-
-              // 2️⃣ CONTENT SECTION
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center, // Groups text + pill together
+                    mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
-                      // ✅ UPDATED TITLE: Bigger, Bolder, Green
                       Text(
                         prog['title'] ?? "Programme",
                         textAlign: TextAlign.center,
-                        maxLines: 4,
+                        maxLines: 3, 
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontWeight: FontWeight.w800, // Extra Bold
-                          fontSize: 13.0,              // ✅ Increased Size
-                          color: titleColor,           // ✅ Green Color
+                          fontWeight: FontWeight.w800, 
+                          fontSize: 15.0,              
+                          color: titleColor,           
                           height: 1.1,
                         ),
                       ),
-
-                      const SizedBox(height: 5), 
-
-                      // CODE PILL
+                      const SizedBox(height: 6), 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -535,7 +609,7 @@ class _DashboardViewState extends State<_DashboardView> {
                         child: Text(
                           prog['code']?.toUpperCase() ?? "PIC",
                           style: TextStyle(
-                            fontSize: 9,
+                            fontSize: 11, 
                             fontWeight: FontWeight.bold,
                             color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
                           ),

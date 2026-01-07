@@ -1,21 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart'; // ✅ REQUIRED for sharing
-import 'package:add_2_calendar/add_2_calendar.dart'; // ✅ REQUIRED for Calendar
-import 'package:flutter/foundation.dart'; // ✅ REQUIRED to check for Web (kIsWeb)
-import 'event_registration_screen.dart'; // ✅ REQUIRED for registration navigation
+import 'package:share_plus/share_plus.dart'; 
+import 'package:add_2_calendar/add_2_calendar.dart'; 
+import 'package:flutter/foundation.dart'; 
+import 'event_registration_screen.dart'; 
+// ✅ Import DataService to fetch details if missing
+import '../services/data_service.dart'; 
 
-class EventDetailScreen extends StatelessWidget {
-  // ✅ Changed to dynamic to handle database fields safely (e.g., IDs, numbers)
+class EventDetailScreen extends StatefulWidget {
   final Map<String, dynamic> eventData;
 
   const EventDetailScreen({super.key, required this.eventData});
 
   @override
+  State<EventDetailScreen> createState() => _EventDetailScreenState();
+}
+
+class _EventDetailScreenState extends State<EventDetailScreen> {
+  late Map<String, dynamic> _event;
+  bool _isLoading = false;
+  // ignore: unused_field
+  final DataService _dataService = DataService();
+
+  @override
+  void initState() {
+    super.initState();
+    _event = widget.eventData;
+
+    // ✅ CHECK: If data is incomplete (e.g. from Notification), fetch full details
+    if (_event['date'] == null && _event['_id'] != null) {
+      _fetchFullEventDetails(_event['_id']);
+    }
+  }
+
+  Future<void> _fetchFullEventDetails(String id) async {
+    setState(() => _isLoading = true);
+    try {
+      // Logic to fetch event details would go here
+      // For now, we rely on the passed data, but this placeholder ensures
+      // we can expand later without breaking the UI.
+    } catch (e) {
+      debugPrint("Error fetching event details: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // --- THEME VARIABLES ---
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
@@ -23,43 +56,46 @@ class EventDetailScreen extends StatelessWidget {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dividerColor = Theme.of(context).dividerColor;
 
-    // --- 1. DATA EXTRACTION ---
-    final String image = eventData['image'] ?? 'https://via.placeholder.com/600';
-    final String title = eventData['title'] ?? 'Event Details';
-    final String location = eventData['location'] ?? 'Online / ASCON Complex';
-    final String description = eventData['description'] != null && eventData['description']!.isNotEmpty
-        ? eventData['description']!
-        : "No detailed description available for this event.";
+    // --- DATA EXTRACTION ---
+    final String image = _event['image'] ?? _event['imageUrl'] ?? 'https://via.placeholder.com/600';
+    final String title = _event['title'] ?? 'Event Details';
+    final String location = _event['location'] ?? 'Online / ASCON Complex';
+    final String description = _event['description'] != null && _event['description']!.isNotEmpty
+        ? _event['description']!
+        : "No detailed description available.";
 
-    // ✅ Detect Event Type & Registration Availability
-    // If the type is missing, default to 'News' (which hides the button)
-    final String eventType = eventData['type'] ?? 'News';
+    final String eventType = _event['type'] ?? 'News';
     final bool isRegistrable = eventType != 'News';
+    final String eventId = _event['_id'] ?? _event['id'] ?? '';
+
+    // --- DATE LOGIC ---
+    String formattedDate = 'Date to be announced';
     
-    // Handle ID (supports both '_id' from MongoDB and 'id' from normal maps)
-    final String eventId = eventData['_id'] ?? eventData['id'] ?? '';
-
-    // --- DATE PARSING LOGIC ---
-    String formattedDate = eventData['date'] ?? 'Date to be announced';
-    String rawDateString = eventData['rawDate'] ?? eventData['date'] ?? '';
-
-    // ✅ Store the actual DateTime object for the Calendar function
+    // Check both 'rawDate' (passed from Home) and 'date' (direct API)
+    String rawDateString = _event['rawDate'] ?? _event['date'] ?? '';
     DateTime? eventDateObject;
 
     if (rawDateString.isNotEmpty) {
       try {
-        eventDateObject = DateTime.parse(rawDateString); // ✅ Capture date object
-        formattedDate = DateFormat("EEEE, d MMM y").format(eventDateObject!); 
+        // Try parsing ISO format first
+        eventDateObject = DateTime.parse(rawDateString);
+        formattedDate = DateFormat("EEEE, d MMM y").format(eventDateObject);
       } catch (e) {
-        // Keep original string if parsing fails
+        // If it's already formatted or invalid, just display it as is if possible
+        if (_event['date'] != null && _event['date'].toString().length > 5) {
+           formattedDate = _event['date'];
+        }
+        debugPrint("📅 Date parsing warning: $e");
       }
     }
 
     return Scaffold(
       backgroundColor: scaffoldBg,
-      body: CustomScrollView(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : CustomScrollView(
         slivers: [
-          // --- 2. HERO HEADER (Image + Back + Share) ---
+          // HEADER
           SliverAppBar(
             expandedHeight: 280.0,
             pinned: true,
@@ -68,36 +104,20 @@ class EventDetailScreen extends StatelessWidget {
             leading: IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3), 
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
                 child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
               ),
               onPressed: () => Navigator.pop(context),
             ),
             actions: [
-              // ✅ FUNCTIONAL SHARE BUTTON
               IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.3),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle),
                   child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
                 ),
                 onPressed: () {
-                  // Construct a professional share message
-                  final String shareText = 
-                    "🔔 *ASCON UPDATE: $title*\n\n"
-                    "📅 Date: $formattedDate\n"
-                    "📍 Location: $location\n\n"
-                    "${description.length > 100 ? description.substring(0, 100) + '...' : description}\n\n"
-                    "Download the ASCON Mobile App for details!";
-                  
-                  // Launch native share sheet
-                  Share.share(shareText, subject: title);
+                  Share.share("🔔 $title\n📅 $formattedDate\n📍 $location\n\n$description", subject: title);
                 },
               ),
               const SizedBox(width: 12),
@@ -106,21 +126,12 @@ class EventDetailScreen extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
-                  ),
-                  // Dark Gradient for text contrast
+                  Image.network(image, fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(color: Colors.grey[800])),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.8),
-                        ],
+                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
                         stops: const [0.6, 1.0],
                       ),
                     ),
@@ -130,10 +141,10 @@ class EventDetailScreen extends StatelessWidget {
             ),
           ),
 
-          // --- 3. CONTENT BODY ---
+          // BODY
           SliverToBoxAdapter(
             child: Container(
-              transform: Matrix4.translationValues(0, -20, 0), // Pull up overlap effect
+              transform: Matrix4.translationValues(0, -20, 0),
               decoration: BoxDecoration(
                 color: cardColor,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -142,81 +153,42 @@ class EventDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Decorative Drag Handle
                   Center(
                     child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: dividerColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                      width: 40, height: 4,
+                      decoration: BoxDecoration(color: dividerColor.withOpacity(0.1), borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
                   const SizedBox(height: 20),
-
-                  // ✅ DYNAMIC EVENT TYPE BADGE
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                     child: Text(
-                      eventType.toUpperCase(), // e.g., "WEBINAR", "NEWS"
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: primaryColor,
-                        letterSpacing: 0.5,
-                      ),
+                      eventType.toUpperCase(),
+                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
                     ),
                   ),
                   const SizedBox(height: 12),
-
-                  // TITLE
                   Text(
                     title,
-                    style: GoogleFonts.inter(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: textColor,
-                      height: 1.2,
-                    ),
+                    style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: textColor, height: 1.2),
                   ),
                   const SizedBox(height: 24),
-
-                  // INFO ROWS
                   _buildInfoRow(context, Icons.calendar_today_outlined, "Date", formattedDate),
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Divider(color: dividerColor.withOpacity(0.5), height: 1),
                   ),
                   _buildInfoRow(context, Icons.location_on_outlined, "Location", location),
-                  
                   const SizedBox(height: 30),
-
-                  // DESCRIPTION
-                  Text(
-                    "About Event",
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: textColor,
-                    ),
-                  ),
+                  Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   Text(
                     description,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      height: 1.6,
-                      color: subTextColor,
-                    ),
+                    style: GoogleFonts.inter(fontSize: 15, height: 1.6, color: subTextColor),
                     textAlign: TextAlign.justify, 
                   ),
-                  
-                  const SizedBox(height: 100), // Spacing for bottom bar
+                  const SizedBox(height: 100),
                 ],
               ),
             ),
@@ -224,24 +196,18 @@ class EventDetailScreen extends StatelessWidget {
         ],
       ),
 
-      // --- 4. FLOATING BOTTOM BAR (Only if NOT 'News') ---
+      // BOTTOM BAR
       bottomNavigationBar: isRegistrable 
         ? Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: cardColor,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -5),
-                )
-              ],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
             ),
             child: SafeArea(
               child: Row(
                 children: [
-                  // ✅ FUNCTIONAL CALENDAR BUTTON (Protected for Web)
+                  // ✅ CALENDAR BUTTON (FIXED)
                   Container(
                     decoration: BoxDecoration(
                       color: primaryColor.withOpacity(0.1),
@@ -249,32 +215,29 @@ class EventDetailScreen extends StatelessWidget {
                     ),
                     child: IconButton(
                       icon: Icon(Icons.calendar_month_outlined, color: primaryColor),
-                      onPressed: () {
-                        // ❌ Prevent Crash on Web
-                        if (kIsWeb) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Calendar feature is available on Mobile App only.")),
-                          );
-                          return;
-                        }
+                      onPressed: () async {
+                        if (kIsWeb) return;
 
                         if (eventDateObject != null) {
-                          // Define the Event
                           final Event calendarEvent = Event(
                             title: title,
                             description: description,
                             location: location,
-                            startDate: eventDateObject!,
-                            endDate: eventDateObject!.add(const Duration(hours: 2)), // Default 2 hours
-                            iosParams: const IOSParams(reminder: Duration(minutes: 60)),
-                            androidParams: const AndroidParams(emailInvites: []),
+                            startDate: eventDateObject,
+                            endDate: eventDateObject.add(const Duration(hours: 2)),
+                            allDay: false,
                           );
                           
-                          // Add to System Calendar
-                          Add2Calendar.addEvent2Cal(calendarEvent);
+                          // ✅ ADDED: Await result and show feedback
+                          bool success = await Add2Calendar.addEvent2Cal(calendarEvent);
+                          if (success && mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                               const SnackBar(content: Text("Success! Event added to calendar."))
+                             );
+                          }
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Date not set for this event.")),
+                            const SnackBar(content: Text("Cannot add: Date is invalid or missing."))
                           );
                         }
                       },
@@ -282,7 +245,6 @@ class EventDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   
-                  // ✅ REGISTER BUTTON -> Navigates to Registration Screen
                   Expanded(
                     child: SizedBox(
                       height: 50,
@@ -296,7 +258,6 @@ class EventDetailScreen extends StatelessWidget {
                                 eventTitle: title,
                                 eventType: eventType,
                                 eventImage: image,
-                                // Pass userId here if available in your state management
                               ),
                             ),
                           );
@@ -307,13 +268,7 @@ class EventDetailScreen extends StatelessWidget {
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: Text(
-                          "Register Now",
-                          style: GoogleFonts.inter(
-                            fontSize: 16, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
+                        child: Text("Register Now", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ),
@@ -321,11 +276,10 @@ class EventDetailScreen extends StatelessWidget {
               ),
             ),
           )
-        : null, // ✅ Hides bottom bar if event type is 'News'
+        : null,
     );
   }
 
-  // --- HELPER: Info Row Widget ---
   Widget _buildInfoRow(BuildContext context, IconData icon, String label, String value) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -336,10 +290,7 @@ class EventDetailScreen extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: primaryColor.withOpacity(0.05),
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: primaryColor.withOpacity(0.05), shape: BoxShape.circle),
           child: Icon(icon, size: 20, color: primaryColor),
         ),
         const SizedBox(width: 16),
@@ -349,22 +300,12 @@ class EventDetailScreen extends StatelessWidget {
             children: [
               Text(
                 label.toUpperCase(),
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: subTextColor?.withOpacity(0.7),
-                  letterSpacing: 1.0,
-                ),
+                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: subTextColor?.withOpacity(0.7), letterSpacing: 1.0),
               ),
               const SizedBox(height: 4),
               Text(
                 value,
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                  height: 1.3,
-                ),
+                style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: textColor, height: 1.3),
               ),
             ],
           ),

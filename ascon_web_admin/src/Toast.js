@@ -1,25 +1,40 @@
 import React, { useEffect } from "react";
 import "./Toast.css";
 
-const Toast = ({ message, type, onClose }) => {
+function Toast({ message, type = "success", onClose }) {
+  // Auto-dismiss after 4 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
-    }, 3000);
+    }, 4000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
+  // Dynamic Icons based on type
+  const getIcon = () => {
+    switch (type) {
+      case "success":
+        return "✅";
+      case "error":
+        return "❌";
+      case "info":
+        return "📥"; // Icon for Export
+      default:
+        return "🔔";
+    }
+  };
+
   return (
-    <div className="toast-container">
-      <div className={`toast-card ${type}`}>
-        <div className="toast-icon">{type === "success" ? "✅" : "🗑️"}</div>
-        <div className="toast-message">{message}</div>
-        <button className="toast-close-btn" onClick={onClose}>
-          &times;
-        </button>
+    <div className={`toast-container toast-${type}`}>
+      <div className="toast-icon">{getIcon()}</div>
+      <div className="toast-content">
+        <span className="toast-message">{message}</span>
       </div>
+      <button className="toast-close" onClick={onClose}>
+        &times;
+      </button>
     </div>
   );
-};
+}
 
 export default Toast;

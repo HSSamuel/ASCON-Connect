@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 
-function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
-  // ✅ Toggle State: 'programmes' or 'events'
+function RegistrationsTab({
+  registrations,
+  eventRegistrations,
+  isLoading,
+  onDelete,
+  canEdit,
+  showToast, // ✅ Receive showToast prop
+}) {
+  // Toggle State: 'programmes' or 'events'
   const [view, setView] = useState("programmes");
 
   if (isLoading) {
@@ -15,6 +22,74 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
   // Helper to choose which list to show based on the toggle
   const activeList = view === "programmes" ? registrations : eventRegistrations;
 
+  // ✅ EXPORT TO EXCEL (CSV) FUNCTION
+  const exportToCSV = () => {
+    if (!activeList || activeList.length === 0) {
+      if (showToast) {
+        showToast("No data to export.", "error"); // ✅ Trigger Error Toast
+      } else {
+        alert("No data to export.");
+      }
+      return;
+    }
+
+    // ✅ Trigger Info Toast
+    if (showToast) {
+      showToast(`Downloading ${view} list...`, "info");
+    }
+
+    // 1. Define Headers based on View
+    const headers = [
+      "Date",
+      "Full Name",
+      "Email",
+      "Phone",
+      view === "programmes" ? "Programme Title" : "Event Title",
+      view === "events" ? "Event Type" : "N/A",
+      "Organization",
+      "Job Title",
+      "City",
+      "Country",
+      view === "events" ? "Special Requirements" : "",
+    ].filter((h) => h !== ""); // Remove empty headers
+
+    // 2. Map Data to Rows
+    const rows = activeList.map((reg) =>
+      [
+        `"${new Date(reg.createdAt).toLocaleDateString()}"`,
+        `"${reg.fullName || ""}"`,
+        `"${reg.email || ""}"`,
+        `"${reg.phone || ""}"`,
+        `"${reg.programmeTitle || reg.eventTitle || ""}"`,
+        view === "events" ? `"${reg.eventType || ""}"` : null,
+        `"${reg.sponsoringOrganisation || reg.organization || ""}"`,
+        `"${reg.jobTitle || ""}"`,
+        `"${reg.city || ""}"`,
+        `"${reg.country || ""}"`,
+        view === "events" ? `"${reg.specialRequirements || ""}"` : null,
+      ].filter((cell) => cell !== null)
+    ); // Remove null cells
+
+    // 3. Combine Headers and Rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    // 4. Trigger Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `ascon_${view}_registrations_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div>
       {/* 1. HEADER & TOGGLE */}
@@ -25,53 +100,81 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
         <h2 style={{ margin: "0 0 10px 0", color: "#1B5E3A" }}>
           📋 Registrations Viewer
         </h2>
-        <p style={{ color: "#666", margin: 0 }}>
+        <p style={{ color: "#666", margin: "0 0 20px 0" }}>
           View users who have expressed interest via the mobile app.
         </p>
 
-        {/* ✅ TOGGLE BUTTONS */}
         <div
           style={{
-            marginTop: "20px",
-            display: "inline-flex",
-            background: "#f0f0f0",
-            borderRadius: "8px",
-            padding: "4px",
+            display: "flex",
+            justifyContent: "center",
+            gap: "10px",
+            flexWrap: "wrap",
           }}
         >
-          <button
-            onClick={() => setView("programmes")}
+          {/* TOGGLE BUTTONS */}
+          <div
             style={{
-              padding: "8px 20px",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              background: view === "programmes" ? "white" : "transparent",
-              color: view === "programmes" ? "#1B5E3A" : "#666",
-              fontWeight: view === "programmes" ? "bold" : "normal",
-              boxShadow:
-                view === "programmes" ? "0 2px 4px rgba(0,0,0,0.1)" : "none",
-              transition: "all 0.2s",
+              display: "inline-flex",
+              background: "#f0f0f0",
+              borderRadius: "8px",
+              padding: "4px",
             }}
           >
-            Programmes ({registrations.length})
-          </button>
+            <button
+              onClick={() => setView("programmes")}
+              style={{
+                padding: "8px 20px",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                background: view === "programmes" ? "white" : "transparent",
+                color: view === "programmes" ? "#1B5E3A" : "#666",
+                fontWeight: view === "programmes" ? "bold" : "normal",
+                boxShadow:
+                  view === "programmes" ? "0 2px 4px rgba(0,0,0,0.1)" : "none",
+                transition: "all 0.2s",
+              }}
+            >
+              Programmes ({registrations.length})
+            </button>
+            <button
+              onClick={() => setView("events")}
+              style={{
+                padding: "8px 20px",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                background: view === "events" ? "white" : "transparent",
+                color: view === "events" ? "#1B5E3A" : "#666",
+                fontWeight: view === "events" ? "bold" : "normal",
+                boxShadow:
+                  view === "events" ? "0 2px 4px rgba(0,0,0,0.1)" : "none",
+                transition: "all 0.2s",
+              }}
+            >
+              Events ({eventRegistrations.length})
+            </button>
+          </div>
+
+          {/* ✅ EXPORT BUTTON */}
           <button
-            onClick={() => setView("events")}
+            onClick={exportToCSV}
+            className="approve-btn"
             style={{
-              padding: "8px 20px",
+              backgroundColor: "#1B5E3A",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "8px 16px",
+              height: "40px", // Match toggle height
               border: "none",
               borderRadius: "6px",
+              color: "white",
               cursor: "pointer",
-              background: view === "events" ? "white" : "transparent",
-              color: view === "events" ? "#1B5E3A" : "#666",
-              fontWeight: view === "events" ? "bold" : "normal",
-              boxShadow:
-                view === "events" ? "0 2px 4px rgba(0,0,0,0.1)" : "none",
-              transition: "all 0.2s",
             }}
           >
-            Events ({eventRegistrations.length})
+            📥 Export to Excel
           </button>
         </div>
       </div>
@@ -84,21 +187,23 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
               <th>Date</th>
               <th>Applicant</th>
               <th>Contact</th>
-              {/* ✅ Dynamic Column Header */}
+              {/* Dynamic Column Header */}
               <th>
                 {view === "programmes" ? "Programme Title" : "Event / Type"}
               </th>
               <th>Organization</th>
               <th>Location</th>
-              {/* ✅ Show "Special Req" only for Events */}
+              {/* Show "Special Req" only for Events */}
               {view === "events" && <th>Special Req</th>}
+              {/* Action Column */}
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {activeList.length === 0 ? (
               <tr>
                 <td
-                  colSpan={view === "events" ? 7 : 6}
+                  colSpan={view === "events" ? 8 : 7}
                   style={{
                     textAlign: "center",
                     padding: "40px",
@@ -144,7 +249,7 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
                     </div>
                   </td>
 
-                  {/* TITLE (Handles both Programme and Event fields) */}
+                  {/* TITLE */}
                   <td>
                     <span
                       className="tag"
@@ -186,7 +291,7 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
                     </div>
                   </td>
 
-                  {/* LOCATION (Country only for Events usually, Full address for Programmes) */}
+                  {/* LOCATION */}
                   <td style={{ fontSize: "13px" }}>
                     {reg.city ? `${reg.city}, ` : ""}
                     <span style={{ fontWeight: "500" }}>
@@ -218,6 +323,24 @@ function RegistrationsTab({ registrations, eventRegistrations, isLoading }) {
                       )}
                     </td>
                   )}
+
+                  {/* DELETE BUTTON */}
+                  <td>
+                    {canEdit ? (
+                      <button
+                        className="delete-btn compact-btn"
+                        onClick={() => onDelete(reg._id, view)} // Pass ID and current view type
+                        title="Delete Registration"
+                        style={{ padding: "6px 12px" }}
+                      >
+                        🗑️
+                      </button>
+                    ) : (
+                      <span style={{ color: "#ccc", fontSize: "12px" }}>
+                        🔒
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}

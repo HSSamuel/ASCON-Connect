@@ -1,9 +1,13 @@
 import React from "react";
-import "./StatCard.css"; // We will create this next
+import "./StatCard.css";
 
-function StatCard({ title, value, icon, color }) {
+function StatCard({ title, value, icon, color, onClick }) {
   return (
-    <div className="stat-card">
+    <div
+      className="stat-card"
+      onClick={onClick}
+      style={{ cursor: onClick ? "pointer" : "default" }} // ✅ Add pointer cursor
+    >
       <div className="stat-icon-container" style={{ backgroundColor: color }}>
         <span className="stat-icon">{icon}</span>
       </div>

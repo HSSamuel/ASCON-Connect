@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const Event = require("../models/Event");
-const { sendBroadcast } = require("../../utils/notificationService");
+// ✅ FIX: Correct path and filename
+const { sendBroadcastNotification } = require("../utils/notificationHandler");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
@@ -8,16 +9,30 @@ const verifyAdmin = require("./verifyAdmin");
 // @desc    Get all events (Sorted by Newest First)
 router.get("/", async (req, res) => {
   try {
-    // ✅ CHANGED: date: -1 (Descending) puts the Newest/Latest dates at the top
-    const events = await Event.find().sort({ date: -1 });
-    res.json(events);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const events = await Event.find()
+      .sort({ date: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Event.countDocuments();
+
+    res.json({
+      events,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 // @route   POST /api/events
-// @desc    Create a new Event
+// @desc    Create a new Event (This endpoint is likely redundant if you use admin.js, but we fix it anyway)
 router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   const event = new Event({
     title: req.body.title,
@@ -25,12 +40,23 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     date: req.body.date,
     location: req.body.location,
     type: req.body.type,
-    // ✅ NEW ADDITION: Make sure to capture the image from the request!
     image: req.body.image,
   });
 
   try {
     const savedEvent = await event.save();
+
+    // ✅ OPTIONAL: Send Notification here too (just in case this route is used instead of admin.js)
+    try {
+      await sendBroadcastNotification(
+        `New ${savedEvent.type}: ${savedEvent.title}`,
+        `Join us at ${savedEvent.location}!`,
+        { route: "event_detail", id: savedEvent._id.toString() }
+      );
+    } catch (notifyErr) {
+      console.error("Notification failed inside events.js:", notifyErr);
+    }
+
     res.status(201).json(savedEvent);
   } catch (err) {
     res.status(400).json({ message: err.message });

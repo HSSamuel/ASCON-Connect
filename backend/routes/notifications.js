@@ -5,11 +5,17 @@ const verify = require("./verifyToken");
 // POST /api/notifications/save-token
 router.post("/save-token", verify, async (req, res) => {
   try {
-    const { fcmToken } = req.body;
-    if (!fcmToken) return res.status(400).send("Token required");
+    // We accept both keys just to be safe
+    const token = req.body.fcmToken || req.body.token;
 
-    // Update the user with their new phone token
-    await User.findByIdAndUpdate(req.user._id, { fcmToken: fcmToken });
+    if (!token) return res.status(400).send("Token required");
+
+    // ✅ FIXED: Use $addToSet to add to the array (prevents duplicates)
+    // We also keep the old 'fcmToken' field updated for backward compatibility if needed
+    await User.findByIdAndUpdate(req.user._id, {
+      $addToSet: { fcmTokens: token }, // Add to list
+      fcmToken: token, // Update single field (legacy support)
+    });
 
     res.status(200).send("Token saved");
   } catch (err) {

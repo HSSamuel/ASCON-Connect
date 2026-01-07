@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const User = require("../models/User");
+const Counter = require("../models/Counter"); // ✅ IMPORT COUNTER MODEL
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -11,42 +12,29 @@ const axios = require("axios");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // =========================================================
-// 🔧 HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID
+// 🔧 HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID (ATOMIC)
 // =========================================================
-// This ensures the ID is unique to the specific Class Year.
+// This ensures the ID is unique even if users register simultaneously.
 // Format: ASC/{YEAR}/{SEQUENCE} (e.g., ASC/2024/0052)
 async function generateAlumniId(year) {
   try {
-    // 1. Determine the Target Year (Use Input Year or Default to Current)
     const currentYear = new Date().getFullYear().toString();
     const targetYear = year ? year.toString() : currentYear;
+    const counterId = `alumni_id_${targetYear}`;
 
-    // 2. Search DB for the last ID issued *specifically* for this year
-    // Regex matches any string starting with "ASC/2024/"
-    const regex = new RegExp(`ASC/${targetYear}/`);
+    // ✅ ATOMIC UPDATE: Find the counter and increment it safely
+    const counter = await Counter.findByIdAndUpdate(
+      counterId,
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
 
-    const lastUser = await User.findOne({ alumniId: { $regex: regex } })
-      .sort({ _id: -1 }) // Get the most recently created one
-      .limit(1);
-
-    let nextNum = 1;
-
-    if (lastUser && lastUser.alumniId) {
-      // Extract the sequence number: "ASC/2024/0042" -> "0042"
-      const parts = lastUser.alumniId.split("/");
-      const lastNum = parseInt(parts[parts.length - 1]);
-
-      if (!isNaN(lastNum)) {
-        nextNum = lastNum + 1; // Increment (42 -> 43)
-      }
-    }
-
-    // 3. Format with leading zeros (e.g., 5 -> "0005")
-    const paddedNum = nextNum.toString().padStart(4, "0");
+    // Format with leading zeros (e.g., 5 -> "0005")
+    const paddedNum = counter.seq.toString().padStart(4, "0");
     return `ASC/${targetYear}/${paddedNum}`;
   } catch (error) {
     console.error("Error generating Alumni ID:", error);
-    // Fallback in worst-case scenario to prevent crash
+    // Fallback only if database fails completely
     return `ASC/${new Date().getFullYear()}/ERR-${Date.now()
       .toString()
       .slice(-4)}`;
@@ -67,13 +55,13 @@ const registerSchema = Joi.object({
     .optional()
     .allow(null, ""),
   customProgramme: Joi.string().optional().allow(""),
-  // ✅ FIX: Allow googleToken to prevent "not allowed" errors
   googleToken: Joi.string().optional().allow(null, ""),
 });
 
 const loginSchema = Joi.object({
   email: Joi.string().min(6).required().email(),
   password: Joi.string().min(6).required(),
+  fcmToken: Joi.string().optional().allow(""), // ✅ Allow FCM Token in Login
 });
 
 // =========================================================
@@ -104,7 +92,7 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 4. ✅ GENERATE OFFICIAL ID
+    // 4. ✅ GENERATE OFFICIAL ID (ATOMIC)
     const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     // 5. Create User
@@ -148,14 +136,14 @@ router.post("/register", async (req, res) => {
 });
 
 // =========================================================
-// 2. LOGIN (With Self-Healing)
+// 2. LOGIN (With Self-Healing & Multi-Device Notifications)
 // =========================================================
 router.post("/login", async (req, res) => {
   const { error } = loginSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { email, password } = req.body;
+    const { email, password, fcmToken } = req.body;
     let user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Email is not found." });
 
@@ -170,7 +158,15 @@ router.post("/login", async (req, res) => {
     if (!user.alumniId || user.alumniId === "PENDING" || user.alumniId === "") {
       console.log(`🔧 Auto-Fixing ID for user: ${user.fullName}`);
       user.alumniId = await generateAlumniId(user.yearOfAttendance);
-      user = await user.save();
+      await user.save();
+    }
+
+    // ✅ NOTIFICATION: Add Device Token
+    if (fcmToken) {
+      await User.updateOne(
+        { _id: user._id },
+        { $addToSet: { fcmTokens: fcmToken } } // Adds only if unique
+      );
     }
 
     const token = jwt.sign(
@@ -193,7 +189,7 @@ router.post("/login", async (req, res) => {
         canEdit: user.canEdit,
         profilePicture: user.profilePicture,
         hasSeenWelcome: user.hasSeenWelcome || false,
-        alumniId: user.alumniId, // ✅ Return the Correct ID
+        alumniId: user.alumniId,
       },
     });
   } catch (err) {
@@ -203,11 +199,30 @@ router.post("/login", async (req, res) => {
 });
 
 // =========================================================
-// 3. GOOGLE LOGIN (With Self-Healing)
+// 3. LOGOUT (Remove Device Token)
+// =========================================================
+router.post("/logout", async (req, res) => {
+  try {
+    const { userId, fcmToken } = req.body;
+    if (userId && fcmToken) {
+      await User.updateOne(
+        { _id: userId },
+        { $pull: { fcmTokens: fcmToken } } // Remove this specific device
+      );
+    }
+    res.status(200).json({ message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Logout Error:", err);
+    res.status(500).json({ message: "Logout failed" });
+  }
+});
+
+// =========================================================
+// 4. GOOGLE LOGIN (With Self-Healing)
 // =========================================================
 router.post("/google", async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, fcmToken } = req.body; // Accept fcmToken here too
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -223,7 +238,15 @@ router.post("/google", async (req, res) => {
       // ✅ SELF-HEALING: Fix ID if missing
       if (!user.alumniId || user.alumniId === "PENDING") {
         user.alumniId = await generateAlumniId(user.yearOfAttendance);
-        user = await user.save();
+        await user.save();
+      }
+
+      // ✅ NOTIFICATION: Add Device Token
+      if (fcmToken) {
+        await User.updateOne(
+          { _id: user._id },
+          { $addToSet: { fcmTokens: fcmToken } }
+        );
       }
 
       const authToken = jwt.sign(
@@ -264,7 +287,7 @@ router.post("/google", async (req, res) => {
 });
 
 // =========================================================
-// 4. FORGOT PASSWORD (Using Brevo API)
+// 5. FORGOT PASSWORD (Using Brevo API)
 // =========================================================
 router.post("/forgot-password", async (req, res) => {
   try {
@@ -317,7 +340,7 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // =========================================================
-// 5. RESET PASSWORD
+// 6. RESET PASSWORD
 // =========================================================
 router.post("/reset-password", async (req, res) => {
   try {

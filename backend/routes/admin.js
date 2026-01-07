@@ -2,11 +2,18 @@ const router = require("express").Router();
 const User = require("../models/User");
 const Event = require("../models/Event");
 const Programme = require("../models/Programme");
+const ProgrammeInterest = require("../models/ProgrammeInterest");
+const EventRegistration = require("../models/EventRegistration");
 const jwt = require("jsonwebtoken");
-const admin = require("../config/firebase");
+
+// ✅ FIX 1: Import BOTH notification functions
+const {
+  sendBroadcastNotification,
+  sendPersonalNotification,
+} = require("../utils/notificationHandler");
 
 // ==========================================
-// MIDDLEWARE
+// 🛡️ MIDDLEWARE
 // ==========================================
 
 // 1. BASIC ADMIN CHECK (View Access)
@@ -50,17 +57,40 @@ const verifyEditor = (req, res, next) => {
 };
 
 // ==========================================
+// 📊 DASHBOARD STATS
+// ==========================================
+router.get("/stats", verifyAdmin, async (req, res) => {
+  try {
+    const [userCount, eventCount, progCount, progInterestCount, eventRegCount] =
+      await Promise.all([
+        User.countDocuments(),
+        Event.countDocuments(),
+        Programme.countDocuments(),
+        ProgrammeInterest.countDocuments(),
+        EventRegistration.countDocuments(),
+      ]);
+
+    res.json({
+      users: userCount,
+      events: eventCount,
+      programmes: progCount,
+      totalRegistrations: progInterestCount + eventRegCount,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
 // 1. USER MANAGEMENT
 // ==========================================
 
-// GET ALL USERS (With Search & Pagination)
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const search = req.query.search || ""; // ✅ Added Search
+    const search = req.query.search || "";
 
-    // Build Query
     let query = {};
     if (search) {
       query = {
@@ -93,7 +123,6 @@ router.get("/users", verifyAdmin, async (req, res) => {
   }
 });
 
-// DELETE USER
 router.delete("/users/:id", verifyEditor, async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
@@ -103,7 +132,6 @@ router.delete("/users/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// TOGGLE EDIT PERMISSION
 router.put("/users/:id/toggle-edit", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -118,7 +146,6 @@ router.put("/users/:id/toggle-edit", verifyEditor, async (req, res) => {
   }
 });
 
-// TOGGLE ADMIN STATUS
 router.put("/users/:id/toggle-admin", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -134,7 +161,7 @@ router.put("/users/:id/toggle-admin", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ VERIFY USER (With Smart ID Generation)
+// ✅ VERIFY USER ROUTE (Updated)
 router.put("/users/:id/verify", verifyEditor, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -144,14 +171,12 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
       return res.status(400).json({ message: "User is already verified." });
     }
 
-    // ✅ AUTO-GENERATE ID (Smart Logic)
+    // Auto-Generate ID Logic (Legacy Support)
     if (!user.alumniId) {
-      // 1. Determine Year (Use User's class year, or current year)
       const targetYear = user.yearOfAttendance
         ? user.yearOfAttendance.toString()
         : new Date().getFullYear().toString();
 
-      // 2. Find last user of THIS SPECIFIC YEAR
       const regex = new RegExp(`ASC/${targetYear}/`);
       const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort(
         { _id: -1 }
@@ -166,15 +191,20 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
 
       const paddedNum = nextNum.toString().padStart(4, "0");
       user.alumniId = `ASC/${targetYear}/${paddedNum}`;
-
-      // Sync year just in case
       if (!user.yearOfAttendance) user.yearOfAttendance = targetYear;
     }
 
     user.isVerified = true;
     await user.save();
 
-    res.json({ message: "User Verified Successfully!", user });
+    // ✅ FIX 2: Send Personal Notification to the User
+    await sendPersonalNotification(
+      user._id,
+      "Account Verified! 🎉",
+      "Your ASCON Alumni account has been approved. You can now access your Digital ID."
+    );
+
+    res.json({ message: "User Verified & Notified!", user });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -188,7 +218,6 @@ router.post("/events", verifyEditor, async (req, res) => {
   try {
     const { title, description, date, location, type, image } = req.body;
 
-    // 1. Save Event to DB
     const newEvent = new Event({
       title,
       description,
@@ -199,50 +228,15 @@ router.post("/events", verifyEditor, async (req, res) => {
     });
     await newEvent.save();
 
-    // ✅ 2. SEND PUSH NOTIFICATION (Updated for 2026)
-    try {
-      const usersWithTokens = await User.find({
-        fcmToken: { $exists: true, $ne: "" },
-      });
-
-      if (usersWithTokens.length > 0) {
-        console.log(`📣 Found ${usersWithTokens.length} users with tokens.`); // ✅ Log this!
-
-        const tokens = usersWithTokens.map((u) => u.fcmToken);
-
-        const message = {
-          notification: {
-            title: `New Event: ${title}`,
-            body: `Join us at ${location}! ${description.substring(0, 50)}...`,
-          },
-          data: {
-            route: "event_detail",
-            eventId: newEvent._id.toString(),
-          },
-          tokens: tokens,
-        };
-
-        // 👇 CHANGED FROM sendMulticast TO sendEachForMulticast
-        const response = await admin.messaging().sendEachForMulticast(message);
-        console.log(
-          `📣 Notification sent! Success: ${response.successCount}, Fail: ${response.failureCount}`
-        );
-
-        if (response.failureCount > 0) {
-          const failedTokens = [];
-          response.responses.forEach((resp, idx) => {
-            if (!resp.success) {
-              failedTokens.push(tokens[idx]);
-            }
-          });
-          console.log("List of tokens that caused failures: " + failedTokens);
-        }
-      } else {
-        console.log("⚠️ No users found with FCM Tokens.");
+    // 🔔 Send Broadcast
+    await sendBroadcastNotification(
+      `New ${type}: ${title}`,
+      `Join us at ${location}! ${description.substring(0, 60)}...`,
+      {
+        route: "event_detail",
+        id: newEvent._id.toString(),
       }
-    } catch (notifyError) {
-      console.error("⚠️ Notification failed:", notifyError);
-    }
+    );
 
     res
       .status(201)
@@ -280,29 +274,62 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 
 router.get("/programmes", async (req, res) => {
   try {
-    const programmes = await Programme.find().sort({ title: 1 });
-    res.json(programmes);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const programmes = await Programme.find()
+      .sort({ title: 1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Programme.countDocuments();
+
+    res.json({
+      programmes,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// POST: Create New Programme
 router.post("/programmes", verifyEditor, async (req, res) => {
   try {
-    // ✅ Extract 'image' along with other fields
     const { title, code, description, duration, fee, image } = req.body;
-    
+
     const exists = await Programme.findOne({ title });
     if (exists)
       return res.status(400).json({ message: "Programme already exists." });
 
-    const newProg = new Programme({ 
-      title, code, description, duration, fee, image 
+    const newProg = new Programme({
+      title,
+      code,
+      description,
+      duration,
+      fee,
+      image,
     });
-    
     await newProg.save();
-    res.status(201).json({ message: "Programme added!", programme: newProg });
+
+    // 🔔 Send Broadcast
+    await sendBroadcastNotification(
+      `New Programme: ${title}`,
+      `Enroll now for ${duration || "a limited time"}! ${description.substring(
+        0,
+        60
+      )}...`,
+      {
+        route: "programme_detail",
+        id: newProg._id.toString(),
+      }
+    );
+
+    res
+      .status(201)
+      .json({ message: "Programme added & Notified!", programme: newProg });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -317,11 +344,9 @@ router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// PUT: Update Programme
 router.put("/programmes/:id", verifyEditor, async (req, res) => {
   try {
-    // ✅ Extract 'image' here too
-    const { title, code, description, duration, fee, image } = req.body; 
+    const { title, code, description, duration, fee, image } = req.body;
 
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
@@ -334,7 +359,7 @@ router.put("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ FORCE FIX ID ROUTE
+// FORCE FIX ID ROUTE
 router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
   try {
     const { year } = req.body;
@@ -342,7 +367,6 @@ router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 1. Generate CORRECT ID
     const targetYear = year
       ? year.toString()
       : new Date().getFullYear().toString();
@@ -360,7 +384,6 @@ router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
     const paddedNum = nextNum.toString().padStart(4, "0");
     const newId = `ASC/${targetYear}/${paddedNum}`;
 
-    // 2. Update User
     user.alumniId = newId;
     user.yearOfAttendance = targetYear;
     await user.save();

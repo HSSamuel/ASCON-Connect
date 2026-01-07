@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
 import 'package:firebase_core/firebase_core.dart';
-import 'services/notification_service.dart';
-import 'screens/splash_screen.dart'; // ✅ Import the new Splash Screen
-import 'config/theme.dart'; // ✅ Import the new Theme File
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+// ✅ Services & Config
+import 'services/notification_service.dart';
+import 'config/theme.dart';
+
+// ✅ Screens (REQUIRED FOR ROUTES)
+import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
+
+// Global Key for Notification Navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -38,9 +45,6 @@ void main() async {
     }
   }
 
-  // NOTE: We removed the SharedPreferences check here because 
-  // the SplashScreen now handles the "Are we logged in?" check.
-  
   runApp(const MyApp());
 }
 
@@ -54,17 +58,20 @@ class MyApp extends StatelessWidget {
       title: 'ASCON Alumni',
       debugShowCheckedModeBanner: false,
 
-      // ✅ 1. LIGHT THEME
+      // ✅ 1. THEMES
       theme: AppTheme.lightTheme,
-
-      // ✅ 2. DARK THEME
       darkTheme: AppTheme.darkTheme,
-
-      // ✅ 3. AUTO-SWITCH (Uses System Settings)
       themeMode: ThemeMode.system, 
 
-      // ✅ START APP WITH SPLASH SCREEN
+      // ✅ 2. HOME
       home: const SplashScreen(),
+
+      // ✅ 3. CRITICAL: NAMED ROUTES (Restored)
+      // These are required for Navigator.pushNamed to work
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const HomeScreen(),
+      },
     );
   }
 }

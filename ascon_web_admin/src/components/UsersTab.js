@@ -1,7 +1,9 @@
 import React from "react";
+import SkeletonTable from "./SkeletonTable"; // ✅ IMPORT SKELETON
 
 function UsersTab({
   usersList = [],
+  loading, // ✅ RECEIVE LOADING PROP
   canEdit,
   approveUser,
   toggleAdmin,
@@ -11,7 +13,13 @@ function UsersTab({
   setPage,
   totalPages,
 }) {
-  // ✅ 1. NEW: EXPORT TO CSV FUNCTION
+  // ✅ 1. SKELETON LOADING STATE
+  // If data is loading and we have no list yet, show skeleton
+  if (loading && usersList.length === 0) {
+    return <SkeletonTable rows={10} />;
+  }
+
+  // ✅ 2. EXPORT TO CSV FUNCTION
   const exportToCSV = () => {
     if (!usersList || usersList.length === 0) {
       alert("No data to export.");
@@ -33,7 +41,7 @@ function UsersTab({
 
     // B. Map Data to Rows
     const rows = usersList.map((user) => [
-      `"${user.fullName || ""}"`, // Wrap in quotes to handle commas in names
+      `"${user.fullName || ""}"`, // Wrap in quotes to handle commas
       `"${user.email || ""}"`,
       `"${user.phoneNumber || ""}"`,
       `"${user.programmeTitle || ""}"`,
@@ -80,7 +88,7 @@ function UsersTab({
 
   return (
     <div>
-      {/* ✅ EXPORT BUTTON HEADER */}
+      {/* EXPORT BUTTON HEADER */}
       <div
         style={{
           display: "flex",
@@ -225,7 +233,7 @@ function UsersTab({
         </table>
       </div>
 
-      {/* ✅ PAGINATION CONTROLS */}
+      {/* PAGINATION CONTROLS */}
       {totalPages > 1 && (
         <div
           style={{

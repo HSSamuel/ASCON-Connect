@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   linkedin: { type: String, default: "" },
 
   // ✅ NEW FIELD: Store the Phone's Notification Token
-  fcmToken: { type: String, default: "" },
+  fcmTokens: { type: [String], default: [] },
 
   alumniId: { type: String, unique: true, sparse: true },
   hasSeenWelcome: { type: Boolean, default: false },
