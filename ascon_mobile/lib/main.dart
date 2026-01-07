@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ NEW: Required for Topic Subscription
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart'; // ✅ Import the new Splash Screen
 import 'config/theme.dart'; // ✅ Import the new Theme File
@@ -32,7 +33,12 @@ void main() async {
   if (!kIsWeb) {
     try {
       await NotificationService().init();
-      debugPrint("✅ Notifications Initialized Successfully");
+      
+      // ✅ NEW: Subscribe to Global Updates Topic
+      // This allows the Admin to send one message to ALL users instantly
+      await FirebaseMessaging.instance.subscribeToTopic('updates');
+      debugPrint("✅ Notifications Initialized & Subscribed to 'updates' topic");
+      
     } catch (e) {
       debugPrint("⚠️ Notification Init Failed: $e");
     }
