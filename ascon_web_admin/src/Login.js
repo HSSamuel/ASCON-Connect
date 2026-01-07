@@ -5,8 +5,8 @@ import { jwtDecode } from "jwt-decode";
 import "./App.css";
 import logo from "./assets/logo.png";
 
-// ✅ USE ENV VARIABLE (Standardized)
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+// Standardized Environment Variable
+const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -40,12 +40,9 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      // 1. Send Google Token to Backend
       const res = await axios.post(`${BASE_URL}/api/auth/google`, {
         token: credentialResponse.credential,
       });
-
-      // 2. Process Backend Response
       processLogin(res.data.token);
     } catch (err) {
       if (err.response && err.response.status === 404) {
@@ -58,12 +55,11 @@ function Login({ onLogin }) {
     }
   };
 
-  // --- COMMON LOGIC (VERIFY ADMIN) ---
+  // --- SECURITY LOGIC (VERIFY ADMIN) ---
   const processLogin = (token) => {
     try {
       const decoded = jwtDecode(token);
-
-      // 🔐 SECURITY CHECK: Only Admins Allowed
+      // Security Check: Ensure only Admins can access the dashboard
       if (decoded.isAdmin === true) {
         localStorage.setItem("auth_token", token);
         onLogin(token);
@@ -79,7 +75,7 @@ function Login({ onLogin }) {
     <div className="login-container">
       <div className="login-card">
         <img src={logo} alt="ASCON Logo" className="login-logo" />
-        <h2 className="login-title">Admin Portal</h2>
+        <h2 className="login-title">ASCON ADMIN</h2>
 
         {error && <div className="login-error">{error}</div>}
 
@@ -117,10 +113,11 @@ function Login({ onLogin }) {
 
           <button
             type="submit"
-            className="approve-btn login-btn"
+            className="login-btn"
             disabled={isLoading}
+            style={{ backgroundColor: "var(--primary)" }} // ✅ Dynamic theme color
           >
-            {isLoading ? "Logging in..." : "LOGIN"}
+            {isLoading ? "AUTHENTICATING..." : "LOGIN"}
           </button>
         </form>
 
@@ -128,23 +125,38 @@ function Login({ onLogin }) {
           style={{ display: "flex", alignItems: "center", margin: "20px 0" }}
         >
           <div
-            style={{ flex: 1, height: "1px", backgroundColor: "#ddd" }}
+            style={{
+              flex: 1,
+              height: "1px",
+              backgroundColor: "var(--border-color)",
+            }}
           ></div>
-          <span style={{ padding: "0 10px", color: "#888", fontSize: "12px" }}>
+          <span
+            style={{
+              padding: "0 10px",
+              color: "var(--text-muted)",
+              fontSize: "12px",
+            }}
+          >
             OR
           </span>
           <div
-            style={{ flex: 1, height: "1px", backgroundColor: "#ddd" }}
+            style={{
+              flex: 1,
+              height: "1px",
+              backgroundColor: "var(--border-color)",
+            }}
           ></div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center" }}>
+        <div className="google-login-wrapper">
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
             onError={() => setError("Google Login Failed")}
             theme="outline"
             size="large"
-            width="320"
+            shape="pill" /* ✅ Matches your design better */
+            width="100%" /* ✅ Forces it to take container width */
           />
         </div>
       </div>
