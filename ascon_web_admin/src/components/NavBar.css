@@ -3,22 +3,21 @@
    ======================== */
 .desktop-nav {
   display: flex;
+  /* ✅ Changed from space-between to flex-start */
   justify-content: flex-start; 
   align-items: center;
-  /* ✅ Use theme variables for colors */
-  background-color: var(--bg-card); 
+  background-color: white;
   padding: 15px 30px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.05);
   position: sticky;
   top: 0;
   z-index: 1000;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .nav-brand {
   font-size: 1.2rem;
   font-weight: 800;
-  color: var(--primary); 
+  color: #1B5E3A;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -26,7 +25,7 @@
 
 /* ✅ NEW: Logo Styling */
 .brand-logo {
-  height: 40px; 
+  height: 40px; /* Adjust based on your logo shape */
   width: auto;
   object-fit: contain;
 }
@@ -36,7 +35,7 @@
   gap: 10px;
   /* ✅ THIS PUSHES LINKS TO THE RIGHT */
   margin-left: auto; 
-  margin-right: 20px; 
+  margin-right: 20px; /* Add spacing between links and logout button */
 }
 
 .nav-links button {
@@ -44,36 +43,31 @@
   border: none;
   padding: 8px 16px;
   font-size: 14px;
-  color: var(--text-muted); 
+  color: #666;
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s;
 }
 
 .nav-links button:hover {
-  background: var(--primary-light); 
-  color: var(--primary);
+  background: #f5f5f5;
+  color: #1B5E3A;
 }
 
 .nav-links button.active {
-  background: var(--primary-light);
-  color: var(--primary);
+  background: #e8f5e9;
+  color: #1B5E3A;
   font-weight: 600;
 }
 
 .logout-btn {
-  background: transparent;
-  color: var(--danger);
-  border: 1px solid var(--danger);
+  background: #ffebee;
+  color: #d32f2f;
+  border: none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-}
-
-.logout-btn:hover {
-  background-color: var(--danger);
-  color: white;
 }
 
 /* Hide Mobile Elements on Desktop */
@@ -85,6 +79,7 @@
    MOBILE STYLES (Max Width 768px)
    ======================== */
 @media (max-width: 768px) {
+  /* Hide Desktop Nav */
   .desktop-nav {
     display: none;
   }
@@ -99,13 +94,12 @@
     left: 0;
     width: 100%;
     height: 70px;
-    background: var(--bg-card); 
+    background: white;
     box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
     z-index: 1000;
     padding: 0 10px;
     
-    /* The Curve Magic - Updated with var(--bg-card) */
-    background-image: radial-gradient(circle at 50% 0, transparent 35px, var(--bg-card) 36px);
+    background-image: radial-gradient(circle at 50% 0, transparent 35px, white 36px);
     background-size: 100% 100%;
     background-repeat: no-repeat;
   }
@@ -118,7 +112,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: var(--text-muted);
+    color: #999;
   }
 
   .bottom-nav-item .icon {
@@ -151,8 +145,8 @@
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background-color: #0d2c4e; /* Navy Blue stay constant or use var if desired */
-    border: 4px solid var(--bg-body); 
+    background-color: #0d2c4e;
+    border: 4px solid #f5f5f5; 
     color: white;
     display: flex;
     align-items: center;
@@ -169,7 +163,7 @@
 
   .fab-label {
     font-size: 11px;
-    color: var(--text-muted);
+    color: #999;
     margin-top: 4px;
   }
 
@@ -191,54 +185,57 @@
     bottom: 80px; 
     left: 50%;
     transform: translateX(-50%);
+    
     width: 280px; 
-    background: var(--bg-card);
+    
+    background: white;
     border-radius: 16px;
+    
     padding: 15px;
     gap: 8px;
+    
     display: flex;
     flex-direction: column;
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   }
 
   .mobile-menu-content h3 {
     margin: 0 0 8px 0;
     text-align: center;
-    color: var(--primary);
+    color: #1B5E3A;
     font-size: 16px; 
   }
 
   .mobile-menu-content button {
     padding: 10px;
-    border: 1px solid var(--border-color);
+    border: none;
     border-radius: 8px;
-    background: var(--bg-secondary);
+    background: #f9f9f9;
     font-size: 14px;
+    
     text-align: left;
     cursor: pointer;
-    color: var(--text-main);
+    color: #333;
   }
 
   .mobile-menu-content button:active {
-    background: var(--primary-light);
+    background: #e8f5e9;
   }
 
   .mobile-logout {
-    background: transparent !important;
-    border: 1px solid var(--danger) !important;
-    color: var(--danger) !important;
+    background: #ffebee !important;
+    color: #d32f2f !important;
     font-weight: bold;
     text-align: center !important;
   }
   
   .close-menu {
     background: transparent !important;
-    color: var(--text-muted) !important;
+    color: #666 !important;
     text-align: center !important;
     font-size: 12px !important; 
     padding: 5px !important;
-    border: none !important;
   }
 
   @keyframes slideUp {

@@ -1,53 +1,32 @@
 /* =========================================
-   🚀 THEMING ENGINE (Global Variables)
-   ========================================= */
-:root {
-  /* --- LIGHT MODE (Your Exact Original Colors) --- */
-  --bg-body: #f4f4f4;
-  --bg-card: #ffffff;
-  --bg-input: #ffffff;
-  --bg-secondary: #f9f9f9;
-  
-  --text-main: #333333;
-  --text-muted: #666666;
-  
-  --primary: #1b5e3a; /* Deep Green */
-  --primary-light: #e8f5e9;
-  
-  --border-color: #ddd;
-  --table-border: #eee;
-  --shadow-sm: 0 4px 15px rgba(0, 0, 0, 0.05);
-  
-  --danger: #dc3545;
-  --gold: #d4af37;
-}
-
-[data-theme="dark"] {
-  /* --- DARK MODE OVERRIDES --- */
-  --bg-body: #121212;
-  --bg-card: #1e1e1e;
-  --bg-input: #2d2d2d;
-  --bg-secondary: #252525;
-  
-  --text-main: #e0e0e0;
-  --text-muted: #a0a0a0;
-  
-  --primary: #4caf50; /* Brighter green for dark contrast */
-  --primary-light: #1b5e3a;
-  
-  --border-color: #333333;
-  --table-border: #333333;
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.5);
-}
-
-/* =========================================
    1. GLOBAL CONTAINER & LAYOUT
    ========================================= */
+/* Light Mode Variables (Default) */
+:root {
+  --bg-color: #f4f4f4;
+  --card-bg: #ffffff;
+  --text-main: #333333;
+  --text-muted: #666666;
+  --border-color: #eeeeee;
+  --table-header: #1b5e3a;
+  --input-bg: #ffffff;
+  --nav-bg: #ffffff;
+}
+
+[data-theme='dark'] {
+  --bg-color: #121212;      /* Deep black background */
+  --card-bg: #1e1e1e;      /* Dark grey for cards/tables */
+  --text-main: #e0e0e0;    /* Off-white text */
+  --text-muted: #b0b0b0;   /* Muted grey text */
+  --border-color: #333333; /* Darker borders */
+  --table-header: #0e331f; /* Darker ASCON Green */
+  --input-bg: #2d2d2d;
+  --nav-bg: #1e1e1e;
+}
+
 body {
-  background-color: var(--bg-body); /* ✅ Theme aware */
-  margin: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: var(--text-main); /* ✅ Theme aware */
+  background-color: var(--bg-color); /* Updated from #f4f4f4 */
+  color: var(--text-primary);
   transition: background-color 0.3s, color 0.3s;
 }
 
@@ -64,13 +43,13 @@ body {
 
 /* Titles */
 .admin-title {
-  color: var(--primary); /* ✅ Theme aware */
+  color: #1b5e3a; /* Deep Green */
   margin: 0 0 5px 0;
   font-size: 28px;
 }
 
 .admin-subtitle {
-  color: var(--text-muted); /* ✅ Theme aware */
+  color: #666;
   margin: 0 0 30px 0;
 }
 
@@ -104,7 +83,7 @@ body {
    2. TABS & BUTTONS
    ========================================= */
 .approve-btn {
-  background-color: var(--gold); /* ✅ Theme aware */
+  background-color: #d4af37; /* Gold */
   color: white;
   font-weight: bold;
   border: none;
@@ -131,7 +110,7 @@ body {
 
 /* Red Delete Button */
 .delete-btn {
-  background-color: var(--danger); /* ✅ Theme aware */
+  background-color: #dc3545;
   color: white;
   border: none;
   padding: 8px 12px;
@@ -155,9 +134,7 @@ textarea {
   padding: 10px;
   margin-top: 5px;
   border-radius: 6px;
-  border: 1px solid var(--border-color); /* ✅ Theme aware */
-  background-color: var(--bg-input); /* ✅ Theme aware */
-  color: var(--text-main); /* ✅ Theme aware */
+  border: 1px solid #ddd;
   box-sizing: border-box;
   font-family: inherit;
   font-size: 14px;
@@ -166,14 +143,14 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid var(--primary); /* ✅ Theme aware */
+  outline: 2px solid #1b5e3a;
   border-color: transparent;
 }
 
 label {
   font-weight: bold;
   font-size: 14px;
-  color: var(--text-main); /* ✅ Theme aware */
+  color: #333;
 }
 
 /* =========================================
@@ -182,15 +159,16 @@ label {
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  background-color: var(--bg-card); /* ✅ Theme aware */
+background-color: var(--card-bg);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: var(--shadow-sm); /* ✅ Theme aware */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   margin-top: 10px;
+  
 }
 
 .admin-table thead {
-  background-color: var(--primary); /* ✅ Theme aware */
+  background-color: #1b5e3a;
   color: white;
 }
 
@@ -198,9 +176,8 @@ label {
 .admin-table td {
   padding: 15px;
   text-align: left;
-  border-bottom: 1px solid var(--table-border); /* ✅ Theme aware */
+  border-bottom: 1px solid #eee;
   vertical-align: middle;
-  color: var(--text-main); /* ✅ Theme aware */
 }
 
 .admin-table tr:last-child td {
@@ -213,14 +190,14 @@ label {
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--table-border); /* ✅ Theme aware */
+  border: 2px solid #eee;
 }
 
 .avatar-placeholder {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: var(--bg-secondary); /* ✅ Theme aware */
+  background-color: #ccc;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -234,8 +211,8 @@ label {
   font-size: 12px;
   font-weight: bold;
   display: inline-block;
-  background-color: var(--primary-light); /* ✅ Theme aware */
-  color: var(--primary); /* ✅ Theme aware */
+  background-color: #e8f5e9;
+  color: #1b5e3a;
 }
 
 /* Status Badges */
@@ -248,7 +225,7 @@ label {
 }
 
 .status-badge.verified {
-  background-color: var(--primary-light);
+  background-color: #e8f5e9;
   color: #2e7d32; /* Green */
 }
 
@@ -262,11 +239,11 @@ label {
    ========================================= */
 .empty-state {
   padding: 40px;
-  background-color: var(--bg-card); /* ✅ Theme aware */
+  background-color: white;
   border-radius: 10px;
   text-align: center;
-  color: var(--text-muted); /* ✅ Theme aware */
-  box-shadow: var(--shadow-sm); /* ✅ Theme aware */
+  color: #888;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 /* =========================================
@@ -275,36 +252,42 @@ label {
 @media screen and (max-width: 768px) {
   .admin-container {
     padding: 15px;
-    overflow-x: hidden;
+    overflow-x: hidden; /* Prevent entire page from swaying */
   }
 
   .admin-title {
     font-size: 22px;
   }
 
+  /* --- KEY FIX START: RESTORE DESKTOP TABLE LOOK --- */
+  
+  /* 1. Use the wrapper to allow scrolling */
   .table-responsive {
     display: block;
     width: 100%;
-    overflow-x: auto;
+    overflow-x: auto; /* Adds horizontal scrollbar */
     -webkit-overflow-scrolling: touch;
     margin-bottom: 20px;
-    border: 1px solid var(--table-border); /* ✅ Theme aware */
-    background: var(--bg-card); /* ✅ Theme aware */
+    border: 1px solid #eee;
+    background: white;
     border-radius: 8px;
   }
 
+  /* 2. Force table to stay wide (so headers don't squash) */
   .admin-table {
-    min-width: 800px;
+    min-width: 800px; /* Forces scrollbar to appear */
     width: 100%;
-    display: table !important;
+    display: table !important; /* Forces normal table behavior */
     box-shadow: none;
     margin-top: 0;
   }
 
+  /* 3. SHOW THE HEADERS! */
   .admin-table thead {
-    display: table-header-group !important;
+    display: table-header-group !important; /* Shows the green header row */
   }
 
+  /* 4. Reset rows to normal table rows */
   .admin-table tbody {
     display: table-row-group !important;
   }
@@ -314,34 +297,44 @@ label {
     margin-bottom: 0;
     box-shadow: none;
     background-color: transparent;
-    border-bottom: 1px solid var(--table-border); /* ✅ Theme aware */
+    border-bottom: 1px solid #eee;
   }
 
+  /* 5. Reset cells to normal table cells */
   .admin-table th, 
   .admin-table td {
     display: table-cell !important;
     text-align: left;
     padding: 12px;
     vertical-align: middle;
-    border-bottom: 1px solid var(--table-border); /* ✅ Theme aware */
-    white-space: nowrap;
-    color: var(--text-main); /* ✅ Theme aware */
+    border-bottom: 1px solid #eee;
+    white-space: nowrap; /* Prevents text wrapping messily */
   }
   
+  /* Remove the mobile "data-label" content we added before */
   .admin-table td::before {
     display: none !important;
   }
 
+  /* Fix last child alignment */
   .admin-table td:last-child {
-    border-bottom: 1px solid var(--table-border); /* ✅ Theme aware */
+    border-bottom: 1px solid #eee;
     padding: 12px;
     justify-content: flex-start;
   }
+  
+  /* --- KEY FIX END --- */
 
-  /* ✅ Mobile Dynamic Curve Fix for Dark Mode */
-  .mobile-bottom-bar {
-    background-image: radial-gradient(circle at 50% 0, transparent 35px, var(--bg-body) 36px) !important;
-    background-color: var(--bg-card) !important;
+  .approve-btn,
+  .delete-btn {
+    width: auto; 
+    min-width: 60px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  form > div {
+    flex-direction: column;
   }
 }
 
@@ -371,7 +364,7 @@ label {
 }
 
 .login-card {
-  background: var(--bg-card); /* ✅ Theme aware */
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8px); 
   -webkit-backdrop-filter: blur(8px);
   padding: 30px 25px;
@@ -380,12 +373,12 @@ label {
   width: 100%;
   max-width: 380px;
   text-align: center;
-  border: 1px solid var(--border-color); /* ✅ Theme aware */
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .login-title {
   margin-bottom: 15px;
-  color: var(--primary); /* ✅ Theme aware */
+  color: #1B5E3A;
   font-weight: 800;
   font-size: 22px;
   text-transform: uppercase;
@@ -399,31 +392,264 @@ label {
   object-fit: contain;
 }
 
-/* ... Rest of your login styles exactly the same ... */
+.login-error {
+  background-color: #ffe6e6;
+  color: #d32f2f;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 15px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+  text-align: left;
+}
+
+.form-group input {
+  padding: 10px 12px;
+  height: 42px;
+}
+
+.login-btn {
+  width: 100%;
+  background-color: #1b5e3a;
+  color: white;
+  padding: 12px;
+  font-size: 15px;
+  margin-top: 5px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.login-btn:hover {
+  background-color: #14452b;
+}
+
+.password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrapper input {
+  padding-right: 40px;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  color: #666;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  top: 50%;
+  transform: translateY(-40%);
+}
+
+.password-toggle-btn:focus {
+  outline: none;
+}
 
 /* =========================================
-   🚀 NAVBAR STYLES (Windows View)
+   UPDATED MOBILE LOGIN STYLES (COMPACT)
+   ========================================= */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 25px 25px;
+    max-width: 80%;
+  }
+
+  .login-title {
+    font-size: 20px; 
+    margin-bottom: 15px;
+  }
+
+  .login-logo {
+    width: 60px;
+    height: 60px;
+  }
+
+  .login-card iframe {
+    max-width: 100% !important; 
+    transform: scale(0.95);
+  }
+  
+  .login-card > div:last-child { 
+    transform: scale(0.85); 
+    transform-origin: center;
+    width: 100%;
+  }
+}
+
+/* =========================================
+   8. RESET PASSWORD PAGE
+   ========================================= */
+.reset-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f4f6f8;
+  font-family: 'Inter', sans-serif;
+  padding: 0 20px;
+}
+
+.reset-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 30px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.reset-title {
+  color: #1B5E3A;
+  margin-bottom: 10px;
+}
+
+.reset-subtitle {
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.reset-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.reset-input {
+  padding: 12px;
+  border-radius: 5px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+}
+
+.reset-button {
+  padding: 12px;
+  background-color: #1B5E3A;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.reset-button:disabled {
+  background-color: #9abfab;
+  cursor: not-allowed;
+}
+
+.reset-error-banner {
+  background-color: #ffebee;
+  color: #c62828;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.reset-success-banner {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+/* =========================================
+   9. COMPACT ACTION BUTTONS (NEW)
+   ========================================= */
+
+/* The container that holds the buttons */
+.action-buttons-container {
+  display: flex;
+  flex-direction: row; /* ✅ Side-by-side alignment */
+  flex-wrap: wrap;     /* ✅ Allows wrapping if screen is too tight */
+  gap: 5px;            /* Small space between buttons */
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Make buttons smaller to fit 2-3 in a row */
+.compact-btn {
+  padding: 6px 10px !important; /* Smaller padding */
+  font-size: 11px !important;   /* Smaller text */
+  white-space: nowrap;          /* Prevent text from breaking inside button */
+  flex: 1 1 auto;              /* Allow buttons to grow/shrink intelligently */
+  min-width: 70px;              /* Minimum width to keep them readable */
+  max-width: 120px;
+  text-align: center;
+}
+
+/* On very small mobile screens, ensure they don't get too squashed */
+@media screen and (max-width: 480px) {
+  .compact-btn {
+    font-size: 10px !important;
+    padding: 5px 8px !important;
+  }
+}
+
+/* =========================================
+   🚀 NEW NAVBAR STYLES
    ========================================= */
 .navbar {
-  background-color: var(--bg-card); /* ✅ Theme aware */
+  background-color: white;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   padding: 0 20px;
   height: 70px;
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   position: sticky;
   top: 0;
   z-index: 1000;
-  border-bottom: 1px solid var(--border-color); /* ✅ Theme aware */
 }
 
+/* BRANDING */
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navbar-logo {
+  height: 40px;
+  width: auto;
+}
+
+.navbar-title {
+  margin: 0;
+  font-size: 18px;
+  color: #1B5E3A;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.navbar-subtitle {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* LINKS (Desktop) */
 .navbar-links {
   display: flex;
   gap: 10px;
   align-items: center;
-  margin-left: auto; 
-  margin-right: 20px;
 }
 
 .nav-item {
@@ -432,36 +658,87 @@ label {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-muted); /* ✅ Theme aware */
+  color: #555;
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s ease;
 }
 
 .nav-item:hover {
-  background-color: var(--bg-secondary); /* ✅ Theme aware */
-  color: var(--primary); /* ✅ Theme aware */
+  background-color: #f0f2f5;
+  color: #1B5E3A;
 }
 
 .nav-item.active {
-  background-color: var(--primary); /* ✅ Theme aware */
+  background-color: #1B5E3A;
   color: white;
 }
 
-/* Theme Toggle Button Style */
-.theme-btn {
-  background: var(--bg-secondary); /* ✅ Theme aware */
-  border: 1px solid var(--border-color); /* ✅ Theme aware */
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+.logout-btn {
+  color: #d32f2f;
+  border: 1px solid #d32f2f;
+  margin-left: 10px;
+}
+
+.logout-btn:hover {
+  background-color: #d32f2f;
+  color: white;
+}
+
+/* HAMBURGER (Hidden on Desktop) */
+.navbar-hamburger {
+  display: none;
+  flex-direction: column;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  margin-right: 15px;
-  color: var(--text-main); /* ✅ Theme aware */
+  gap: 5px;
+}
+
+.bar {
+  width: 25px;
+  height: 3px;
+  background-color: #333;
+  transition: 0.3s;
+}
+
+/* =========================================
+   📱 MOBILE RESPONSIVENESS
+   ========================================= */
+@media (max-width: 768px) {
+  .navbar-hamburger {
+    display: flex; /* Show Hamburger */
+  }
+
+  .navbar-links {
+    position: absolute;
+    top: 70px; /* Below Navbar */
+    left: 0;
+    width: 100%;
+    background-color: white;
+    flex-direction: column;
+    padding: 20px 0;
+    box-shadow: 0 10px 10px rgba(0,0,0,0.05);
+    
+    /* Animation: Slide Down */
+    transform: translateY(-150%);
+    transition: transform 0.3s ease-in-out;
+    z-index: 999;
+  }
+
+  .navbar-links.active {
+    transform: translateY(0); /* Slide In */
+  }
+
+  .nav-item {
+    width: 90%; /* Full width buttons */
+    text-align: center;
+    padding: 15px;
+  }
+
+  .logout-btn {
+    margin-left: 0;
+    margin-top: 10px;
+    width: 90%;
+  }
 }
 
 /* SKELETON ANIMATIONS */
@@ -470,123 +747,21 @@ label {
   100% { background-position: 200% 0; }
 }
 
-.skeleton-box {
-  background: var(--bg-secondary);
-  background-image: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border-color) 50%, var(--bg-secondary) 75%);
+.skeleton-box, .skeleton-line, .skeleton-circle {
+  background: #f0f0f0;
+  background-image: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 4px;
 }
 
-/* Update these specific sections in your App.css */
+.skeleton-line { height: 12px; margin-bottom: 4px; }
+.skeleton-box { height: 16px; }
+.skeleton-circle { width: 40px; height: 40px; border-radius: 50%; }
 
-/* Correctly Align Labels and Spacing */
-.form-group {
-  margin-bottom: 20px;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 8px; /* Proper space between label and input */
-}
-
-.form-group label {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text-main);
-  margin: 0; /* Remove default margins */
-}
-
-/* Ensure Password Wrapper is Relative for Eye Icon */
-.password-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.password-wrapper input {
-  padding-right: 45px; /* Create space for the eye icon */
-  margin-top: 0; /* Reset margin */
-}
-
-/* Correctly Place the Eye Icon */
-.password-toggle-btn {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%); /* Perfectly centered vertically */
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 18px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  padding: 0;
-}
-
-/* Compact the Login Card for Mobile */
-@media (max-width: 480px) {
-  .login-card {
-    padding: 20px; /* Reduced padding */
-    width: 90%;    /* Slightly wider on very small screens to fit content */
-    max-width: 250px; /* More compact overall */
-  }
-  
-  .login-title {
-    font-size: 18px;
-    margin-bottom: 10px;
-  }
-}
-
-/* Improved Login Button Design */
-.login-btn {
-  width: 100%;
-  padding: 12px;
-  border-radius: 8px;
-  border: none;
-  color: white;
-  font-weight: 800;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  margin-top: 10px;
-}
-
-.login-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
-  filter: brightness(1.1);
-}
-
-.login-btn:active {
-  transform: translateY(0);
-}
-
-/* --- Google Login Alignment --- */
-.google-login-wrapper {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-  max-width: 100%; /* Ensures no overflow */
-  margin-top: 10px;
-}
-
-/* Fix for the Google Login iframe centering */
-.google-login-wrapper > div {
-  width: 100% !important;
-  display: flex !important;
-  justify-content: center !important;
-}
-
-/* Mobile Specific Adjustments for Google Button */
-@media (max-width: 480px) {
-  .google-login-wrapper {
-    transform: scale(0.9); /* Slightly shrink to fit very tight cards */
-    margin-bottom: 10px;
-  }
-  
-  /* Ensure the "OR" divider doesn't have too much whitespace */
-  .login-card div[style*="margin: 20px 0"] {
-    margin: 15px 0 !important;
-  }
+[data-theme='dark'] .skeleton-box, 
+[data-theme='dark'] .skeleton-line, 
+[data-theme='dark'] .skeleton-circle {
+  background: #2a2a2a;
+  background-image: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
 }

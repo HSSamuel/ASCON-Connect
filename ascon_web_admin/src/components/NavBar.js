@@ -1,14 +1,7 @@
 import React, { useState } from "react";
 import "./NavBar.css";
 
-function NavBar({
-  activeTab,
-  setActiveTab,
-  onLogout,
-  userRole,
-  theme,
-  toggleTheme,
-}) {
+function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const handleTabClick = (tab) => {
@@ -23,15 +16,16 @@ function NavBar({
          ============================== */}
       <nav className="desktop-nav">
         <div className="nav-brand">
+          {/* ✅ REPLACED ICON WITH LOGO */}
           <img
-            src="/logo.png" // Ensure logo.png is in your public folder
+            src="/logo.png" // ⚠️ Ensure you have a 'logo.png' in your 'public' folder
             alt="ASCON Logo"
             className="brand-logo"
           />
           <span className="brand-text">ASCON Admin</span>
         </div>
 
-        {/* Links pushed to the right via CSS (margin-left: auto) */}
+        {/* Links are now pushed to the right via CSS */}
         <div className="nav-links">
           <button
             className={activeTab === "users" ? "active" : ""}
@@ -59,15 +53,6 @@ function NavBar({
           </button>
         </div>
 
-        {/* ✅ THEME TOGGLE BUTTON */}
-        <button
-          onClick={toggleTheme}
-          className="theme-btn"
-          title={`Switch to ${theme === "light" ? "Dark" : "Light"} Mode`}
-        >
-          {theme === "light" ? "🌙" : "☀️"}
-        </button>
-
         <button className="logout-btn" onClick={onLogout}>
           Logout ↪
         </button>
@@ -93,12 +78,6 @@ function NavBar({
               📋 Registrations
             </button>
             <hr />
-
-            {/* Mobile Theme Toggle inside Menu */}
-            <button onClick={toggleTheme}>
-              {theme === "light" ? "🌙 Dark Mode" : "☀️ Light Mode"}
-            </button>
-
             <button className="mobile-logout" onClick={onLogout}>
               🚪 Logout
             </button>
@@ -113,7 +92,7 @@ function NavBar({
           3. MOBILE BOTTOM BAR
          ============================== */}
       <div className="mobile-bottom-bar">
-        {/* 1. USERS TAB */}
+        {/* 1. USERS TAB (Was Home) */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("users")}
@@ -121,9 +100,9 @@ function NavBar({
           <span
             className={`icon ${activeTab === "users" ? "active-icon" : ""}`}
           >
-            👥
+            👥 {/* ✅ Changed Icon from 🏠 to 👥 */}
           </span>
-          <span className="label">Users</span>
+          <span className="label">Users</span> {/* ✅ Renamed from "Home" */}
         </div>
 
         {/* 2. EVENTS TAB */}
@@ -151,7 +130,7 @@ function NavBar({
           <span className="fab-label">Menu</span>
         </div>
 
-        {/* 3. PROGRAMMES TAB */}
+        {/* 3. PROGRAMMES TAB (Was Library) */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("programmes")}
@@ -161,12 +140,13 @@ function NavBar({
               activeTab === "programmes" ? "active-icon" : ""
             }`}
           >
-            🎓
+            🎓 {/* ✅ Changed Icon from 📂 to 🎓 */}
           </span>
-          <span className="label">Programmes</span>
+          <span className="label">Programmes</span>{" "}
+          {/* ✅ Renamed from "Library" */}
         </div>
 
-        {/* 4. REGISTRATIONS TAB */}
+        {/* 4. REGISTRATIONS TAB (Was Contact) */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("registrations")}
@@ -176,9 +156,10 @@ function NavBar({
               activeTab === "registrations" ? "active-icon" : ""
             }`}
           >
-            📋
+            📋 {/* ✅ Changed Icon from ✈️ to 📋 */}
           </span>
-          <span className="label">Regs</span>
+          <span className="label">Regs</span>{" "}
+          {/* ✅ Renamed from "Contact" (Shortened for mobile space) */}
         </div>
       </div>
     </>

@@ -295,7 +295,8 @@ function AdminDashboard({ token, onLogout }) {
           title="Total Users"
           value={stats.users}
           icon="👥"
-          color="#fff3cd"
+          // Use a conditional or a CSS class instead of hardcoded light colors
+          color={theme === "light" ? "#fff3cd" : "#2c2c2c"}
           onClick={() => switchTab("users")}
         />
         <StatCard
