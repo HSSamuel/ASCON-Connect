@@ -37,7 +37,7 @@ class NotificationService {
     }
 
     // 2. Setup Local Notifications
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
     const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
@@ -96,7 +96,7 @@ class NotificationService {
       if (kIsWeb) {
         // ⚠️ REPLACE THIS STRING with your real Key from Firebase Console
         fcmToken = await _firebaseMessaging.getToken(
-          vapidKey: "YOUR_LONG_VAPID_KEY_FROM_FIREBASE_CONSOLE_HERE" 
+          vapidKey: "BG-mAsjcWNqfS9Brgh0alj3Cf7Q7FFgkl8kvu5zktPvt4Dt-Yu138tPE_z-INAganzw6BVb6Vjc9Nf37KzN0Rm8" 
         );
       } else {
         // 🔹 MOBILE: Standard Token Request

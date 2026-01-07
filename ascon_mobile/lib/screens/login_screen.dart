@@ -37,13 +37,11 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     // ✅ CRITICAL FIX: Force Token Sync immediately after login
     // This ensures the server gets the FCM token now that we have an Auth Token.
-    if (!kIsWeb) {
-      try {
-        await NotificationService().init();
-        debugPrint("🔔 Token sync triggered after login");
-      } catch (e) {
-        debugPrint("⚠️ Failed to sync token on login: $e");
-      }
+    try {
+      await NotificationService().init();
+      debugPrint("🔔 Token sync triggered after login");
+    } catch (e) {
+      debugPrint("⚠️ Failed to sync token on login: $e");
     }
 
     bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
