@@ -51,23 +51,4 @@ router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// Create Event
-router.post("/", async (req, res) => {
-  try {
-    const newEvent = new Event(req.body);
-    const savedEvent = await newEvent.save();
-
-    // ✅ TRIGGER NOTIFICATION
-    // Customise the message based on event type
-    const notifTitle = `New ${savedEvent.type}: ${savedEvent.title}`;
-    const notifBody = `Check out the details for our upcoming ${savedEvent.type}!`;
-
-    await sendBroadcast(notifTitle, notifBody, "Event", savedEvent._id);
-
-    res.status(201).json(savedEvent);
-  } catch (err) {
-    res.status(500).json(err);
-  }
-});
-
 module.exports = router;
