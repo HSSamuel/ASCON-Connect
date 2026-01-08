@@ -37,7 +37,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
   final _orgController = TextEditingController();
   final _jobController = TextEditingController();
   
-  // ✅ NEW: Special Requirements (Dietary, Accessibility, etc.)
+  // Special Requirements
   final _specialReqController = TextEditingController();
 
   @override
@@ -50,6 +50,14 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
   }
 
   Future<void> _submitForm() async {
+    // ✅ FIX 1: Explicitly check that eventId is not empty before proceeding
+    if (widget.eventId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error: Missing Event ID. Please try again."))
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields")));
        return;
@@ -59,8 +67,9 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
 
     final fullNameCombined = "${_firstNameController.text.trim()} ${_lastNameController.text.trim()}";
 
+    // ✅ FIX 2: Ensure the eventId from the widget is passed directly to the service
     final result = await _dataService.registerEventInterest(
-      eventId: widget.eventId,
+      eventId: widget.eventId, 
       eventTitle: widget.eventTitle,
       eventType: widget.eventType,
       fullName: fullNameCombined,
@@ -88,10 +97,12 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
     }
   }
 
+  // ... (Rest of your original UI code remains exactly the same below)
+  
   Widget _buildHeaderWidget(Color primaryColor, bool isDark) {
     // ASCON Logo
     final Widget asconLogo = Image.asset(
-      'assets/images/logo.png', // Ensure this exists
+      'assets/images/logo.png',
       height: 50,
       fit: BoxFit.contain,
     );
@@ -132,7 +143,6 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Badge for Event Type
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
@@ -165,7 +175,6 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
         ),
       );
     } else {
-      // Fallback Header
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 20),
@@ -228,10 +237,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
             children: [
               _buildHeaderWidget(primaryColor, isDark),
               const SizedBox(height: 25),
-
               _buildSectionTitle("Contact Details", isDark),
-              
-              // ✅ Split Name Fields (Pro Feature)
               Row(
                 children: [
                   Expanded(child: _buildTextField("First Name", _firstNameController, Icons.person, isDark)),
@@ -239,10 +245,8 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
                   Expanded(child: _buildTextField("Last Name", _lastNameController, Icons.person_outline, isDark)),
                 ],
               ),
-
               _buildTextField("Email", _emailController, Icons.email, isDark, type: TextInputType.emailAddress),
               _buildTextField("Phone", _phoneController, Icons.phone, isDark, type: TextInputType.phone),
-              
               const SizedBox(height: 15),
               Text("Sex", style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.grey[400] : Colors.grey)),
               Row(
@@ -268,14 +272,10 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-
               _buildSectionTitle("Professional Info", isDark),
               _buildTextField("Organization / Company", _orgController, Icons.business, isDark),
               _buildTextField("Job Title", _jobController, Icons.work, isDark),
-
               const SizedBox(height: 20),
-
-              // ✅ NEW: Special Requirements Section
               _buildSectionTitle("Preferences", isDark),
               _buildTextField(
                 "Special Requirements (Dietary, Accessibility, etc.)", 
@@ -285,9 +285,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
                 isRequired: false,
                 maxLines: 3
               ),
-
               const SizedBox(height: 40),
-              
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -342,10 +340,9 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]), 
-          prefixIcon: maxLines == 1 ? Icon(icon, color: Colors.grey) : Padding(padding: const EdgeInsets.only(bottom: 40), child: Icon(icon, color: Colors.grey)), // Align icon top if multiline
+          prefixIcon: maxLines == 1 ? Icon(icon, color: Colors.grey) : Padding(padding: const EdgeInsets.only(bottom: 40), child: Icon(icon, color: Colors.grey)), 
           filled: true,
           fillColor: isDark ? Colors.grey[800] : Colors.grey[50], 
-          
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),

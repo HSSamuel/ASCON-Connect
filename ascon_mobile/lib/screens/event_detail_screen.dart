@@ -70,7 +70,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     final String eventType = _event['type'] ?? 'News';
     final bool isRegistrable = eventType != 'News';
-    final String eventId = _event['_id'] ?? _event['id'] ?? '';
+    final String eventId = (_event['_id'] ?? _event['id'] ?? '').toString();
 
     // --- DATE LOGIC ---
     String formattedDate = 'Date to be announced';

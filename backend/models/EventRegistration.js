@@ -44,4 +44,13 @@ const EventRegistrationSchema = new mongoose.Schema({
 // ✅ Composite Index: Prevents the same user from registering for the same event twice
 EventRegistrationSchema.index({ eventId: 1, email: 1 }, { unique: true });
 
+// ✅ ADDED FIX: Automatically alias _id to id for the mobile app
+EventRegistrationSchema.set("toJSON", {
+  virtuals: true,
+  transform: (doc, ret) => {
+    ret.id = ret._id;
+    return ret;
+  },
+});
+
 module.exports = mongoose.model("EventRegistration", EventRegistrationSchema);

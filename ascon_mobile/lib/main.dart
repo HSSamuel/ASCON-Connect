@@ -16,26 +16,35 @@ import 'screens/home_screen.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
+  // ✅ MUST BE FIRST
   WidgetsFlutterBinding.ensureInitialized();
   
   // Load the .env file
   await dotenv.load(fileName: ".env");
 
   if (kIsWeb) {
-    await Firebase.initializeApp(
-      options: FirebaseOptions(
-        apiKey: dotenv.env['FIREBASE_API_KEY'] ?? "",
-        appId: dotenv.env['FIREBASE_APP_ID'] ?? "",
-        messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? "",
-        projectId: dotenv.env['FIREBASE_PROJECT_ID'] ?? "",
-        storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? "",
-      ),
-    );
+    // ✅ FIX: Ensure Firebase for Web is initialized only once to prevent assertion errors
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: dotenv.env['FIREBASE_API_KEY'] ?? "",
+            appId: dotenv.env['FIREBASE_APP_ID'] ?? "",
+            messagingSenderId: dotenv.env['FIREBASE_MESSAGING_SENDER_ID'] ?? "",
+            projectId: dotenv.env['FIREBASE_PROJECT_ID'] ?? "",
+            storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? "",
+          ),
+        );
+        debugPrint("✅ Firebase Web Initialized Successfully");
+      }
+    } catch (e) {
+      debugPrint("⚠️ Firebase Web Init Error: $e");
+    }
   } else {
     await Firebase.initializeApp();
   }
 
-  // ✅ Initialize Notifications (Robust Setup)
+  // ✅ Initialize Notifications (Robust Setup - strictly for mobile)
   if (!kIsWeb) {
     try {
       await NotificationService().init();

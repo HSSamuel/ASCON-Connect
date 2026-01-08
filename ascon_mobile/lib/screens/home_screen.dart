@@ -711,6 +711,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
           ...data.map((key, value) => MapEntry(key, value.toString())),
           'rawDate': rawDate,
           'date': formattedDate,
+          '_id': data['_id'],
         };
         Navigator.push(
           context,

@@ -1,7 +1,5 @@
 const router = require("express").Router();
 const EventRegistration = require("../models/EventRegistration");
-
-// ✅ IMPORT the verification middleware
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
@@ -82,9 +80,12 @@ router.get("/", verifyToken, verifyAdmin, async (req, res) => {
 
     const total = await EventRegistration.countDocuments();
 
+    // ✅ FIX: Ensure virtuals like 'id' are included in the response
+    const formattedRegs = regs.map((reg) => reg.toJSON());
+
     res.json({
       success: true,
-      registrations: regs,
+      registrations: formattedRegs,
       total,
       page,
       pages: Math.ceil(total / limit),

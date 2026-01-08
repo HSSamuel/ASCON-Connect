@@ -36,4 +36,13 @@ const eventSchema = new mongoose.Schema({
   },
 });
 
+// ✅ ADDED FIX: Automatically alias _id to id when sending data to the app
+eventSchema.set("toJSON", {
+  virtuals: true,
+  transform: (doc, ret) => {
+    ret.id = ret._id;
+    return ret;
+  },
+});
+
 module.exports = mongoose.model("Event", eventSchema);
