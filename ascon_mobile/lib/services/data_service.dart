@@ -7,16 +7,20 @@ import 'package:http_parser/http_parser.dart'; // ✅ REQUIRED for MediaType
 import '../config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart'; 
+import 'auth_service.dart'; // ✅ Added to support AuthService calls
 
 class DataService {
   
+  // ✅ Update the _getHeaders method to trigger the self-healing refresh
   Future<Map<String, String>> _getHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token') ?? '';
+    // Use AuthService to get the token (it handles the refresh logic automatically)
+    // This ensures that if a token is expired, it's fixed BEFORE the request is sent.
+    final String? token = await AuthService().getToken(); // ✅ This calls the refresh logic
+    
     return {
       'Content-Type': 'application/json',
-      'auth-token': token, 
-      'Authorization': 'Bearer $token', 
+      'auth-token': token ?? '', 
+      'Authorization': 'Bearer ${token ?? ""}', 
     };
   }
 
@@ -37,7 +41,7 @@ class DataService {
 
   dynamic _handleResponse(http.Response response) {
     if (response.statusCode == 401 || response.statusCode == 403) {
-      _forceLogout();
+      _forceLogout(); // ✅ Redirects to LoginScreen if session is invalid
       throw Exception('Session expired'); 
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -76,11 +80,12 @@ class DataService {
     }
   }
 
-  // ✅ 4. UPDATE PROFILE (With Strict Content-Type)
+  // ✅ UPDATE PROFILE (With Strict Content-Type)
   Future<bool> updateProfile(Map<String, String> fields, XFile? imageFile) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
+      // Ensure we use a fresh token for the multipart request
+      final token = await AuthService().getToken();
       if (token == null) return false;
 
       final uri = Uri.parse('${AppConfig.baseUrl}/api/profile/update');
@@ -96,7 +101,6 @@ class DataService {
       if (imageFile != null) {
         final bytes = await imageFile.readAsBytes();
         
-        // ✅ FIX: Explicitly tell Cloudinary this is an Image
         String mimeType = "image/jpeg"; // Default
         if (imageFile.name.toLowerCase().endsWith(".png")) {
           mimeType = "image/png";
@@ -151,6 +155,27 @@ class DataService {
       final cached = await _getCachedData(cacheKey);
       if (cached != null && cached is List) return cached;
       return []; 
+    }
+  }
+
+  // ✅ FETCH SINGLE EVENT BY ID (Fixes notification loading stuck)
+  Future<Map<String, dynamic>?> fetchEventById(String id) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/events/$id');
+      final response = await http.get(url, headers: headers);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic> && data.containsKey('data')) {
+          return data['data'];
+        }
+        return data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ Error fetching single event: $e");
+      return null;
     }
   }
 
@@ -237,7 +262,7 @@ class DataService {
     }
   }
 
-  // ✅ NEW: Register for Events (Reunions, Webinars, etc.)
+  // ✅ Register for Events (Reunions, Webinars, etc.)
   Future<Map<String, dynamic>> registerEventInterest({
     required String eventId,
     required String eventTitle,
@@ -252,7 +277,6 @@ class DataService {
     String? userId,
   }) async {
     try {
-      // ✅ FIX: Use AppConfig.baseUrl and correct path
       final url = Uri.parse('${AppConfig.baseUrl}/api/event-registration');
 
       final response = await http.post(
@@ -277,6 +301,25 @@ class DataService {
       return {"success": response.statusCode == 201, "message": data['message'] ?? "Registration submitted"};
     } catch (e) {
       return {"success": false, "message": "Connection error. Please try again."};
+    }
+  }
+
+  // ✅ FETCH MY NOTIFICATIONS (Authenticated)
+  Future<List<dynamic>> fetchMyNotifications() async {
+    try {
+      final headers = await _getHeaders(); // ✅ Automatically includes fresh token
+      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/my-notifications');
+      
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response); // ✅ Automatically handles session expiration
+
+      if (data != null && data['success'] == true) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Notification Fetch Error: $e");
+      return [];
     }
   }
 }

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart'; 
 import 'package:add_2_calendar/add_2_calendar.dart'; 
 import 'package:flutter/foundation.dart'; 
+import 'package:flutter_markdown/flutter_markdown.dart'; 
 import 'event_registration_screen.dart'; 
 // ✅ Import DataService to fetch details if missing
 import '../services/data_service.dart'; 
@@ -20,7 +21,6 @@ class EventDetailScreen extends StatefulWidget {
 class _EventDetailScreenState extends State<EventDetailScreen> {
   late Map<String, dynamic> _event;
   bool _isLoading = false;
-  // ignore: unused_field
   final DataService _dataService = DataService();
 
   @override
@@ -29,17 +29,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _event = widget.eventData;
 
     // ✅ CHECK: If data is incomplete (e.g. from Notification), fetch full details
-    if (_event['date'] == null && _event['_id'] != null) {
+    if ((_event['date'] == null || _event['description'] == null) && _event['_id'] != null) {
       _fetchFullEventDetails(_event['_id']);
     }
   }
 
   Future<void> _fetchFullEventDetails(String id) async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // Logic to fetch event details would go here
-      // For now, we rely on the passed data, but this placeholder ensures
-      // we can expand later without breaking the UI.
+      final fullData = await _dataService.fetchEventById(id);
+      if (fullData != null && mounted) {
+        setState(() {
+          _event = fullData;
+        });
+      }
     } catch (e) {
       debugPrint("Error fetching event details: $e");
     } finally {
@@ -70,18 +74,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     // --- DATE LOGIC ---
     String formattedDate = 'Date to be announced';
-    
-    // Check both 'rawDate' (passed from Home) and 'date' (direct API)
     String rawDateString = _event['rawDate'] ?? _event['date'] ?? '';
     DateTime? eventDateObject;
 
     if (rawDateString.isNotEmpty) {
       try {
-        // Try parsing ISO format first
         eventDateObject = DateTime.parse(rawDateString);
         formattedDate = DateFormat("EEEE, d MMM y").format(eventDateObject);
       } catch (e) {
-        // If it's already formatted or invalid, just display it as is if possible
         if (_event['date'] != null && _event['date'].toString().length > 5) {
            formattedDate = _event['date'];
         }
@@ -117,7 +117,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
                 ),
                 onPressed: () {
-                  Share.share("🔔 $title\n📅 $formattedDate\n📍 $location\n\n$description", subject: title);
+                  // ✅ IMPROVED SHARING LOGIC
+                  final String shareText = 
+                    "🏛️ *ASCON ALUMNI UPDATE* 🏛️\n\n"
+                    "🔔 *${title.toUpperCase()}*\n\n"
+                    "📅 *Date:* $formattedDate\n"
+                    "📍 *Location:* $location\n\n"
+                    "${description.length > 200 ? "${description.substring(0, 200)}..." : description}\n\n"
+                    "📲 _Get the full details and register on the ASCON Alumni App._";
+                  
+                  Share.share(shareText, subject: "ASCON Alumni: $title");
                 },
               ),
               const SizedBox(width: 12),
@@ -140,8 +149,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ),
           ),
-
-          // BODY
           SliverToBoxAdapter(
             child: Container(
               transform: Matrix4.translationValues(0, -20, 0),
@@ -183,10 +190,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   const SizedBox(height: 30),
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
-                  Text(
-                    description,
-                    style: GoogleFonts.inter(fontSize: 15, height: 1.6, color: subTextColor),
-                    textAlign: TextAlign.justify, 
+                  MarkdownBody(
+                    data: description,
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet(
+                      p: GoogleFonts.inter(fontSize: 15, height: 1.6, color: subTextColor),
+                      strong: const TextStyle(fontWeight: FontWeight.bold),
+                      listBullet: TextStyle(color: primaryColor),
+                      blockSpacing: 12.0,
+                    ),
                   ),
                   const SizedBox(height: 100),
                 ],
@@ -195,8 +207,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ],
       ),
-
-      // BOTTOM BAR
       bottomNavigationBar: isRegistrable 
         ? Container(
             padding: const EdgeInsets.all(16),
@@ -207,7 +217,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             child: SafeArea(
               child: Row(
                 children: [
-                  // ✅ CALENDAR BUTTON (FIXED)
                   Container(
                     decoration: BoxDecoration(
                       color: primaryColor.withOpacity(0.1),
@@ -216,7 +225,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     child: IconButton(
                       icon: Icon(Icons.calendar_month_outlined, color: primaryColor),
                       onPressed: () async {
-                        if (kIsWeb) return;
+                        if (kIsWeb) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Calendar integration is not supported on Web."))
+                          );
+                          return;
+                        }
 
                         if (eventDateObject != null) {
                           final Event calendarEvent = Event(
@@ -228,23 +242,24 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             allDay: false,
                           );
                           
-                          // ✅ ADDED: Await result and show feedback
-                          bool success = await Add2Calendar.addEvent2Cal(calendarEvent);
-                          if (success && mounted) {
-                             ScaffoldMessenger.of(context).showSnackBar(
-                               const SnackBar(content: Text("Success! Event added to calendar."))
-                             );
+                          try {
+                            await Add2Calendar.addEvent2Cal(calendarEvent);
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error opening calendar: $e"))
+                              );
+                            }
                           }
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Cannot add: Date is invalid or missing."))
+                            const SnackBar(content: Text("Cannot add: Event date is invalid or missing."))
                           );
                         }
                       },
                     ),
                   ),
                   const SizedBox(width: 16),
-                  
                   Expanded(
                     child: SizedBox(
                       height: 50,

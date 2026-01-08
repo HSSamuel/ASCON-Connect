@@ -3,4 +3,5 @@
     <color name="ic_launcher_background">#FFFFFF</color>
     
     <color name="brand_color">#1B5E3A</color>
+    <color name="primary_green">#1B5E3A</color>
 </resources>

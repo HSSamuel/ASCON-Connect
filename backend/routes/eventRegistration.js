@@ -1,36 +1,81 @@
 const router = require("express").Router();
 const EventRegistration = require("../models/EventRegistration");
 
-// ✅ CRITICAL FIX: Import the verification middleware
+// ✅ IMPORT the verification middleware
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
+// ==========================================
+// 1. POST: Register for an event
+// ==========================================
 // @route   POST /api/event-registration
-// @desc    Register for an event
 router.post("/", async (req, res) => {
   try {
-    const newReg = new EventRegistration(req.body);
+    // 1. Log the incoming data to help debugging
+    console.log("Incoming Registration Data:", req.body);
+
+    const { eventId, fullName, email, phone, userId } = req.body;
+
+    // 2. Simple Validation Check
+    if (!eventId || !fullName || !email || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: Event ID, Name, Email, or Phone.",
+      });
+    }
+
+    // ✅ 3. DUPLICATE CHECK
+    // Prevents the same email from registering for the same event twice
+    const alreadyRegistered = await EventRegistration.findOne({
+      eventId,
+      email,
+    });
+    if (alreadyRegistered) {
+      return res.status(400).json({
+        success: false,
+        message: "You are already registered for this event.",
+      });
+    }
+
+    // ✅ 4. USER ID TYPE SAFETY
+    // If Flutter sends an empty string for userId, we convert it to null
+    // This prevents MongoDB from crashing when trying to save a non-ObjectId string.
+    const finalData = {
+      ...req.body,
+      userId: userId && userId.length > 5 ? userId : null,
+      email: email.toLowerCase().trim(),
+    };
+
+    // 5. Save to Database
+    const newReg = new EventRegistration(finalData);
     await newReg.save();
+
     res.status(201).json({
       success: true,
       message: "Registration successful! We will contact you shortly.",
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server Error: Could not register." });
+    console.error("EVENT_REG_ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server Error: " + err.message,
+    });
   }
 });
 
+// ==========================================
+// 2. GET: View all registrations (Admin only)
+// ==========================================
 // @route   GET /api/event-registration
-// @desc    Get all event registrations (For Admin Panel)
-router.get("/", async (req, res) => {
+router.get("/", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
+    // ✅ POPULATE userId to see official Alumni Details automatically
     const regs = await EventRegistration.find()
+      .populate("userId", "fullName alumniId profilePicture")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -38,28 +83,35 @@ router.get("/", async (req, res) => {
     const total = await EventRegistration.countDocuments();
 
     res.json({
+      success: true,
       registrations: regs,
       total,
       page,
       pages: Math.ceil(total / limit),
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error." });
+    console.error("GET_REGS_ERROR:", err);
+    res.status(500).json({ success: false, message: "Server error." });
   }
 });
 
+// ==========================================
+// 3. DELETE: Remove a registration (Admin only)
+// ==========================================
 // @route   DELETE /api/event-registration/:id
-// @desc    Delete an event registration (Admin Only)
 router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const deleted = await EventRegistration.findByIdAndDelete(req.params.id);
-    if (!deleted)
-      return res.status(404).json({ message: "Registration not found" });
+    if (!deleted) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Registration not found" });
+    }
 
-    res.json({ message: "Registration deleted successfully." });
+    res.json({ success: true, message: "Registration deleted successfully." });
   } catch (err) {
-    res.status(500).json({ message: "Server error." });
+    console.error("DELETE_REG_ERROR:", err);
+    res.status(500).json({ success: false, message: "Server error." });
   }
 });
 

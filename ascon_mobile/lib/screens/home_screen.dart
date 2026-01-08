@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (With Animated Bell)
+// DASHBOARD VIEW (With Authenticated Notifications)
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -150,7 +150,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   String _programme = "Member"; 
   String _year = "....";
   String _alumniID = "PENDING"; 
-  int _unreadNotifications = 2; 
+  int _unreadNotifications = 0; 
 
   @override
   void initState() {
@@ -161,12 +161,9 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
       vsync: this,
     );
 
-    if (_unreadNotifications > 0) {
-      _bellController.repeat(reverse: true);
-    }
-
     _loadLocalData();
     _refreshData();
+    _checkAuthenticatedNotifications(); // ✅ Check for real unread count
   }
 
   @override
@@ -185,11 +182,32 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     }
   }
 
+  // ✅ New Authenticated Check
+  Future<void> _checkAuthenticatedNotifications() async {
+    try {
+      final notifications = await _dataService.fetchMyNotifications();
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = notifications.length;
+          if (_unreadNotifications > 0) {
+            _bellController.repeat(reverse: true);
+          } else {
+            _bellController.stop();
+            _bellController.reset();
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("⚠️ Notification Auth Error: $e");
+    }
+  }
+
   void _refreshData() {
     setState(() {
       _eventsFuture = _dataService.fetchEvents();
       _programmesFuture = _authService.getProgrammes();
       _loadUserProfile(); 
+      _checkAuthenticatedNotifications(); // ✅ Sync unread count on refresh
     });
   }
 
@@ -228,68 +246,80 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return FutureBuilder<List<dynamic>>(
+          future: _dataService.fetchMyNotifications(),
+          builder: (context, snapshot) {
+            final notifications = snapshot.data ?? [];
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    "Notifications",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "Notifications",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          setState(() {
+                            _unreadNotifications = 0;
+                            _bellController.stop(); 
+                            _bellController.reset();
+                          }); 
+                        },
+                        child: const Text("Mark all read", style: TextStyle(color: Colors.grey)),
+                      )
+                    ],
                   ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      setState(() {
-                        _unreadNotifications = 0;
-                        _bellController.stop(); 
-                        _bellController.reset();
-                      }); 
-                    },
-                    child: const Text("Mark all read", style: TextStyle(color: Colors.grey)),
-                  )
+                  const SizedBox(height: 10),
+                  
+                  if (snapshot.connectionState == ConnectionState.waiting)
+                    const Center(child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: CircularProgressIndicator(),
+                    ))
+                  else if (notifications.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 30),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
+                            const SizedBox(height: 10),
+                            const Text("No new notifications", style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    ...notifications.map((n) => _buildNotificationTile(
+                      n['title'] ?? "ASCON Update", 
+                      n['message'] ?? "",
+                    )).toList(),
+                  const SizedBox(height: 20),
                 ],
               ),
-              const SizedBox(height: 10),
-              
-              if (_unreadNotifications == 0)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 30),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
-                        const SizedBox(height: 10),
-                        const Text("No new notifications", style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                )
-              else ...[
-                 _buildNotificationTile("Welcome to ASCON Alumni Network!", "Just now"),
-                 _buildNotificationTile("Please complete your profile details.", "1 hour ago"),
-              ],
-              const SizedBox(height: 20),
-            ],
-          ),
+            );
+          }
         );
       },
     ).whenComplete(() {
       if (_unreadNotifications > 0) {
           setState(() {
-             _unreadNotifications = 0;
-             _bellController.stop();
-             _bellController.reset();
+              _unreadNotifications = 0;
+              _bellController.stop();
+              _bellController.reset();
           });
       }
     });
   }
 
-  Widget _buildNotificationTile(String title, String time) {
+  Widget _buildNotificationTile(String title, String subtitle) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final tileColor = isDark ? Colors.grey[800] : Colors.grey[50];
     final borderColor = Theme.of(context).dividerColor;
@@ -318,7 +348,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               children: [
                 Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor)),
                 const SizedBox(height: 4),
-                Text(time, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ],
             ),
           ),

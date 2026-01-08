@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; // ✅ Added for font consistency
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ Added for rich formatting
 // ✅ Import the registration screen
 import 'programme_registration_screen.dart';
 
@@ -31,6 +33,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // ✅ Extract ALL Backend Data
     final title = widget.programme['title'] ?? 'Programme Details';
@@ -76,14 +80,22 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             
             const SizedBox(height: 25),
 
-            const Text(
-              "About this Programme", 
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-            ),
-            const SizedBox(height: 10),
             Text(
-              description, 
-              style: const TextStyle(fontSize: 15, height: 1.6, color: Colors.grey)
+              "About this Programme", 
+              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
+            ),
+            const SizedBox(height: 12),
+            
+            // ✅ ENHANCED: Markdown renderer for professional alignment and formatting
+            MarkdownBody(
+              data: description,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                p: GoogleFonts.inter(fontSize: 15, height: 1.6, color: isDark ? Colors.grey[400] : Colors.grey[700]),
+                strong: const TextStyle(fontWeight: FontWeight.bold),
+                listBullet: TextStyle(color: primaryColor),
+                blockSpacing: 10.0,
+              ),
             ),
             
             const SizedBox(height: 40),
@@ -120,7 +132,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     );
   }
 
- // ✅ UPDATED: Header with Larger, Bolder Title
+ // ✅ Header with Larger, Bolder Title
   Widget _buildHeader(String? image, String title, String code, Color primaryColor) {
     // 1. IF IMAGE EXISTS
     if (image != null && image.isNotEmpty) {
@@ -170,9 +182,9 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                     Text(
                       title, 
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 28.0, // ✅ INCREASED from 24 to 28
-                        fontWeight: FontWeight.w900, // Extra Bold
+                      style: GoogleFonts.inter(
+                        fontSize: 28.0, 
+                        fontWeight: FontWeight.w900, 
                         color: Colors.white,
                         height: 1.2
                       )
@@ -218,8 +230,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             Text(
               title, 
               textAlign: TextAlign.center, 
-              style: TextStyle(
-                fontSize: 26.0, // ✅ INCREASED from 22 to 26
+              style: GoogleFonts.inter(
+                fontSize: 26.0, 
                 fontWeight: FontWeight.w900, 
                 color: primaryColor
               )

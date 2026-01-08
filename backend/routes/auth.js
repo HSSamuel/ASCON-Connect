@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const User = require("../models/User");
-const Counter = require("../models/Counter"); // ✅ IMPORT COUNTER MODEL
+const Counter = require("../models/Counter");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -14,16 +14,12 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // =========================================================
 // 🔧 HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID (ATOMIC)
 // =========================================================
-// This ensures the ID is unique even if users register simultaneously.
-// Format: ASC/{YEAR}/{SEQUENCE} (e.g., ASC/2024/0052)
-// UPDATED HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID
 async function generateAlumniId(year, attempt = 1) {
   try {
     const currentYear = new Date().getFullYear().toString();
     const targetYear = year ? year.toString() : currentYear;
     const counterId = `alumni_id_${targetYear}`;
 
-    // Use findOneAndUpdate with upsert to increment the sequence
     const counter = await Counter.findByIdAndUpdate(
       counterId,
       { $inc: { seq: 1 } },
@@ -34,15 +30,12 @@ async function generateAlumniId(year, attempt = 1) {
     return `ASC/${targetYear}/${paddedNum}`;
   } catch (error) {
     console.error(`Error generating Alumni ID (Attempt ${attempt}):`, error);
-    
-    // RETRY LOGIC: If it's a transient DB error, try up to 3 times
+
     if (attempt < 3) {
       return generateAlumniId(year, attempt + 1);
     }
 
-    // FINAL FALLBACK: Use a combination of timestamp and random characters to ensure uniqueness
-    const crypto = require('crypto');
-    const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const randomSuffix = crypto.randomBytes(2).toString("hex").toUpperCase();
     return `ASC/${new Date().getFullYear()}/FALLBACK-${randomSuffix}`;
   }
 }
@@ -67,14 +60,13 @@ const registerSchema = Joi.object({
 const loginSchema = Joi.object({
   email: Joi.string().min(6).required().email(),
   password: Joi.string().min(6).required(),
-  fcmToken: Joi.string().optional().allow(""), // ✅ Allow FCM Token in Login
+  fcmToken: Joi.string().optional().allow(""),
 });
 
 // =========================================================
 // 1. REGISTER (With Auto-ID)
 // =========================================================
 router.post("/register", async (req, res) => {
-  // 1. Validate Input
   const { error } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
@@ -89,19 +81,15 @@ router.post("/register", async (req, res) => {
       customProgramme,
     } = req.body;
 
-    // 2. Check for Duplicate Email
     const emailExist = await User.findOne({ email });
     if (emailExist)
       return res.status(400).json({ message: "Email already registered." });
 
-    // 3. Hash Password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 4. ✅ GENERATE OFFICIAL ID (ATOMIC)
     const newAlumniId = await generateAlumniId(yearOfAttendance);
 
-    // 5. Create User
     const newUser = new User({
       fullName,
       email,
@@ -110,23 +98,30 @@ router.post("/register", async (req, res) => {
       yearOfAttendance,
       programmeTitle,
       customProgramme: customProgramme || "",
-      isVerified: true, // Auto-Approve for MVP
-      alumniId: newAlumniId, // ✅ Save Authentic ID
+      isVerified: true,
+      alumniId: newAlumniId,
       hasSeenWelcome: false,
     });
 
     const savedUser = await newUser.save();
 
-    // 6. Create Session Token
+    // Updated Expiration to 2 Hours and 30 Days
     const token = jwt.sign(
       { _id: savedUser._id, isAdmin: false, canEdit: false },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "2h" }
+    );
+
+    const refreshToken = jwt.sign(
+      { _id: savedUser._id },
+      process.env.REFRESH_SECRET,
+      { expiresIn: "30d" }
     );
 
     res.status(201).json({
       message: "Registration successful!",
       token: token,
+      refreshToken: refreshToken,
       user: {
         id: savedUser._id,
         fullName: savedUser.fullName,
@@ -142,7 +137,7 @@ router.post("/register", async (req, res) => {
 });
 
 // =========================================================
-// 2. LOGIN (With Self-Healing & Multi-Device Notifications)
+// 2. LOGIN (With Self-Healing)
 // =========================================================
 router.post("/login", async (req, res) => {
   const { error } = loginSchema.validate(req.body);
@@ -160,32 +155,28 @@ router.post("/login", async (req, res) => {
     if (user.isVerified === false)
       return res.status(403).json({ message: "Account pending approval." });
 
-    // ✅ SELF-HEALING: If ID is missing/broken, Fix it now!
     if (!user.alumniId || user.alumniId === "PENDING" || user.alumniId === "") {
-      console.log(`🔧 Auto-Fixing ID for user: ${user.fullName}`);
       user.alumniId = await generateAlumniId(user.yearOfAttendance);
       await user.save();
     }
 
-    // ✅ NOTIFICATION: Add Device Token
     if (fcmToken) {
       await User.updateOne(
         { _id: user._id },
-        { $addToSet: { fcmTokens: fcmToken } } // Adds only if unique
+        { $addToSet: { fcmTokens: fcmToken } }
       );
     }
 
-    // Inside the try block of your login route
     const token = jwt.sign(
       { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" } // Access token expires fast
+      { expiresIn: "2h" }
     );
 
     const refreshToken = jwt.sign(
       { _id: user._id },
-      process.env.REFRESH_SECRET, // Add this to your .env
-      { expiresIn: "7d" } // User stays logged in for 7 days
+      process.env.REFRESH_SECRET,
+      { expiresIn: "30d" }
     );
 
     res.json({
@@ -209,30 +200,26 @@ router.post("/login", async (req, res) => {
 });
 
 // =========================================================
-// 3. LOGOUT (Remove Device Token)
+// 3. LOGOUT
 // =========================================================
 router.post("/logout", async (req, res) => {
   try {
     const { userId, fcmToken } = req.body;
     if (userId && fcmToken) {
-      await User.updateOne(
-        { _id: userId },
-        { $pull: { fcmTokens: fcmToken } } // Remove this specific device
-      );
+      await User.updateOne({ _id: userId }, { $pull: { fcmTokens: fcmToken } });
     }
     res.status(200).json({ message: "Logged out successfully" });
   } catch (err) {
-    console.error("Logout Error:", err);
     res.status(500).json({ message: "Logout failed" });
   }
 });
 
 // =========================================================
-// 4. GOOGLE LOGIN (With Self-Healing)
+// 4. GOOGLE LOGIN
 // =========================================================
 router.post("/google", async (req, res) => {
   try {
-    const { token, fcmToken } = req.body; // Accept fcmToken here too
+    const { token, fcmToken } = req.body;
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -245,13 +232,11 @@ router.post("/google", async (req, res) => {
       if (!user.isVerified)
         return res.status(403).json({ message: "Account pending approval." });
 
-      // ✅ SELF-HEALING: Fix ID if missing
       if (!user.alumniId || user.alumniId === "PENDING") {
         user.alumniId = await generateAlumniId(user.yearOfAttendance);
         await user.save();
       }
 
-      // ✅ NOTIFICATION: Add Device Token
       if (fcmToken) {
         await User.updateOne(
           { _id: user._id },
@@ -266,12 +251,18 @@ router.post("/google", async (req, res) => {
           canEdit: user.canEdit || false,
         },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "2h" }
+      );
+
+      const refreshToken = jwt.sign(
+        { _id: user._id },
+        process.env.REFRESH_SECRET,
+        { expiresIn: "30d" }
       );
 
       return res.json({
-        message: "Login Success",
         token: authToken,
+        refreshToken: refreshToken,
         user: {
           id: user._id,
           fullName: user.fullName,
@@ -284,20 +275,18 @@ router.post("/google", async (req, res) => {
         },
       });
     } else {
-      // User must register first
       return res.status(404).json({
         message: "User not found",
         googleData: { fullName: name, email: email, photo: picture },
       });
     }
   } catch (err) {
-    console.error("Google Auth Error:", err);
     res.status(500).json({ message: "Google Authentication Failed" });
   }
 });
 
 // =========================================================
-// 5. FORGOT PASSWORD (Using Brevo API)
+// 5. FORGOT & RESET PASSWORD
 // =========================================================
 router.post("/forgot-password", async (req, res) => {
   try {
@@ -307,15 +296,13 @@ router.post("/forgot-password", async (req, res) => {
     const user = await User.findOne({ email: req.body.email });
     if (!user) return res.status(400).json({ message: "Email not found" });
 
-    // Generate Reset Token
     const token = crypto.randomBytes(20).toString("hex");
     user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
 
     const resetUrl = `https://asconadmin.netlify.app/reset-password?token=${token}`;
 
-    // Send Email via Brevo
     await axios.post(
       "https://api.brevo.com/v3/smtp/email",
       {
@@ -328,7 +315,6 @@ router.post("/forgot-password", async (req, res) => {
           <p>You requested a password reset. Click the link below:</p>
           <p><a href="${resetUrl}" style="background-color: #1B5E3A; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
           <p>Or copy this link: ${resetUrl}</p>
-          <p>If you did not request this, please ignore this email.</p>
         `,
       },
       {
@@ -341,17 +327,10 @@ router.post("/forgot-password", async (req, res) => {
 
     res.json({ message: "Reset link sent to your email!" });
   } catch (err) {
-    console.error(
-      "Brevo API Error:",
-      err.response ? err.response.data : err.message
-    );
     res.status(500).json({ message: "Could not send email. Try again later." });
   }
 });
 
-// =========================================================
-// 6. RESET PASSWORD
-// =========================================================
 router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -379,6 +358,9 @@ router.post("/reset-password", async (req, res) => {
   }
 });
 
+// =========================================================
+// 6. REFRESH TOKEN
+// =========================================================
 router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken)
@@ -391,7 +373,7 @@ router.post("/refresh", async (req, res) => {
     const newAccessToken = jwt.sign(
       { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
       process.env.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "2h" }
     );
 
     res.json({ token: newAccessToken });

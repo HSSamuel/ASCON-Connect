@@ -1,26 +1,55 @@
 const router = require("express").Router();
 const User = require("../models/User");
-const verify = require("./verifyToken");
+const Notification = require("../models/Notification");
+const verify = require("./verifyToken"); // ✅ Imported as 'verify'
 
-// POST /api/notifications/save-token
+// ==========================================
+// 1. SAVE FCM TOKEN (For Push Notifications)
+// ==========================================
 router.post("/save-token", verify, async (req, res) => {
   try {
-    // We accept both keys just to be safe
+    // Accept fcmToken or token from the body
     const token = req.body.fcmToken || req.body.token;
 
-    if (!token) return res.status(400).send("Token required");
+    if (!token) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Token required" });
+    }
 
-    // ✅ FIXED: Use $addToSet to add to the array (prevents duplicates)
-    // We also keep the old 'fcmToken' field updated for backward compatibility if needed
+    // Update user: add to array (no duplicates) and update legacy field
     await User.findByIdAndUpdate(req.user._id, {
-      $addToSet: { fcmTokens: token }, // Add to list
-      fcmToken: token, // Update single field (legacy support)
+      $addToSet: { fcmTokens: token },
+      fcmToken: token, // Backward compatibility
     });
 
-    res.status(200).send("Token saved");
+    res
+      .status(200)
+      .json({ success: true, message: "Token saved successfully" });
   } catch (err) {
     console.error("Notification Token Error:", err);
-    res.status(500).send(err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 2. GET NOTIFICATIONS (Authenticated)
+// ==========================================
+router.get("/my-notifications", verify, async (req, res) => {
+  try {
+    // Fetches notifications sent specifically to this user OR general broadcasts
+    const notifications = await Notification.find({
+      $or: [{ recipientId: req.user._id }, { isBroadcast: true }],
+    })
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.json({ success: true, data: notifications });
+  } catch (err) {
+    console.error("Fetch Notifications Error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Error fetching notifications" });
   }
 });
 

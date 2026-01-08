@@ -1,5 +1,6 @@
 import 'dart:convert'; 
 import 'dart:io';
+import 'dart:typed_data'; // ✅ Added for vibration patterns
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ class NotificationService {
 
   Future<void> init() async {
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true, badge: true, sound: true,
+      alert: true, badge: true, sound: true, provisional: false,
     );
 
     if (settings.authorizationStatus != AuthorizationStatus.authorized) {
@@ -35,7 +36,7 @@ class NotificationService {
       return;
     }
 
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('ic_notification');
     const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
     const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
@@ -47,6 +48,21 @@ class NotificationService {
         }
       },
     );
+
+    // ✅ Create the High Importance Channel with Vibration enabled
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'ascon_high_importance', // Changed ID to force fresh channel creation
+      'ASCON Notifications',
+      description: 'This channel is used for important ASCON updates.',
+      importance: Importance.max,
+      enableVibration: true,
+      playSound: true,
+      showBadge: true,
+    );
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
 
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -63,7 +79,9 @@ class NotificationService {
 
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
-      _handleNavigation(initialMessage.data);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _handleNavigation(initialMessage.data);
+      });
     }
 
     await _syncToken();
@@ -77,33 +95,49 @@ class NotificationService {
 
     debugPrint("🔔 Navigating to $route with ID: $id");
 
-    if (route == 'event_detail') {
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          // ✅ FIX: Pass a Map with ID instead of just ID
-          builder: (_) => EventDetailScreen(eventData: {'_id': id, 'title': 'Loading details...'}), 
-        ),
-      );
-    } else if (route == 'programme_detail') {
-      navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          // ✅ FIX: Pass a Map with ID
-          builder: (_) => ProgrammeDetailScreen(programme: {'_id': id, 'title': 'Loading details...'}),
-        ),
-      );
-    }
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (navigatorKey.currentState == null) return;
+
+      if (route == 'event_detail') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => EventDetailScreen(
+              eventData: {'_id': id.toString(), 'title': 'Loading details...'}, 
+            ),
+          ),
+        );
+      } else if (route == 'programme_detail') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => ProgrammeDetailScreen(
+              programme: {'_id': id.toString(), 'title': 'Loading details...'},
+            ),
+          ),
+        );
+      }
+    });
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'high_importance_channel',
-      'High Importance Notifications',
+    // ✅ Custom Vibration Pattern: [Wait 0ms, Vibrate 500ms, Wait 200ms, Vibrate 500ms]
+    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
+
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'ascon_high_importance',
+      'ASCON Notifications',
       importance: Importance.max,
       priority: Priority.high,
-      color: Color(0xFF1B5E3A),
+      color: const Color(0xFF1B5E3A),
+      icon: 'ic_notification',
+      enableVibration: true,
+      vibrationPattern: vibrationPattern, // ✅ Applied pattern
+      enableLights: true,
+      ledColor: const Color(0xFF1B5E3A),
+      ledOnMs: 1000,
+      ledOffMs: 500,
     );
 
-    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+    final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _localNotifications.show(
       message.hashCode,
@@ -131,7 +165,7 @@ class NotificationService {
       String? authToken = prefs.getString('auth_token');
 
       if (authToken == null) {
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 1000));
         authToken = prefs.getString('auth_token');
       }
 

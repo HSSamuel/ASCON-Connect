@@ -109,19 +109,21 @@ app.use(express.json());
 // ==========================================
 const authRoute = require("./routes/auth");
 const directoryRoute = require("./routes/directory");
-const adminRoute = require("./routes/admin");
+const adminRoutes = require("./routes/admin");
 const profileRoute = require("./routes/profile");
 const eventsRoute = require("./routes/events");
-const notificationsRoute = require("./routes/notifications");
 const programmeInterestRoute = require("./routes/programmeInterest");
+const notificationRoutes = require("./routes/notifications");
+const eventRegistrationRoute = require("./routes/eventRegistration");
 
 app.use("/api/auth", authRoute);
 app.use("/api/directory", directoryRoute);
-app.use("/api/admin", adminRoute);
+app.use("/api/admin", adminRoutes);
 app.use("/api/profile", profileRoute);
 app.use("/api/events", eventsRoute);
-app.use("/api/notifications", notificationsRoute);
 app.use("/api/programme-interest", programmeInterestRoute);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/event-registration", eventRegistrationRoute);
 
 // ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);

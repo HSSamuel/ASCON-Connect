@@ -2,12 +2,28 @@ const admin = require("../config/firebase");
 const User = require("../models/User");
 
 /**
+ * 🧹 CLEANUP FUNCTION
+ * Removes invalid/expired tokens from a user's database record
+ */
+const cleanupTokens = async (userId, tokensToRemove) => {
+  if (tokensToRemove.length === 0) return;
+  try {
+    await User.findByIdAndUpdate(userId, {
+      $pull: { fcmTokens: { $in: tokensToRemove } },
+    });
+    console.log(
+      `🧹 Cleaned up ${tokensToRemove.length} invalid tokens for user ${userId}`
+    );
+  } catch (err) {
+    console.error("❌ Token Cleanup Error:", err);
+  }
+};
+
+/**
  * 📢 SEND BROADCAST (To Everyone)
- * Used for: New Events, New Programmes
  */
 const sendBroadcastNotification = async (title, body, data = {}) => {
   try {
-    // 1. Find users who have at least one FCM token
     const usersWithTokens = await User.find({
       fcmTokens: { $exists: true, $not: { $size: 0 } },
     });
@@ -17,26 +33,43 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
       return;
     }
 
-    // 2. Collect all tokens into a single flat array
-    const allTokens = usersWithTokens.flatMap((user) => user.fcmTokens);
-    console.log(`📣 Sending broadcast to ${allTokens.length} devices...`);
-
-    // 3. Construct Message
-    const message = {
-      notification: { title, body },
-      data: {
-        ...data, // e.g., { route: "event_detail", id: "123" }
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-      },
-      tokens: allTokens,
-    };
-
-    // 4. Send Multicast
-    const response = await admin.messaging().sendEachForMulticast(message);
-
     console.log(
-      `✅ Broadcast Sent! Success: ${response.successCount}, Fail: ${response.failureCount}`
+      `📣 Preparing broadcast for ${usersWithTokens.length} users...`
     );
+
+    // We process users individually or in small batches to handle token cleanup accurately
+    for (const user of usersWithTokens) {
+      const message = {
+        notification: { title, body },
+        data: {
+          ...data,
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        tokens: user.fcmTokens,
+      };
+
+      const response = await admin.messaging().sendEachForMulticast(message);
+
+      // Check for failed tokens (Unregistered or Invalid)
+      const failedTokens = [];
+      response.responses.forEach((res, idx) => {
+        if (!res.success) {
+          const errorCode = res.error?.code;
+          if (
+            errorCode === "messaging/registration-token-not-registered" ||
+            errorCode === "messaging/invalid-registration-token"
+          ) {
+            failedTokens.push(user.fcmTokens[idx]);
+          }
+        }
+      });
+
+      if (failedTokens.length > 0) {
+        await cleanupTokens(user._id, failedTokens);
+      }
+    }
+
+    console.log(`✅ Broadcast cycle complete.`);
   } catch (error) {
     console.error("❌ Broadcast Failed:", error);
   }
@@ -44,7 +77,6 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
 
 /**
  * 👤 SEND PERSONAL NOTIFICATION (To Specific User)
- * Used for: Account Verification, Profile Updates
  */
 const sendPersonalNotification = async (userId, title, body, data = {}) => {
   try {
@@ -60,10 +92,29 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
         ...data,
         click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
-      tokens: user.fcmTokens, // Send to all user's devices
+      tokens: user.fcmTokens,
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
+
+    // Cleanup logic for personal notifications
+    const failedTokens = [];
+    response.responses.forEach((res, idx) => {
+      if (!res.success) {
+        const errorCode = res.error?.code;
+        if (
+          errorCode === "messaging/registration-token-not-registered" ||
+          errorCode === "messaging/invalid-registration-token"
+        ) {
+          failedTokens.push(user.fcmTokens[idx]);
+        }
+      }
+    });
+
+    if (failedTokens.length > 0) {
+      await cleanupTokens(user._id, failedTokens);
+    }
+
     console.log(
       `👤 Personal Notification sent to ${user.fullName}: ${response.successCount} success.`
     );
