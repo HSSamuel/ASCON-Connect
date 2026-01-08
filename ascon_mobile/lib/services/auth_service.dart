@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart'; // For kIsWeb
 import '../main.dart'; // For navigatorKey
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
-
-// ✅ IMPORT THE NEW API CLIENT
 import 'api_client.dart';
 import 'notification_service.dart';
 
@@ -20,12 +18,16 @@ class AuthService {
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
-        // (Optional) Send FCM token if you implemented that logic
       });
 
       if (result['success']) {
         final data = result['data'];
-        await _saveUserSession(data['token'], data['user']);
+        // ✅ Updated to save both access and refresh tokens
+        await _saveUserSession(
+          data['token'], 
+          data['user'], 
+          refreshToken: data['refreshToken']
+        );
 
         // ✅ Initialize notifications after successful login
         if (!kIsWeb) {
@@ -60,7 +62,12 @@ class AuthService {
       });
 
       if (result['success'] && result['data']['token'] != null) {
-        await _saveUserSession(result['data']['token'], result['data']['user'] ?? {});
+        final data = result['data'];
+        await _saveUserSession(
+          data['token'], 
+          data['user'] ?? {}, 
+          refreshToken: data['refreshToken']
+        );
         if (!kIsWeb) NotificationService().init();
       }
 
@@ -79,7 +86,11 @@ class AuthService {
 
       if (result['success']) {
         final data = result['data'];
-        await _saveUserSession(data['token'], data['user']);
+        await _saveUserSession(
+          data['token'], 
+          data['user'], 
+          refreshToken: data['refreshToken']
+        );
         if (!kIsWeb) NotificationService().init();
       }
       return result;
@@ -97,12 +108,11 @@ class AuthService {
     }
   }
 
-  // --- FETCH PROGRAMMES (Public/Admin route) ---
+  // --- FETCH PROGRAMMES ---
   Future<List<dynamic>> getProgrammes() async {
     try {
       final result = await _api.get('/api/admin/programmes');
       if (result['success']) {
-        // Handle paginated response structure if needed, or simple array
         final data = result['data'];
         if (data is Map && data.containsKey('programmes')) {
           return data['programmes']; 
@@ -120,11 +130,8 @@ class AuthService {
   // --- MARK WELCOME SEEN ---
   Future<void> markWelcomeSeen() async {
     try {
-      // Direct HTTP put using ApiClient logic (assuming put method exists or we add it)
-      // If ApiClient doesn't have PUT, we can add it, or use post if backend allows.
-      // Assuming we extended ApiClient to have .put or we use .post for now.
-      // For this example, let's assume we added a .put method to ApiClient similar to .post
-      // If not, simply skip or use raw http here for this one-off.
+      // ✅ Now using the .put method added to ApiClient
+      await _api.put('/api/profile/welcome-seen', {});
     } catch (e) {
       print("Error marking welcome seen: $e");
     }
@@ -132,11 +139,18 @@ class AuthService {
 
   // --- SESSION HELPERS ---
   
-  Future<void> _saveUserSession(String token, Map<String, dynamic> user) async {
+  Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
     
-    // Configure API Client with new token
+    // ✅ Save Refresh Token if provided by backend
+    if (refreshToken != null) {
+      await prefs.setString('refresh_token', refreshToken);
+    }
+    
+    // ✅ CACHE USER DATA FOR OFFLINE USE
+    await prefs.setString('cached_user', jsonEncode(user));
+    
     _api.setAuthToken(token);
 
     if (user['fullName'] != null) {
@@ -147,19 +161,46 @@ class AuthService {
     }
   }
 
+  // ✅ NEW: Helper to retrieve cached data when offline
+  Future<Map<String, dynamic>?> getCachedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userData = prefs.getString('cached_user');
+    if (userData != null) {
+      return jsonDecode(userData);
+    }
+    return null;
+  }
+
   Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
+    String? token = prefs.getString('auth_token');
+    final String? refreshToken = prefs.getString('refresh_token');
 
     if (token == null) return null;
 
+    // ✅ SELF-HEALING: If token is expired, attempt to refresh it automatically
     if (JwtDecoder.isExpired(token)) {
-      print("⚠️ Token Expired. Logging out.");
+      print("⚠️ Token Expired. Attempting Refresh...");
+      
+      if (refreshToken != null) {
+        try {
+          final result = await _api.post('/api/auth/refresh', {'refreshToken': refreshToken});
+          if (result['success']) {
+            final newToken = result['data']['token'];
+            await prefs.setString('auth_token', newToken);
+            _api.setAuthToken(newToken);
+            return newToken;
+          }
+        } catch (e) {
+          print("❌ Refresh Failed: $e");
+        }
+      }
+
+      print("🚨 Session invalid. Logging out.");
       await logout();
       return null;
     }
     
-    // Ensure API client has the token loaded
     _api.setAuthToken(token);
     return token;
   }
@@ -174,14 +215,12 @@ class AuthService {
     await prefs.clear();
     _api.clearAuthToken();
     
-    // Navigate to Login
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false, 
     );
   }
 
-  // Helper to remove "Exception: " prefix from error messages
   String _cleanError(Object e) {
     return e.toString().replaceAll("Exception: ", "");
   }

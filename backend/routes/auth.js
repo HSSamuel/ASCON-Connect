@@ -16,28 +16,34 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // =========================================================
 // This ensures the ID is unique even if users register simultaneously.
 // Format: ASC/{YEAR}/{SEQUENCE} (e.g., ASC/2024/0052)
-async function generateAlumniId(year) {
+// UPDATED HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID
+async function generateAlumniId(year, attempt = 1) {
   try {
     const currentYear = new Date().getFullYear().toString();
     const targetYear = year ? year.toString() : currentYear;
     const counterId = `alumni_id_${targetYear}`;
 
-    // ✅ ATOMIC UPDATE: Find the counter and increment it safely
+    // Use findOneAndUpdate with upsert to increment the sequence
     const counter = await Counter.findByIdAndUpdate(
       counterId,
       { $inc: { seq: 1 } },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    // Format with leading zeros (e.g., 5 -> "0005")
     const paddedNum = counter.seq.toString().padStart(4, "0");
     return `ASC/${targetYear}/${paddedNum}`;
   } catch (error) {
-    console.error("Error generating Alumni ID:", error);
-    // Fallback only if database fails completely
-    return `ASC/${new Date().getFullYear()}/ERR-${Date.now()
-      .toString()
-      .slice(-4)}`;
+    console.error(`Error generating Alumni ID (Attempt ${attempt}):`, error);
+    
+    // RETRY LOGIC: If it's a transient DB error, try up to 3 times
+    if (attempt < 3) {
+      return generateAlumniId(year, attempt + 1);
+    }
+
+    // FINAL FALLBACK: Use a combination of timestamp and random characters to ensure uniqueness
+    const crypto = require('crypto');
+    const randomSuffix = crypto.randomBytes(2).toString('hex').toUpperCase();
+    return `ASC/${new Date().getFullYear()}/FALLBACK-${randomSuffix}`;
   }
 }
 
@@ -169,18 +175,22 @@ router.post("/login", async (req, res) => {
       );
     }
 
+    // Inside the try block of your login route
     const token = jwt.sign(
-      {
-        _id: user._id,
-        isAdmin: user.isAdmin || false,
-        canEdit: user.canEdit || false,
-      },
+      { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "15m" } // Access token expires fast
     );
 
-    res.header("auth-token", token).json({
-      token: token,
+    const refreshToken = jwt.sign(
+      { _id: user._id },
+      process.env.REFRESH_SECRET, // Add this to your .env
+      { expiresIn: "7d" } // User stays logged in for 7 days
+    );
+
+    res.json({
+      token,
+      refreshToken,
       user: {
         id: user._id,
         fullName: user.fullName,
@@ -366,6 +376,27 @@ router.post("/reset-password", async (req, res) => {
     res.json({ message: "Password updated successfully! Please login." });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken)
+    return res.status(401).json({ message: "Refresh Token Required" });
+
+  try {
+    const verified = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+    const user = await User.findById(verified._id);
+
+    const newAccessToken = jwt.sign(
+      { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.json({ token: newAccessToken });
+  } catch (err) {
+    res.status(403).json({ message: "Invalid Refresh Token" });
   }
 });
 

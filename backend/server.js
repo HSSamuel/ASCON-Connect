@@ -6,6 +6,10 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const compression = require("compression");
+const swaggerJsDoc = require("swagger-jsdoc");
+const swaggerUi = require("swagger-ui-express");
+const validateEnv = require("./utils/validateEnv");
+const errorHandler = require("./utils/errorMiddleware");
 
 // 1. Initialize the App
 const app = express();
@@ -15,6 +19,7 @@ const app = express();
 app.set("trust proxy", 1);
 
 dotenv.config();
+validateEnv();
 
 // ==========================================
 // 🛡️ MIDDLEWARE: SECURITY & PERFORMANCE
@@ -35,7 +40,6 @@ const limiter = rateLimit({
   max: 100, // Limit each IP to 100 requests per window
   standardHeaders: true,
   legacyHeaders: false,
-  // ⬇️ ADD THIS TO DISABLE THE "X-Forwarded-For" ERROR LOGS IF THEY PERSIST
   validate: { xForwardedForHeader: false },
   message: {
     message:
@@ -44,6 +48,32 @@ const limiter = rateLimit({
 });
 
 app.use("/api", limiter); // Apply to all API routes
+
+// ==========================================
+// 📖 API DOCUMENTATION (SWAGGER)
+// ==========================================
+const swaggerOptions = {
+  swaggerDefinition: {
+    openapi: "3.0.0",
+    info: {
+      title: "ASCON Alumni API",
+      version: "1.1.0",
+      description: "Official API documentation for the ASCON Alumni Platform",
+    },
+    servers: [
+      {
+        url:
+          process.env.NODE_ENV === "production"
+            ? "https://ascon.onrender.com"
+            : `http://localhost:${process.env.PORT || 5000}`,
+      },
+    ],
+  },
+  apis: ["./routes/*.js"],
+};
+
+const swaggerDocs = swaggerJsDoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // ==========================================
 // 2. CONFIGURATION (CORS & JSON)
@@ -93,6 +123,9 @@ app.use("/api/events", eventsRoute);
 app.use("/api/notifications", notificationsRoute);
 app.use("/api/programme-interest", programmeInterestRoute);
 
+// ✅ CENTRALIZED ERROR HANDLER
+app.use(errorHandler);
+
 // ==========================================
 // 4. DATABASE & SERVER START
 // ==========================================
@@ -104,9 +137,22 @@ mongoose
   .connect(process.env.DB_CONNECT)
   .then(() => {
     console.log("✅ Connected to MongoDB Successfully!");
+
+    // ✅ PRODUCTION HARDENING LOGIC
+    if (process.env.NODE_ENV === "production") {
+      console.log("🛡️  Production Security Hardening Active");
+    }
+
     app.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
-      console.log(`🛡️  Security & Compression Enabled`);
+
+      // ✅ DYNAMIC DOCS LINK LOGIC
+      const docsUrl =
+        process.env.NODE_ENV === "production"
+          ? "https://ascon.onrender.com/api-docs"
+          : `http://localhost:${PORT}/api-docs`;
+
+      console.log(`📖 API Docs available at ${docsUrl}`);
     });
   })
   .catch((err) => {

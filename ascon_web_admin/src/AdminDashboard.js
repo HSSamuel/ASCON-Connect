@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react"; // ✅ Added useEffect
+import React, { useMemo, useEffect, useReducer } from "react";
 import axios from "axios";
 import "./App.css";
 import Toast from "./Toast";
@@ -19,54 +19,106 @@ import { useStats } from "./hooks/useStats";
 
 const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
 
-function AdminDashboard({ token, onLogout }) {
-  // --- 1. STATE & HOOKS ---
-  const [activeTab, setActiveTab] = useState("users");
-  const [refreshCount, setRefreshCount] = useState(0); // Trigger to reload data
-  const [toast, setToast] = useState(null);
-
-  // ✅ THEME STATE (Persistence via localStorage)
-  const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
-
-  // UI State for Modals/Forms
-  const [deleteModal, setDeleteModal] = useState({
-    show: false,
-    id: null,
-    type: null,
-  });
-  const [editingId, setEditingId] = useState(null);
-  const [eventForm, setEventForm] = useState({
+// --- 1. REDUCER FOR STATE MANAGEMENT ---
+const initialState = {
+  activeTab: "users",
+  refreshCount: 0,
+  toast: null,
+  theme: localStorage.getItem("theme") || "light",
+  deleteModal: { show: false, id: null, type: null },
+  editingId: null,
+  eventForm: {
     title: "",
     description: "",
     location: "",
     type: "News",
     image: "",
-  });
-  const [progForm, setProgForm] = useState({
+  },
+  progForm: {
     title: "",
     code: "",
     description: "",
     duration: "",
     fee: "",
     image: "",
-  });
+  },
+};
 
-  // ✅ APPLY THEME TO BODY ELEMENT
+function adminReducer(state, action) {
+  switch (action.type) {
+    case "SET_TAB":
+      return {
+        ...state,
+        activeTab: action.payload,
+        editingId: null,
+        eventForm: initialState.eventForm,
+        progForm: initialState.progForm,
+      };
+    case "TOGGLE_THEME":
+      const newTheme = state.theme === "light" ? "dark" : "light";
+      localStorage.setItem("theme", newTheme);
+      return { ...state, theme: newTheme };
+    case "SHOW_TOAST":
+      return { ...state, toast: action.payload };
+    case "HIDE_TOAST":
+      return { ...state, toast: null };
+    case "TRIGGER_REFRESH":
+      return { ...state, refreshCount: state.refreshCount + 1 };
+    case "OPEN_DELETE_MODAL":
+      return {
+        ...state,
+        deleteModal: { show: true, id: action.id, type: action.deleteType },
+      };
+    case "CLOSE_MODAL":
+      return { ...state, deleteModal: initialState.deleteModal };
+    case "START_EDIT_EVENT":
+      return {
+        ...state,
+        editingId: action.payload._id,
+        eventForm: { ...action.payload, image: action.payload.image || "" },
+      };
+    case "START_EDIT_PROG":
+      return {
+        ...state,
+        editingId: action.payload._id,
+        progForm: { ...action.payload, image: action.payload.image || "" },
+      };
+    case "UPDATE_EVENT_FORM":
+      return { ...state, eventForm: { ...state.eventForm, ...action.payload } };
+    case "UPDATE_PROG_FORM":
+      return { ...state, progForm: { ...state.progForm, ...action.payload } };
+    case "CANCEL_EDIT":
+      return {
+        ...state,
+        editingId: null,
+        eventForm: initialState.eventForm,
+        progForm: initialState.progForm,
+      };
+    default:
+      return state;
+  }
+}
+
+function AdminDashboard({ token, onLogout }) {
+  const [state, dispatch] = useReducer(adminReducer, initialState);
+  const {
+    activeTab,
+    refreshCount,
+    toast,
+    theme,
+    deleteModal,
+    editingId,
+    eventForm,
+    progForm,
+  } = state;
+
+  // --- 2. EFFECTS ---
   useEffect(() => {
     document.body.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // ✅ THEME TOGGLE HANDLER
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-  };
-
-  // ✅ AUTH HOOK
+  // --- 3. HOOKS ---
   const { canEdit, userRole } = useAuth(token, onLogout);
-
-  // ✅ DATA HOOKS
   const users = usePaginatedFetch(
     `${BASE_URL}/api/admin/users`,
     token,
@@ -92,54 +144,46 @@ function AdminDashboard({ token, onLogout }) {
     token,
     refreshCount
   );
-
-  // ✅ STATS HOOK
   const stats = useStats(BASE_URL, token, refreshCount);
 
-  // --- 2. API INSTANCE ---
   const API = useMemo(() => {
     const instance = axios.create({
       baseURL: `${BASE_URL}/api`,
       headers: { "auth-token": token },
     });
     instance.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        if (error.response && [401, 403].includes(error.response.status)) {
+      (res) => res,
+      (err) => {
+        if (err.response && [401, 403].includes(err.response.status))
           onLogout();
-        }
-        return Promise.reject(error);
+        return Promise.reject(err);
       }
     );
     return instance;
   }, [token, onLogout]);
 
-  // --- 3. HELPERS ---
-  const showToast = (msg, type = "success") => setToast({ message: msg, type });
-  const triggerRefresh = () => setRefreshCount((prev) => prev + 1);
+  // --- 4. HELPERS ---
+  const showToast = (message, type = "success") =>
+    dispatch({ type: "SHOW_TOAST", payload: { message, type } });
 
-  const switchTab = (tab) => {
-    setActiveTab(tab);
-    setEditingId(null);
-    setEventForm({
-      title: "",
-      description: "",
-      location: "",
-      type: "News",
-      image: "",
-    });
-    setProgForm({ title: "", code: "" });
-  };
-
-  // --- 4. ACTIONS (Users) ---
+  // --- 5. ACTIONS (Users) ---
   const approveUser = async (id, name) => {
+    // OPTIMISTIC UPDATE: Update local UI immediately
+    const originalData = [...users.data];
+    const optimisticData = users.data.map((u) =>
+      u._id === id ? { ...u, isVerified: true } : u
+    );
+
+    // Note: This requires your usePaginatedFetch hook to expose a setData method
+    if (users.setData) users.setData(optimisticData);
+
     try {
       await API.put(`/admin/users/${id}/verify`);
       showToast(`${name} verified!`);
-      users.refresh();
-      triggerRefresh();
+      dispatch({ type: "TRIGGER_REFRESH" });
     } catch (err) {
-      showToast(err.response?.data?.message || "Failed.", "error");
+      if (users.setData) users.setData(originalData); // Rollback on failure
+      showToast(err.response?.data?.message || "Failed to verify.", "error");
     }
   };
 
@@ -149,7 +193,7 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Admin status updated");
       users.refresh();
     } catch (err) {
-      showToast("Failed to update.", "error");
+      showToast("Update failed.", "error");
     }
   };
 
@@ -159,16 +203,19 @@ function AdminDashboard({ token, onLogout }) {
       showToast("Permissions updated");
       users.refresh();
     } catch (err) {
-      showToast("Failed to update.", "error");
+      showToast("Update failed.", "error");
     }
   };
 
-  const deleteUserClick = (id) =>
-    setDeleteModal({ show: true, id, type: "user" });
-
-  // --- 5. ACTIONS (Events) ---
+  // --- 6. ACTIONS (Events) ---
   const handleEventSubmit = async (e) => {
     e.preventDefault();
+    // CLIENT-SIDE VALIDATION
+    if (eventForm.title.length < 5)
+      return showToast("Title must be at least 5 characters", "error");
+    if (eventForm.description.length < 10)
+      return showToast("Description too short", "error");
+
     try {
       if (editingId) {
         await API.put(`/admin/events/${editingId}`, eventForm);
@@ -177,111 +224,52 @@ function AdminDashboard({ token, onLogout }) {
         await API.post("/admin/events", { ...eventForm, date: new Date() });
         showToast("Event published");
       }
-      setEditingId(null);
-      setEventForm({
-        title: "",
-        description: "",
-        location: "",
-        type: "News",
-        image: "",
-      });
+      dispatch({ type: "CANCEL_EDIT" });
       events.refresh();
-      triggerRefresh();
+      dispatch({ type: "TRIGGER_REFRESH" });
     } catch (err) {
       showToast(err.response?.data?.message || "Error saving event", "error");
     }
   };
 
-  const startEditEvent = (evt) => {
-    setEditingId(evt._id);
-    setEventForm({ ...evt, image: evt.image || "" });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const deleteEventClick = (id) =>
-    setDeleteModal({ show: true, id, type: "event" });
-
-  // --- 6. ACTIONS (Programmes) ---
-  const handleProgrammeSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      if (editingId) {
-        await API.put(`/admin/programmes/${editingId}`, progForm);
-        showToast("Programme updated");
-      } else {
-        await API.post("/admin/programmes", progForm);
-        showToast("Programme added");
-      }
-      setEditingId(null);
-      setProgForm({
-        title: "",
-        code: "",
-        description: "",
-        duration: "",
-        fee: "",
-        image: "",
-      });
-      programmes.refresh();
-      triggerRefresh();
-    } catch (err) {
-      showToast(
-        err.response?.data?.message || "Error saving programme",
-        "error"
-      );
-    }
-  };
-
-  const startEditProgramme = (prog) => {
-    setEditingId(prog._id);
-    setProgForm({ ...prog, image: prog.image || "" });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const deleteProgrammeClick = (id) =>
-    setDeleteModal({ show: true, id, type: "programme" });
-
-  // --- 7. ACTIONS (Registrations) ---
-  const handleDeleteRegistration = (id, type) => {
-    const deleteType = type === "programmes" ? "reg_prog" : "reg_event";
-    setDeleteModal({ show: true, id: id, type: deleteType });
-  };
-
-  // --- 8. SHARED DELETE CONFIRMATION ---
+  // --- 7. SHARED DELETE ---
   const confirmDelete = async () => {
     const { id, type } = deleteModal;
-    setDeleteModal({ show: false, id: null, type: null });
+    dispatch({ type: "CLOSE_MODAL" });
     try {
       if (type === "user") await API.delete(`/admin/users/${id}`);
-      if (type === "event") await API.delete(`/admin/events/${id}`);
-      if (type === "programme") await API.delete(`/admin/programmes/${id}`);
-      if (type === "reg_prog") await API.delete(`/programme-interest/${id}`);
-      if (type === "reg_event") await API.delete(`/event-registration/${id}`);
+      else if (type === "event") await API.delete(`/admin/events/${id}`);
+      else if (type === "programme")
+        await API.delete(`/admin/programmes/${id}`);
+      else if (type === "reg_prog")
+        await API.delete(`/programme-interest/${id}`);
+      else if (type === "reg_event")
+        await API.delete(`/event-registration/${id}`);
 
       showToast("Deleted successfully");
-      triggerRefresh();
-
-      if (type && type.startsWith("reg_")) {
+      dispatch({ type: "TRIGGER_REFRESH" });
+      if (type.startsWith("reg_")) {
         progRegs.refresh();
         eventRegs.refresh();
-      }
+      } else if (type === "user") users.refresh();
+      else if (type === "event") events.refresh();
+      else if (type === "programme") programmes.refresh();
     } catch (err) {
       showToast("Delete failed", "error");
     }
   };
 
-  // --- 9. RENDER ---
   return (
     <div className="admin-container">
       <NavBar
         activeTab={activeTab}
-        setActiveTab={switchTab}
+        setActiveTab={(tab) => dispatch({ type: "SET_TAB", payload: tab })}
         onLogout={onLogout}
         userRole={userRole}
-        theme={theme} // ✅ Added Theme Prop
-        toggleTheme={toggleTheme} // ✅ Added Toggle Prop
+        theme={theme}
+        toggleTheme={() => dispatch({ type: "TOGGLE_THEME" })}
       />
 
-      {/* STATS AREA */}
       <div
         className="content-padding"
         style={{
@@ -295,30 +283,31 @@ function AdminDashboard({ token, onLogout }) {
           title="Total Users"
           value={stats.users}
           icon="👥"
-          // Use a conditional or a CSS class instead of hardcoded light colors
           color={theme === "light" ? "#fff3cd" : "#2c2c2c"}
-          onClick={() => switchTab("users")}
+          onClick={() => dispatch({ type: "SET_TAB", payload: "users" })}
         />
         <StatCard
           title="Active Events"
           value={stats.events}
           icon="📅"
           color="#d1e7dd"
-          onClick={() => switchTab("events")}
+          onClick={() => dispatch({ type: "SET_TAB", payload: "events" })}
         />
         <StatCard
           title="Programmes"
           value={stats.programmes}
           icon="🎓"
           color="#cff4fc"
-          onClick={() => switchTab("programmes")}
+          onClick={() => dispatch({ type: "SET_TAB", payload: "programmes" })}
         />
         <StatCard
           title="Registrations"
           value={stats.totalRegistrations}
           icon="📋"
           color="#E6E6FA"
-          onClick={() => switchTab("registrations")}
+          onClick={() =>
+            dispatch({ type: "SET_TAB", payload: "registrations" })
+          }
         />
       </div>
 
@@ -326,7 +315,7 @@ function AdminDashboard({ token, onLogout }) {
         <Toast
           message={toast.message}
           type={toast.type}
-          onClose={() => setToast(null)}
+          onClose={() => dispatch({ type: "HIDE_TOAST" })}
         />
       )}
 
@@ -334,7 +323,7 @@ function AdminDashboard({ token, onLogout }) {
         isOpen={deleteModal.show}
         title="Confirm Deletion"
         message="Are you sure? This cannot be undone."
-        onClose={() => setDeleteModal({ show: false })}
+        onClose={() => dispatch({ type: "CLOSE_MODAL" })}
         onConfirm={confirmDelete}
       />
 
@@ -351,7 +340,9 @@ function AdminDashboard({ token, onLogout }) {
             approveUser={approveUser}
             toggleAdmin={toggleAdmin}
             toggleEditPermission={toggleEditPermission}
-            deleteUserClick={deleteUserClick}
+            deleteUserClick={(id) =>
+              dispatch({ type: "OPEN_DELETE_MODAL", id, deleteType: "user" })
+            }
             canEdit={canEdit}
           />
         )}
@@ -362,11 +353,18 @@ function AdminDashboard({ token, onLogout }) {
             canEdit={canEdit}
             editingId={editingId}
             eventForm={eventForm}
-            setEventForm={setEventForm}
+            setEventForm={(data) =>
+              dispatch({ type: "UPDATE_EVENT_FORM", payload: data })
+            }
             handleEventSubmit={handleEventSubmit}
-            startEditEvent={startEditEvent}
-            cancelEditEvent={() => setEditingId(null)}
-            deleteEventClick={deleteEventClick}
+            startEditEvent={(evt) => {
+              dispatch({ type: "START_EDIT_EVENT", payload: evt });
+              window.scrollTo(0, 0);
+            }}
+            cancelEditEvent={() => dispatch({ type: "CANCEL_EDIT" })}
+            deleteEventClick={(id) =>
+              dispatch({ type: "OPEN_DELETE_MODAL", id, deleteType: "event" })
+            }
           />
         )}
 
@@ -376,11 +374,35 @@ function AdminDashboard({ token, onLogout }) {
             canEdit={canEdit}
             editingId={editingId}
             progForm={progForm}
-            setProgForm={setProgForm}
-            handleProgrammeSubmit={handleProgrammeSubmit}
-            startEditProgramme={startEditProgramme}
-            cancelEditProgramme={() => setEditingId(null)}
-            deleteProgrammeClick={deleteProgrammeClick}
+            setProgForm={(data) =>
+              dispatch({ type: "UPDATE_PROG_FORM", payload: data })
+            }
+            handleProgrammeSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                if (editingId)
+                  await API.put(`/admin/programmes/${editingId}`, progForm);
+                else await API.post("/admin/programmes", progForm);
+                showToast("Programme saved");
+                dispatch({ type: "CANCEL_EDIT" });
+                programmes.refresh();
+                dispatch({ type: "TRIGGER_REFRESH" });
+              } catch (err) {
+                showToast("Error saving programme", "error");
+              }
+            }}
+            startEditProgramme={(prog) => {
+              dispatch({ type: "START_EDIT_PROG", payload: prog });
+              window.scrollTo(0, 0);
+            }}
+            cancelEditProgramme={() => dispatch({ type: "CANCEL_EDIT" })}
+            deleteProgrammeClick={(id) =>
+              dispatch({
+                type: "OPEN_DELETE_MODAL",
+                id,
+                deleteType: "programme",
+              })
+            }
           />
         )}
 
@@ -389,7 +411,13 @@ function AdminDashboard({ token, onLogout }) {
             registrations={progRegs.data}
             eventRegistrations={eventRegs.data}
             isLoading={progRegs.loading || eventRegs.loading}
-            onDelete={handleDeleteRegistration}
+            onDelete={(id, type) =>
+              dispatch({
+                type: "OPEN_DELETE_MODAL",
+                id,
+                deleteType: type === "programmes" ? "reg_prog" : "reg_event",
+              })
+            }
             canEdit={canEdit}
             showToast={showToast}
           />
