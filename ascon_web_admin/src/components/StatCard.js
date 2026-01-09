@@ -6,14 +6,15 @@ function StatCard({ title, value, icon, color, onClick }) {
     <div
       className="stat-card"
       onClick={onClick}
-      style={{ cursor: onClick ? "pointer" : "default" }} // ✅ Add pointer cursor
+      style={{ backgroundColor: color, cursor: "pointer" }}
     >
-      <div className="stat-icon-container" style={{ backgroundColor: color }}>
-        <span className="stat-icon">{icon}</span>
-      </div>
-      <div className="stat-info">
-        <p className="stat-title">{title}</p>
-        <h3 className="stat-value">{value}</h3>
+      {/* ✅ Icon and Text wrapped for horizontal alignment */}
+      <div className="stat-content-wrapper">
+        <div className="stat-icon">{icon}</div>
+        <div className="stat-info">
+          <p className="stat-value">{value}</p>
+          <h3>{title}</h3>
+        </div>
       </div>
     </div>
   );

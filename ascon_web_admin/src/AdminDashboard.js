@@ -271,7 +271,7 @@ function AdminDashboard({ token, onLogout }) {
       />
 
       <div
-        className="content-padding"
+        className="content-padding stats-grid-mobile" // ✅ Added stats-grid-mobile class
         style={{
           display: "flex",
           gap: "20px",
@@ -327,7 +327,10 @@ function AdminDashboard({ token, onLogout }) {
         onConfirm={confirmDelete}
       />
 
-      <div className="content-padding" style={{ marginTop: "30px" }}>
+      <div
+        className="content-padding"
+        style={{ marginTop: "30px", paddingBottom: "20px" }}
+      >
         {activeTab === "users" && (
           <UsersTab
             usersList={users.data}
