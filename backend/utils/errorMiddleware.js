@@ -1,8 +1,13 @@
+const logger = require("./logger");
+
 const errorHandler = (err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
 
-  // Log the error for the developer
-  console.error(`[ERROR] ${req.method} ${req.url}:`, err.message);
+  // ✅ LOGGING: Use Winston instead of console.error
+  // This saves the error to 'logs/error.log' in production
+  logger.error(
+    `${statusCode} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`
+  );
 
   res.status(statusCode).json({
     message: err.message,

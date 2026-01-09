@@ -8,13 +8,19 @@ const programmeSchema = new mongoose.Schema({
     trim: true,
   },
   code: {
-    type: String, // e.g., "RC", "ELC"
+    type: String,
     required: false,
     uppercase: true,
   },
   description: {
     type: String,
     required: false,
+  },
+  // ✅ NEW: Location moved here
+  location: {
+    type: String,
+    required: true,
+    default: "ASCON Complex, Badagry",
   },
   duration: {
     type: String,
@@ -24,7 +30,6 @@ const programmeSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-  // ✅ ADDED: Image URL field
   image: {
     type: String,
     required: false,

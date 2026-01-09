@@ -1,9 +1,10 @@
 const admin = require("firebase-admin");
 const dotenv = require("dotenv");
+const logger = require("../utils/logger"); // ✅ Import Logger
+
 dotenv.config();
 
 try {
-  // Decode the Base64 string back to JSON
   const serviceAccount = JSON.parse(
     Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, "base64").toString("utf8")
   );
@@ -11,9 +12,9 @@ try {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
-  console.log("🔥 Firebase Admin Initialized Successfully");
+  logger.info("🔥 Firebase Admin Initialized Successfully"); // ✅ Logger
 } catch (error) {
-  console.error("❌ Firebase Admin Init Error:", error.message);
+  logger.error(`❌ Firebase Admin Init Error: ${error.message}`); // ✅ Logger
 }
 
 module.exports = admin;

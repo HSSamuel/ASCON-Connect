@@ -1,9 +1,23 @@
 const router = require("express").Router();
 const Event = require("../models/Event");
-// ✅ FIX: Correct path and filename
+const Joi = require("joi");
 const { sendBroadcastNotification } = require("../utils/notificationHandler");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
+
+// ==========================================
+// 🛡️ VALIDATION SCHEMA
+// ==========================================
+const eventSchema = Joi.object({
+  title: Joi.string().min(5).required(),
+  description: Joi.string().min(10).required(),
+  date: Joi.date().optional(),
+  // ❌ Removed location
+  type: Joi.string()
+    .valid("News", "Reunion", "Webinar", "General")
+    .default("News"),
+  image: Joi.string().optional().allow(""),
+});
 
 // @route   GET /api/events
 // @desc    Get all events (Sorted by Newest First)
@@ -32,25 +46,29 @@ router.get("/", async (req, res) => {
 });
 
 // @route   POST /api/events
-// @desc    Create a new Event (This endpoint is likely redundant if you use admin.js, but we fix it anyway)
+// @desc    Create a new Event (Secured with Joi)
 router.post("/", verifyToken, verifyAdmin, async (req, res) => {
-  const event = new Event({
-    title: req.body.title,
-    description: req.body.description,
-    date: req.body.date,
-    location: req.body.location,
-    type: req.body.type,
-    image: req.body.image,
-  });
+  // ✅ Validate Input
+  const { error } = eventSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
+    const event = new Event({
+      title: req.body.title,
+      description: req.body.description,
+      date: req.body.date,
+      // location: req.body.location, ❌ REMOVED
+      type: req.body.type,
+      image: req.body.image,
+    });
+
     const savedEvent = await event.save();
 
-    // ✅ OPTIONAL: Send Notification here too (just in case this route is used instead of admin.js)
+    // ✅ Send Notification
     try {
       await sendBroadcastNotification(
         `New ${savedEvent.type}: ${savedEvent.title}`,
-        `Join us at ${savedEvent.location}!`,
+        `${savedEvent.description.substring(0, 50)}...`, // Updated notification logic
         { route: "event_detail", id: savedEvent._id.toString() }
       );
     } catch (notifyErr) {
@@ -77,7 +95,8 @@ router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
-// ✅ ADD THIS TO backend/routes/events.js if missing
+// @route   GET /api/events/:id
+// @desc    Get single event
 router.get("/:id", async (req, res) => {
   try {
     const event = await Event.findById(req.params.id);

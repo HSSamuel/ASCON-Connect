@@ -2,29 +2,54 @@ const router = require("express").Router();
 const EventRegistration = require("../models/EventRegistration");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
+const Joi = require("joi");
+
+// ==========================================
+// 🛡️ VALIDATION SCHEMA (UPDATED)
+// ==========================================
+const eventRegSchema = Joi.object({
+  eventId: Joi.string().required(),
+  // ✅ ADDED: Allow these fields so Joi doesn't reject them
+  eventTitle: Joi.string().optional().allow(""),
+  eventType: Joi.string().optional().allow(""),
+
+  fullName: Joi.string().min(3).required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().min(10).required(),
+
+  // ✅ ADDED: Profile fields sent by App
+  sex: Joi.string().optional().allow(""),
+  organization: Joi.string().optional().allow(""),
+  jobTitle: Joi.string().optional().allow(""),
+  specialRequirements: Joi.string().optional().allow(""),
+
+  userId: Joi.string().optional().allow(null, ""),
+});
 
 // ==========================================
 // 1. POST: Register for an event
 // ==========================================
 // @route   POST /api/event-registration
 router.post("/", async (req, res) => {
+  // ✅ Joi Validation
+  const { error } = eventRegSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.details[0].message,
+    });
+  }
+
   try {
-    const { eventId, fullName, email, phone, userId } = req.body;
+    const { eventId, email, userId } = req.body;
+    const emailLower = email.toLowerCase().trim();
 
-    // ✅ IMPROVED VALIDATION: Check for empty strings/whitespace
-    if (!eventId || eventId.trim() === "" || !fullName || !email || !phone) {
-      return res.status(400).json({
-        success: false,
-        message: "Registration failed: Missing Event ID or required contact details.",
-      });
-    }
-
-    // ✅ EXISTING DUPLICATE CHECK
+    // ✅ CHECK DUPLICATE
     const alreadyRegistered = await EventRegistration.findOne({
       eventId,
-      email: email.toLowerCase().trim(),
+      email: emailLower,
     });
-    
+
     if (alreadyRegistered) {
       return res.status(400).json({
         success: false,
@@ -32,13 +57,14 @@ router.post("/", async (req, res) => {
       });
     }
 
+    // Prepare data
     const finalData = {
-      ...req.body,
+      ...req.body, // Spread all fields (sex, org, etc.)
+      email: emailLower,
       userId: userId && userId.length > 5 ? userId : null,
-      email: email.toLowerCase().trim(),
     };
 
-    // 5. Save to Database
+    // Save to Database
     const newReg = new EventRegistration(finalData);
     await newReg.save();
 
@@ -65,7 +91,6 @@ router.get("/", verifyToken, verifyAdmin, async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    // ✅ POPULATE userId to see official Alumni Details automatically
     const regs = await EventRegistration.find()
       .populate("userId", "fullName alumniId profilePicture")
       .sort({ createdAt: -1 })
@@ -74,7 +99,7 @@ router.get("/", verifyToken, verifyAdmin, async (req, res) => {
 
     const total = await EventRegistration.countDocuments();
 
-    // ✅ FIX: Ensure virtuals like 'id' are included in the response
+    // Ensure virtuals like 'id' are included
     const formattedRegs = regs.map((reg) => reg.toJSON());
 
     res.json({

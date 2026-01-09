@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import '../widgets/loading_overlay.dart'; // ✅ IMPORT OVERLAY
+import '../widgets/loading_dialog.dart'; // ✅ CHANGED: Import the new Dialog widget
 
 class RegisterScreen extends StatefulWidget {
   final String? prefilledName;
@@ -31,8 +31,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   final _customProgrammeController = TextEditingController();
 
-  // Loading State
-  bool _isLoading = false;
   bool _obscurePassword = true;
 
   final List<String> _programmes = [
@@ -59,7 +57,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController = TextEditingController(text: widget.prefilledEmail ?? '');
   }
 
-  // ✅ Success Dialog
+  // ✅ Success Dialog (Kept exactly as is)
   void _showSuccessDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = Theme.of(context).cardColor;
@@ -140,7 +138,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    // ✅ 1. Show the Loading Dialog (Blocks interaction)
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const LoadingDialog(message: "Creating Account..."),
+    );
 
     String finalProgrammeTitle;
     if (_selectedProgramme == "Other") {
@@ -149,25 +152,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
       finalProgrammeTitle = _selectedProgramme!;
     }
 
-    final AuthService authService = AuthService();
-    final result = await authService.register(
-      fullName: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      password: _passwordController.text,
-      phoneNumber: _phoneController.text.trim(),
-      programmeTitle: finalProgrammeTitle,
-      yearOfAttendance: _yearController.text.trim(),
-      googleToken: widget.googleToken,
-    );
+    try {
+      final AuthService authService = AuthService();
+      final result = await authService.register(
+        fullName: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        phoneNumber: _phoneController.text.trim(),
+        programmeTitle: finalProgrammeTitle,
+        yearOfAttendance: _yearController.text.trim(),
+        googleToken: widget.googleToken,
+      );
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
+      if (!mounted) return;
 
-    if (result['success']) {
-      _showSuccessDialog();
-    } else {
+      // ✅ 2. Close Loading Dialog
+      Navigator.of(context).pop(); 
+
+      if (result['success']) {
+        _showSuccessDialog();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? "Registration Failed"), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      // Handle crash/network error properly
+      if (mounted) Navigator.of(context).pop(); // Close dialog if open
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result['message'] ?? "Registration Failed"), backgroundColor: Colors.red),
+        SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red),
       );
     }
   }
@@ -179,148 +192,144 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ WRAP WITH LOADING OVERLAY
-    return LoadingOverlay(
-      isLoading: _isLoading,
-      message: 'Creating Account...',
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          elevation: 0,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: primaryColor),
-            onPressed: () => Navigator.pop(context),
-          ),
+    // ✅ REMOVED LoadingOverlay wrapper. Standard Scaffold used.
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: primaryColor),
+          onPressed: () => Navigator.pop(context),
         ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  
-                  // LOGO
-                  Center(
-                    child: Container(
-                      height: 100, width: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: isDark ? Colors.black38 : Colors.black12,
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          )
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/logo.png', 
-                          fit: BoxFit.cover,
-                          errorBuilder: (c,o,s) => Icon(Icons.school, size: 80, color: primaryColor)
-                        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                
+                // LOGO
+                Center(
+                  child: Container(
+                    height: 100, width: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDark ? Colors.black38 : Colors.black12,
+                          blurRadius: 15,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/logo.png', 
+                        fit: BoxFit.cover,
+                        errorBuilder: (c,o,s) => Icon(Icons.school, size: 80, color: primaryColor)
                       ),
                     ),
                   ),
-                  
-                  const SizedBox(height: 20),
+                ),
+                
+                const SizedBox(height: 20),
 
-                  Text(
-                    "Create Account",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryColor),
+                Text(
+                  "Create Account",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryColor),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Join the ASCON Alumni Network",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: subTextColor),
+                ),
+                const SizedBox(height: 30),
+
+                _buildTextField("Full Name", _nameController, Icons.person_outline),
+                const SizedBox(height: 16),
+                _buildTextField("Email Address", _emailController, Icons.email_outlined),
+                const SizedBox(height: 16),
+                _buildTextField("Phone Number", _phoneController, Icons.phone_outlined, isNumber: true),
+                const SizedBox(height: 16),
+                
+                // DROPDOWN
+                DropdownButtonFormField<String>(
+                  value: _selectedProgramme,
+                  dropdownColor: Theme.of(context).cardColor, 
+                  decoration: InputDecoration(
+                    labelText: "Programme Attended",
+                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                    prefixIcon: Icon(Icons.school_outlined, color: primaryColor, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Join the ASCON Alumni Network",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: subTextColor),
-                  ),
-                  const SizedBox(height: 30),
-
-                  _buildTextField("Full Name", _nameController, Icons.person_outline),
-                  const SizedBox(height: 16),
-                  _buildTextField("Email Address", _emailController, Icons.email_outlined),
-                  const SizedBox(height: 16),
-                  _buildTextField("Phone Number", _phoneController, Icons.phone_outlined, isNumber: true),
-                  const SizedBox(height: 16),
-                  
-                  // DROPDOWN
-                  DropdownButtonFormField<String>(
-                    value: _selectedProgramme,
-                    dropdownColor: Theme.of(context).cardColor, 
-                    decoration: InputDecoration(
-                      labelText: "Programme Attended",
-                      labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-                      prefixIcon: Icon(Icons.school_outlined, color: primaryColor, size: 20),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    items: _programmes.map((prog) {
-                      return DropdownMenuItem(
-                        value: prog,
-                        child: Text(
-                          prog,
-                          style: TextStyle(fontSize: 14, color: textColor),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedProgramme = val),
-                    validator: (val) => val == null ? 'Please select a programme' : null,
-                    isExpanded: true,
-                  ),
-
-                  if (_selectedProgramme == "Other") ...[
-                    const SizedBox(height: 16),
-                    _buildTextField("Type Programme Name", _customProgrammeController, Icons.edit_outlined),
-                  ],
-
-                  const SizedBox(height: 16),
-                  
-                  _buildTextField("Year of Attendance (e.g. 2015)", _yearController, Icons.calendar_today_outlined, isNumber: true),
-                  const SizedBox(height: 16),
-                  
-                  _buildTextField("Password", _passwordController, Icons.lock_outline, isPassword: true),
-                  const SizedBox(height: 16),
-                  _buildTextField("Confirm Password", _confirmPasswordController, Icons.lock_outline, isPassword: true),
-
-                  const SizedBox(height: 30),
-
-                  SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleRegister,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  items: _programmes.map((prog) {
+                    return DropdownMenuItem(
+                      value: prog,
+                      child: Text(
+                        prog,
+                        style: TextStyle(fontSize: 14, color: textColor),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      child: const Text("REGISTER", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text("Already a member? ", style: TextStyle(color: subTextColor)),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.pushAndRemoveUntil(
-                            context, 
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                            (route) => false
-                          );
-                        },
-                        child: Text("Login", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
+                    );
+                  }).toList(),
+                  onChanged: (val) => setState(() => _selectedProgramme = val),
+                  validator: (val) => val == null ? 'Please select a programme' : null,
+                  isExpanded: true,
+                ),
+
+                if (_selectedProgramme == "Other") ...[
+                  const SizedBox(height: 16),
+                  _buildTextField("Type Programme Name", _customProgrammeController, Icons.edit_outlined),
                 ],
-              ),
+
+                const SizedBox(height: 16),
+                
+                _buildTextField("Year of Attendance (e.g. 2015)", _yearController, Icons.calendar_today_outlined, isNumber: true),
+                const SizedBox(height: 16),
+                
+                _buildTextField("Password", _passwordController, Icons.lock_outline, isPassword: true),
+                const SizedBox(height: 16),
+                _buildTextField("Confirm Password", _confirmPasswordController, Icons.lock_outline, isPassword: true),
+
+                const SizedBox(height: 30),
+
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _handleRegister, // ✅ Logic moved inside function
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text("REGISTER", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text("Already a member? ", style: TextStyle(color: subTextColor)),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushAndRemoveUntil(
+                          context, 
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false
+                        );
+                      },
+                      child: Text("Login", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+              ],
             ),
           ),
         ),

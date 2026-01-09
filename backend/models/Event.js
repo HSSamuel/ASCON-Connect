@@ -14,17 +14,12 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  location: {
-    type: String,
-    required: true,
-    default: "ASCON Complex",
-  },
+  // ❌ REMOVED: Location field
   type: {
     type: String,
     enum: ["News", "Event", "Webinar", "Reunion", "Seminar"],
     default: "News",
   },
-  // ✅ NEW FIELD: Stores the URL of the uploaded image
   image: {
     type: String,
     required: false,
@@ -36,7 +31,6 @@ const eventSchema = new mongoose.Schema({
   },
 });
 
-// ✅ ADDED FIX: Automatically alias _id to id when sending data to the app
 eventSchema.set("toJSON", {
   virtuals: true,
   transform: (doc, ret) => {

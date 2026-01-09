@@ -7,33 +7,21 @@ function EventsTab({
   eventForm,
   setEventForm,
   handleEventSubmit,
-  cancelEditEvent,
   startEditEvent,
+  cancelEditEvent,
   deleteEventClick,
 }) {
   return (
     <div>
-      {canEdit ? (
-        <div
-          className="empty-state"
-          style={{
-            textAlign: "left",
-            marginBottom: "30px",
-            backgroundColor: "white",
-            border: "1px solid #ddd",
-          }}
-        >
-          <h2
-            style={{ color: editingId ? "#d4af37" : "#1B5E3A", marginTop: 0 }}
-          >
-            {editingId ? "✏️ Edit Announcement" : "📢 Post Announcement"}
-          </h2>
-
+      {/* FORM SECTION */}
+      {canEdit && (
+        <div className="form-card fade-in">
+          <h3>{editingId ? "Edit Event" : "Post New Event/News"}</h3>
           <form onSubmit={handleEventSubmit}>
-            <div style={{ display: "flex", gap: "10px" }}>
+            <div className="form-grid">
               <input
-                style={{ flex: 2, padding: "10px", marginBottom: "10px" }}
-                placeholder="Event Title"
+                type="text"
+                placeholder="Title"
                 value={eventForm.title}
                 onChange={(e) =>
                   setEventForm({ ...eventForm, title: e.target.value })
@@ -41,144 +29,94 @@ function EventsTab({
                 required
               />
               <select
-                style={{ flex: 1, padding: "10px", marginBottom: "10px" }}
                 value={eventForm.type}
                 onChange={(e) =>
                   setEventForm({ ...eventForm, type: e.target.value })
                 }
               >
-                <option>News</option>
-                <option>Reunion</option>
-                <option>Seminar</option>
-                <option>Webinar</option>
+                <option value="News">News</option>
+                <option value="Event">Event</option>
+                <option value="Reunion">Reunion</option>
+                <option value="Webinar">Webinar</option>
               </select>
+
+              {/* ❌ REMOVED: Location Input used to be here */}
+
+              <input
+                type="text"
+                placeholder="Image URL (Optional)"
+                value={eventForm.image}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, image: e.target.value })
+                }
+              />
             </div>
-            <input
-              style={{
-                width: "100%",
-                padding: "10px",
-                marginBottom: "10px",
-                boxSizing: "border-box",
-              }}
-              placeholder="Image URL (e.g. https://imgur.com/...)"
-              value={eventForm.image}
-              onChange={(e) =>
-                setEventForm({ ...eventForm, image: e.target.value })
-              }
-            />
-            <input
-              style={{
-                width: "100%",
-                padding: "10px",
-                marginBottom: "10px",
-                boxSizing: "border-box",
-              }}
-              placeholder="Location"
-              value={eventForm.location}
-              onChange={(e) =>
-                setEventForm({ ...eventForm, location: e.target.value })
-              }
-              required
-            />
             <textarea
-              style={{
-                width: "100%",
-                padding: "10px",
-                marginBottom: "10px",
-                height: "80px",
-                boxSizing: "border-box",
-              }}
-              placeholder="Details..."
+              placeholder="Description..."
+              rows="3"
               value={eventForm.description}
               onChange={(e) =>
                 setEventForm({ ...eventForm, description: e.target.value })
               }
               required
-            />
-
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="submit"
-                className="approve-btn"
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
-                }}
-              >
-                {editingId ? "UPDATE EVENT" : "PUBLISH POST"}
+            ></textarea>
+            <div className="form-actions">
+              <button type="submit" className="approve-btn">
+                {editingId ? "Update" : "Publish"}
               </button>
               {editingId && (
                 <button
                   type="button"
                   onClick={cancelEditEvent}
                   className="delete-btn"
-                  style={{ flex: 0.3, backgroundColor: "#666" }}
                 >
-                  CANCEL
+                  Cancel
                 </button>
               )}
             </div>
           </form>
         </div>
-      ) : (
-        <div className="empty-state">🔒 View-Only Mode enabled.</div>
       )}
 
+      {/* TABLE SECTION */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Image</th>
               <th>Date</th>
+              <th>Type</th>
               <th>Title</th>
-              <th>Action</th>
+              {/* ❌ REMOVED: Location Header */}
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {eventsList.map((event) => (
-              <tr key={event._id}>
-                <td data-label="Image">
-                  <img
-                    src={event.image || "https://via.placeholder.com/50"}
-                    alt="banner"
-                    style={{
-                      width: "50px",
-                      height: "30px",
-                      objectFit: "cover",
-                      borderRadius: "4px",
-                    }}
-                  />
+            {eventsList.map((evt) => (
+              <tr key={evt._id}>
+                <td>{new Date(evt.date).toLocaleDateString()}</td>
+                <td>
+                  <span className={`tag ${evt.type.toLowerCase()}`}>
+                    {evt.type}
+                  </span>
                 </td>
-                <td
-                  data-label="Date"
-                  style={{ fontSize: "13px", color: "#555" }}
-                >
-                  {new Date(event.date).toLocaleDateString()}
-                </td>
-                <td data-label="Title">
-                  <div style={{ fontWeight: "bold" }}>{event.title}</div>
-                  <span className="tag">{event.type}</span>
-                </td>
-                <td data-label="Action">
-                  {canEdit ? (
+                <td>{evt.title}</td>
+                {/* ❌ REMOVED: Location Cell */}
+                <td>
+                  {canEdit && (
                     <div className="action-buttons-container">
                       <button
-                        onClick={() => startEditEvent(event)}
+                        onClick={() => startEditEvent(evt)}
                         className="approve-btn compact-btn"
-                        style={{ backgroundColor: "#3498db" }}
                       >
-                        EDIT
+                        Edit
                       </button>
                       <button
+                        onClick={() => deleteEventClick(evt._id)}
                         className="delete-btn compact-btn"
-                        onClick={() => deleteEventClick(event._id)}
                       >
-                        DELETE
+                        Delete
                       </button>
                     </div>
-                  ) : (
-                    <span style={{ color: "#ccc" }}>🔒</span>
                   )}
                 </td>
               </tr>

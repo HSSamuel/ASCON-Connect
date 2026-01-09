@@ -1,16 +1,38 @@
 const router = require("express").Router();
 const ProgrammeInterest = require("../models/ProgrammeInterest");
 const Programme = require("../models/Programme");
-
-// ✅ CRITICAL FIX: Import the verification middleware
+const Joi = require("joi"); // ✅ Added Joi
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
+
+// ==========================================
+// 🛡️ VALIDATION SCHEMA
+// ==========================================
+const interestSchema = Joi.object({
+  programmeId: Joi.string().required(),
+  fullName: Joi.string().min(3).required(),
+  email: Joi.string().email().required(),
+  phone: Joi.string().min(10).required(),
+  sex: Joi.string().required(),
+  addressStreet: Joi.string().required(),
+  addressLine2: Joi.string().optional().allow(""),
+  city: Joi.string().required(),
+  state: Joi.string().required(),
+  country: Joi.string().required(),
+  sponsoringOrganisation: Joi.string().required(),
+  department: Joi.string().optional().allow(""),
+  jobTitle: Joi.string().optional().allow(""),
+  userId: Joi.string().optional().allow(null, ""),
+});
 
 // @route   POST /api/programme-interest
 // @desc    Register interest in a programme
 router.post("/", async (req, res) => {
+  // ✅ 1. Validate Input (Clean & Secure)
+  const { error } = interestSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.details[0].message });
+
   try {
-    // 1. Destructure ALL fields
     const {
       programmeId,
       fullName,
@@ -28,47 +50,32 @@ router.post("/", async (req, res) => {
       userId,
     } = req.body;
 
-    // 2. Validate Required Fields
-    if (
-      !programmeId ||
-      !fullName ||
-      !email ||
-      !phone ||
-      !sex ||
-      !addressStreet ||
-      !city ||
-      !country ||
-      !sponsoringOrganisation
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Please fill all required fields." });
-    }
-
-    // 3. Get Programme Details
+    // 2. Get Programme Details
     const programme = await Programme.findById(programmeId);
     if (!programme)
       return res.status(404).json({ message: "Programme not found." });
 
-    // 4. Check for duplicate (Prevent double submission)
+    // 3. Check for duplicate (Prevent double submission today)
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
+
     const existing = await ProgrammeInterest.findOne({
       programmeId,
       email: email.toLowerCase(),
       createdAt: { $gte: startOfToday },
     });
+
     if (existing)
       return res
         .status(400)
         .json({ message: "You have already registered for this today." });
 
-    // 5. Save
+    // 4. Save
     const newInterest = new ProgrammeInterest({
       programmeId,
       programmeTitle: programme.title,
       fullName,
-      email,
+      email: email.toLowerCase(),
       phone,
       sex,
       addressStreet,
@@ -92,7 +99,8 @@ router.post("/", async (req, res) => {
 
 // @route   GET /api/programme-interest
 // @desc    Get all registrations (Newest first)
-router.get("/", async (req, res) => {
+// ✅ SECURITY FIX: Added verifyToken and verifyAdmin
+router.get("/", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
@@ -106,7 +114,7 @@ router.get("/", async (req, res) => {
     const total = await ProgrammeInterest.countDocuments();
 
     res.json({
-      registrations: interests, // Must match frontend expectation
+      registrations: interests,
       total,
       page,
       pages: Math.ceil(total / limit),

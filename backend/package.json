@@ -19,6 +19,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^7.0.12",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.19.0"
   }
 }

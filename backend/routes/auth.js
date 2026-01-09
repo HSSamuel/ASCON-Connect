@@ -1,6 +1,5 @@
 const router = require("express").Router();
 const User = require("../models/User");
-const Counter = require("../models/Counter");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -8,37 +7,11 @@ const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
 
+// ✅ IMPORT THE NEW GENERATOR
+const { generateAlumniId } = require("../utils/idGenerator");
+
 // Initialize Google Client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-// =========================================================
-// 🔧 HELPER FUNCTION: GENERATE AUTHENTIC ALUMNI ID (ATOMIC)
-// =========================================================
-async function generateAlumniId(year, attempt = 1) {
-  try {
-    const currentYear = new Date().getFullYear().toString();
-    const targetYear = year ? year.toString() : currentYear;
-    const counterId = `alumni_id_${targetYear}`;
-
-    const counter = await Counter.findByIdAndUpdate(
-      counterId,
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
-
-    const paddedNum = counter.seq.toString().padStart(4, "0");
-    return `ASC/${targetYear}/${paddedNum}`;
-  } catch (error) {
-    console.error(`Error generating Alumni ID (Attempt ${attempt}):`, error);
-
-    if (attempt < 3) {
-      return generateAlumniId(year, attempt + 1);
-    }
-
-    const randomSuffix = crypto.randomBytes(2).toString("hex").toUpperCase();
-    return `ASC/${new Date().getFullYear()}/FALLBACK-${randomSuffix}`;
-  }
-}
 
 // =========================================================
 // 📝 VALIDATION SCHEMAS
@@ -88,6 +61,7 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    // ✅ USES IMPORTED FUNCTION
     const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     const newUser = new User({

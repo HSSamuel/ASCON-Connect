@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart'; // ✅ Added for font consistency
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ Added for rich formatting
-// ✅ Import the registration screen
 import 'programme_registration_screen.dart';
 
 class ProgrammeDetailScreen extends StatefulWidget {
@@ -36,7 +34,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // ✅ Extract ALL Backend Data
     final title = widget.programme['title'] ?? 'Programme Details';
     final code = widget.programme['code'] ?? '';
     final description = widget.programme['description'] ?? 'No description available.';
@@ -44,7 +41,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     final fee = widget.programme['fee'];
     final programmeId = widget.programme['_id'];
     
-    // ✅ Handle Image (Check both keys just in case)
     final String? programmeImage = widget.programme['image'] ?? widget.programme['imageUrl'];
 
     return Scaffold(
@@ -58,12 +54,12 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             
-            // ✅ UPDATED HEADER: Shows Image if available, else shows Icon
+            // HEADER
             _buildHeader(programmeImage, title, code, primaryColor),
             
             const SizedBox(height: 25),
 
-            // Info Grid (Duration & Fee)
+            // INFO GRID
             if (duration != null || fee != null)
               Row(
                 children: [
@@ -86,17 +82,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             ),
             const SizedBox(height: 12),
             
-            // ✅ ENHANCED: Markdown renderer for professional alignment and formatting
-            MarkdownBody(
-              data: description,
-              selectable: true,
-              styleSheet: MarkdownStyleSheet(
-                p: GoogleFonts.inter(fontSize: 15, height: 1.6, color: isDark ? Colors.grey[400] : Colors.grey[700]),
-                strong: const TextStyle(fontWeight: FontWeight.bold),
-                listBullet: TextStyle(color: primaryColor),
-                blockSpacing: 10.0,
-              ),
-            ),
+            // ✅ CUSTOM ADVANCED FORMATTING + JUSTIFY
+            _buildFormattedDescription(description, isDark),
             
             const SizedBox(height: 40),
             
@@ -112,7 +99,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                         programmeId: programmeId,
                         programmeTitle: title,
                         userId: _localUserId,
-                        programmeImage: programmeImage, // Pass image to next screen too
+                        programmeImage: programmeImage,
                       ),
                     ),
                   );
@@ -132,9 +119,96 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     );
   }
 
- // ✅ Header with Larger, Bolder Title
+  /// ✅ CUSTOM FORMATTER: Parses Markdown-like text AND Justifies it
+  Widget _buildFormattedDescription(String text, bool isDark) {
+    final baseStyle = GoogleFonts.inter(
+      fontSize: 15, 
+      height: 1.6, 
+      color: isDark ? Colors.grey[400] : Colors.grey[700]
+    );
+
+    // Split text by newlines to handle paragraphs separately
+    List<String> paragraphs = text.split('\n');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: paragraphs.map((paragraph) {
+        if (paragraph.trim().isEmpty) return const SizedBox(height: 10);
+
+        // Handle Bullet Points
+        if (paragraph.trim().startsWith('- ') || paragraph.trim().startsWith('* ')) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6.0, left: 8.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("• ", style: baseStyle.copyWith(fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Text.rich(
+                    _parseRichText(paragraph.substring(2), baseStyle),
+                    textAlign: TextAlign.justify, // Justify bullets too
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Handle Normal Paragraphs
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Text.rich(
+            _parseRichText(paragraph, baseStyle),
+            textAlign: TextAlign.justify, // ✅ THE KEY REQUIREMENT
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Helper to parse **bold** and *italic* inside a string
+  TextSpan _parseRichText(String text, TextStyle baseStyle) {
+    List<TextSpan> spans = [];
+    
+    // Regex to capture **bold** or *italic*
+    // Group 1: **bold** content
+    // Group 2: *italic* content
+    final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*');
+    
+    int lastMatchEnd = 0;
+
+    for (final match in regex.allMatches(text)) {
+      // Text before match
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: text.substring(lastMatchEnd, match.start)));
+      }
+
+      if (match.group(1) != null) {
+        // **Bold**
+        spans.add(TextSpan(
+          text: match.group(1),
+          style: baseStyle.copyWith(fontWeight: FontWeight.bold, color: Colors.black87), // Stronger color for bold
+        ));
+      } else if (match.group(2) != null) {
+        // *Italic*
+        spans.add(TextSpan(
+          text: match.group(2),
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ));
+      }
+
+      lastMatchEnd = match.end;
+    }
+
+    // Remaining text
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastMatchEnd)));
+    }
+
+    return TextSpan(style: baseStyle, children: spans);
+  }
+
   Widget _buildHeader(String? image, String title, String code, Color primaryColor) {
-    // 1. IF IMAGE EXISTS
     if (image != null && image.isNotEmpty) {
       return Container(
         height: 220, 
@@ -149,7 +223,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Image
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Image.network(
@@ -158,7 +231,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                 errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
               ),
             ),
-            // Gradient Overlay
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
@@ -169,7 +241,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                 ),
               ),
             ),
-            // ✅ CENTERED TEXT CONTENT
             Align(
               alignment: Alignment.center,
               child: Padding(
@@ -178,7 +249,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // TITLE: Significantly Increased Size
                     Text(
                       title, 
                       textAlign: TextAlign.center,
@@ -190,7 +260,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                       )
                     ),
                     const SizedBox(height: 10),
-                    // Code Pill
                     if (code.isNotEmpty)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -211,10 +280,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           ],
         ),
       );
-    } 
-    
-    // 2. IF NO IMAGE (Fallback)
-    else {
+    } else {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),

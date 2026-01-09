@@ -25,10 +25,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  
-  // ✅ 1. HISTORY STACK: Initialize with Home (0)
   List<int> _tabHistory = [0];
-
   late List<Widget> _screens;
   String _loadedName = "Alumni"; 
 
@@ -59,13 +56,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // ✅ 2. NEW NAVIGATION HANDLER
   void _onTabTapped(int index) {
     if (_currentIndex == index) return;
-    
     setState(() {
       _currentIndex = index;
-      // Add to history so we can go back
       _tabHistory.add(index);
     });
   }
@@ -79,14 +73,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final primaryColor = Theme.of(context).primaryColor;
     final unselectedItemColor = Colors.grey;
 
-    // ✅ 3. WRAP WITH POP SCOPE to Intercept Back Button
     return PopScope(
-      // Only allow app to close if we are at the start of history
       canPop: _tabHistory.length <= 1,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-
-        // Go back to previous tab
         setState(() {
           _tabHistory.removeLast();
           _currentIndex = _tabHistory.last;
@@ -104,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: BottomNavigationBar(
             currentIndex: _currentIndex,
-            onTap: _onTabTapped, // ✅ Use custom handler
+            onTap: _onTabTapped, 
             selectedItemColor: primaryColor,
             unselectedItemColor: unselectedItemColor,
             backgroundColor: navBarColor, 
@@ -127,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (With Authenticated Notifications)
+// DASHBOARD VIEW
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -145,7 +135,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   late Future<List<dynamic>> _programmesFuture;
   
   late AnimationController _bellController;
-  Timer? _notificationTimer; // ✅ NEW: Timer for periodic checks
+  Timer? _notificationTimer; 
 
   String? _profileImage;
   String _programme = "Member"; 
@@ -156,7 +146,6 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   @override
   void initState() {
     super.initState();
-    
     _bellController = AnimationController(
       duration: const Duration(milliseconds: 1000), 
       vsync: this,
@@ -164,9 +153,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
 
     _loadLocalData();
     _refreshData();
-    _checkAuthenticatedNotifications(); // ✅ Check for real unread count
+    _checkAuthenticatedNotifications(); 
     
-    // ✅ NEW: Start Heartbeat Polling (Checks every 60 seconds)
     _notificationTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
       _checkAuthenticatedNotifications();
     });
@@ -175,7 +163,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   @override
   void dispose() {
     _bellController.dispose();
-    _notificationTimer?.cancel(); // ✅ NEW: Cancel timer to prevent memory leaks
+    _notificationTimer?.cancel(); 
     super.dispose();
   }
 
@@ -189,12 +177,9 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     }
   }
 
-  // ✅ New Authenticated Check
   Future<void> _checkAuthenticatedNotifications() async {
     try {
-      // ✅ Use the new unread count method for lightweight polling
       final int count = await _dataService.fetchUnreadNotificationCount();
-      
       if (mounted) {
         setState(() {
           _unreadNotifications = count;
@@ -209,7 +194,6 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         });
       }
     } catch (e) {
-      // Fallback to the full fetch if unread endpoint is not yet available
       final notifications = await _dataService.fetchMyNotifications();
       if (mounted) {
         setState(() {
@@ -232,7 +216,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
       _eventsFuture = _dataService.fetchEvents();
       _programmesFuture = _authService.getProgrammes();
       _loadUserProfile(); 
-      _checkAuthenticatedNotifications(); // ✅ Sync unread count on refresh
+      _checkAuthenticatedNotifications(); 
     });
   }
 
@@ -517,8 +501,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                                     maxCrossAxisExtent: 180,
                                     crossAxisSpacing: 12,
                                     mainAxisSpacing: 12,
-                                    // Adjusted for dynamic content to avoid overflow
-                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.72 : 0.75, 
+                                    // Child Aspect Ratio adjusted for taller cards
+                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.65 : 0.70, 
                                   ),
                                   itemCount: programmes.length,
                                   itemBuilder: (context, index) {
@@ -567,8 +551,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                                 maxCrossAxisExtent: 180,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                // ✅ Absolute fix: providing taller height by reducing ratio
-                                childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.70 : 0.75, 
+                                // Child Aspect Ratio adjusted for taller cards
+                                childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.65 : 0.70, 
                               ),
                               itemCount: events.length,
                               itemBuilder: (context, index) {
@@ -622,12 +606,12 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
             );
           },
           child: Column(
-            mainAxisSize: MainAxisSize.min, // Fix: Use minimum size
+            mainAxisSize: MainAxisSize.min, 
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
-                  height: 90, // Fix: Fixed image height
+                  height: 90, 
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
                   child: programmeImage != null && programmeImage.isNotEmpty
@@ -639,26 +623,27 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                       : Icon(Icons.school, color: Colors.grey[400], size: 40),
                 ),
               ),
-              Expanded( // Fix: Use expanded to fill remaining space
+              Expanded( 
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                    // ✅ CHANGED: Center keeps content grouped together
+                    mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
-                      Flexible(
-                        child: Text(
-                          prog['title'] ?? "Programme",
-                          textAlign: TextAlign.center,
-                          maxLines: 2, 
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800, 
-                            fontSize: 13.0,               
-                            color: titleColor,            
-                            height: 1.1,
-                          ),
+                      Text(
+                        prog['title'] ?? "Programme",
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.visible, 
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800, 
+                          fontSize: 12.0,            
+                          color: titleColor,            
+                          height: 1.1,
                         ),
                       ),
+                      
+                      const SizedBox(height: 8), // ✅ Fixed gap (not spaced out)
+
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -765,12 +750,12 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
             );
           },
           child: Column(
-            mainAxisSize: MainAxisSize.min, // Fix: Use minimum size
+            mainAxisSize: MainAxisSize.min, 
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
-                  height: 90, // Fix: Reduced image height to make room for text
+                  height: 90, 
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
                   child: Stack(
@@ -806,26 +791,27 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                   ),
                 ),
               ),
-              Expanded( // Fix: Use expanded area to allow text to fill space
+              Expanded( 
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Fix: Balanced distribution
+                    // ✅ CHANGED: Center keeps content grouped together
+                    mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
-                      Flexible( // Fix: Allows title to take variable space
-                        child: Text(
-                          data['title'] ?? "Untitled Event",
-                          textAlign: TextAlign.center,
-                          maxLines: 2, 
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800, 
-                            fontSize: 13.0,               
-                            color: titleColor,            
-                            height: 1.1,
-                          ),
+                      Text(
+                        data['title'] ?? "Untitled Event",
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.visible,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800, 
+                          fontSize: 12.0,             
+                          color: titleColor,            
+                          height: 1.1,
                         ),
                       ),
+                      
+                      const SizedBox(height: 8), // ✅ Fixed gap
+
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(

@@ -15,12 +15,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   final DataService _dataService = DataService();
 
   List<dynamic> _allAlumni = [];
+  List<dynamic> _searchResults = []; // ✅ NEW: Holds filtered results
   Map<String, List<dynamic>> _groupedAlumni = {};
   
   bool _isLoading = false;
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
-  Timer? _debounce;
+  // Timer? _debounce; // ❌ Removed: Not needed for local search
 
   @override
   void initState() {
@@ -30,17 +31,22 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
 
   @override
   void dispose() {
-    _debounce?.cancel();
+    // _debounce?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
+  // ✅ UPDATED: Fetch ALL data once (ignore query param for fetching)
   Future<void> _loadDirectory({String query = ""}) async {
     setState(() => _isLoading = true);
-    final list = await _dataService.fetchDirectory(query: query);
+    
+    // We fetch EVERYTHING so we can filter locally
+    final list = await _dataService.fetchDirectory(); 
 
     if (mounted) {
       setState(() {
         _allAlumni = list;
+        _searchResults = list; // Initialize results with full list
         _groupedAlumni = _groupUsersByYear(list);
         _isLoading = false;
       });
@@ -64,11 +70,32 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     return sortedGroups;
   }
 
+  // ✅ UPDATED: Robust Client-Side Search Logic
   void _onSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    setState(() => _isSearching = query.isNotEmpty);
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      _loadDirectory(query: query);
+    setState(() {
+      _isSearching = query.isNotEmpty;
+      
+      if (query.isEmpty) {
+        _searchResults = _allAlumni;
+      } else {
+        final lowerQuery = query.toLowerCase();
+        
+        _searchResults = _allAlumni.where((user) {
+          // Safely get fields and convert to lowercase for comparison
+          final name = (user['fullName'] ?? '').toString().toLowerCase();
+          final org = (user['organization'] ?? '').toString().toLowerCase();
+          final year = (user['yearOfAttendance'] ?? '').toString().toLowerCase();
+          final job = (user['jobTitle'] ?? '').toString().toLowerCase();
+          final prog = (user['programmeTitle'] ?? '').toString().toLowerCase();
+          
+          // Check if any field contains the query
+          return name.contains(lowerQuery) || 
+                 org.contains(lowerQuery) || 
+                 year.contains(lowerQuery) ||
+                 job.contains(lowerQuery) ||
+                 prog.contains(lowerQuery);
+        }).toList();
+      }
     });
   }
 
@@ -129,7 +156,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           // --- CONTENT AREA ---
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _loadDirectory(query: _searchController.text),
+              onRefresh: () => _loadDirectory(), // Load all data on refresh
               color: primaryColor,
               child: _isLoading
                   ? Center(child: CircularProgressIndicator(color: primaryColor))
@@ -203,11 +230,25 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   }
 
   Widget _buildSearchResults() {
+    // ✅ UPDATED: Now uses _searchResults instead of _allAlumni
+    if (_searchResults.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 50, color: Colors.grey.withOpacity(0.5)),
+            const SizedBox(height: 10),
+            const Text("No matching alumni found", style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: _allAlumni.length,
+      itemCount: _searchResults.length,
       itemBuilder: (context, index) {
-        return _buildAlumniCard(_allAlumni[index]);
+        return _buildAlumniCard(_searchResults[index]);
       },
     );
   }
@@ -217,7 +258,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off, size: 50, color: Colors.grey),
+          Icon(Icons.people_outline, size: 50, color: Colors.grey),
           const SizedBox(height: 12),
           const Text(
             "No alumni found.",

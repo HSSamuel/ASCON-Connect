@@ -3,9 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart'; 
 import 'package:flutter/foundation.dart'; 
-import 'package:flutter_markdown/flutter_markdown.dart'; 
-import 'package:url_launcher/url_launcher.dart'; // ✅ Added for link functionality
-import 'package:markdown/markdown.dart' as md; // ✅ Added to recognize raw URLs
+// import 'package:flutter_markdown/flutter_markdown.dart'; // ❌ Removed Markdown
+import 'package:url_launcher/url_launcher.dart'; 
+import 'package:flutter/gestures.dart'; // ✅ Added for Clickable Links
 import 'event_registration_screen.dart'; 
 import '../services/data_service.dart'; 
 
@@ -28,7 +28,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _event = widget.eventData;
 
-    // ✅ CHECK: If data is incomplete, fetch full details using any available ID
     final String? idToFetch = _event['id'] ?? _event['_id'];
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
@@ -58,8 +57,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dividerColor = Theme.of(context).dividerColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // --- DATA EXTRACTION ---
     final String image = _event['image'] ?? _event['imageUrl'] ?? 'https://via.placeholder.com/600';
@@ -72,7 +71,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final String eventType = _event['type'] ?? 'News';
     final bool isRegistrable = eventType != 'News';
 
-    // ✅ ROBUST FIX: Check all possible ID keys from both state and original widget data
     final String eventId = (_event['_id'] ?? 
                             _event['id'] ?? 
                             widget.eventData['_id'] ?? 
@@ -92,7 +90,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         if (_event['date'] != null && _event['date'].toString().length > 5) {
            formattedDate = _event['date'];
         }
-        debugPrint("📅 Date parsing warning: $e");
       }
     }
 
@@ -196,29 +193,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
-                  // ✅ UPDATED: Added link handler and URL recognition logic
-                  MarkdownBody(
-                    data: description,
-                    selectable: true,
-                    extensionSet: md.ExtensionSet.gitHubFlavored, // Recognizes raw URLs automatically
-                    onTapLink: (text, url, title) async {
-                      if (url != null) {
-                        final Uri uri = Uri.parse(url);
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        } else {
-                          debugPrint("Could not launch $url");
-                        }
-                      }
-                    },
-                    styleSheet: MarkdownStyleSheet(
-                      p: GoogleFonts.inter(fontSize: 15, height: 1.6, color: subTextColor),
-                      a: TextStyle(color: primaryColor, decoration: TextDecoration.underline), // Styles links green
-                      strong: const TextStyle(fontWeight: FontWeight.bold),
-                      listBullet: TextStyle(color: primaryColor),
-                      blockSpacing: 12.0,
-                    ),
-                  ),
+                  // ✅ CUSTOM FORMATTER REPLACES MARKDOWN
+                  _buildFormattedDescription(description, isDark, primaryColor),
+                  
                   const SizedBox(height: 100),
                 ],
               ),
@@ -264,6 +241,105 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           )
         : null,
     );
+  }
+
+  /// ✅ CUSTOM FORMATTER: Parses Text, Links, and Justifies Paragraphs
+  Widget _buildFormattedDescription(String text, bool isDark, Color linkColor) {
+    final baseStyle = GoogleFonts.inter(
+      fontSize: 15, 
+      height: 1.6, 
+      color: isDark ? Colors.grey[300] : Colors.grey[700]
+    );
+
+    // Split text by newlines to handle paragraphs separately
+    List<String> paragraphs = text.split('\n');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: paragraphs.map((paragraph) {
+        if (paragraph.trim().isEmpty) return const SizedBox(height: 10);
+
+        // Handle Bullet Points
+        if (paragraph.trim().startsWith('- ') || paragraph.trim().startsWith('* ')) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6.0, left: 8.0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("• ", style: baseStyle.copyWith(fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Text.rich(
+                    _parseRichText(paragraph.substring(2), baseStyle, linkColor),
+                    textAlign: TextAlign.justify,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Handle Normal Paragraphs
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12.0),
+          child: Text.rich(
+            _parseRichText(paragraph, baseStyle, linkColor),
+            textAlign: TextAlign.justify, // ✅ JUSTIFIED
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  /// Helper to parse **bold**, *italic*, and URL Links
+  TextSpan _parseRichText(String text, TextStyle baseStyle, Color linkColor) {
+    List<TextSpan> spans = [];
+    
+    // Regex for Bold, Italic, and URLs
+    final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*|((https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?)');
+    
+    int lastMatchEnd = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: text.substring(lastMatchEnd, match.start)));
+      }
+
+      if (match.group(1) != null) {
+        // **Bold**
+        spans.add(TextSpan(
+          text: match.group(1),
+          style: baseStyle.copyWith(fontWeight: FontWeight.bold, color: Colors.black87),
+        ));
+      } else if (match.group(2) != null) {
+        // *Italic*
+        spans.add(TextSpan(
+          text: match.group(2),
+          style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+        ));
+      } else if (match.group(3) != null) {
+        // 🔗 URL Link
+        final url = match.group(3)!;
+        spans.add(TextSpan(
+          text: url,
+          style: baseStyle.copyWith(color: linkColor, decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final Uri uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+        ));
+      }
+
+      lastMatchEnd = match.end;
+    }
+
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastMatchEnd)));
+    }
+
+    return TextSpan(style: baseStyle, children: spans);
   }
 
   Widget _buildInfoRow(BuildContext context, IconData icon, String label, String value) {

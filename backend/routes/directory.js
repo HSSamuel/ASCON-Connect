@@ -1,11 +1,13 @@
 const router = require("express").Router();
 const User = require("../models/User");
+const verifyToken = require("./verifyToken"); // ✅ Protected Route
 
 // =========================================================
-// 1. PUBLIC DIRECTORY SEARCH
+// 1. DIRECTORY SEARCH (PROTECTED)
 // =========================================================
 // @route   GET /api/directory
-router.get("/", async (req, res) => {
+// ✅ SECURITY: Added verifyToken. Contact info should not be public.
+router.get("/", verifyToken, async (req, res) => {
   try {
     const { search } = req.query;
 
@@ -16,7 +18,9 @@ router.get("/", async (req, res) => {
       if (isYear) {
         query.yearOfAttendance = Number(search);
       } else {
-        query.$text = { $search: search };
+        // ✅ Escape special regex chars to prevent crashes
+        const sanitizedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        query.$text = { $search: sanitizedSearch };
       }
     }
 
@@ -25,9 +29,6 @@ router.get("/", async (req, res) => {
       .sort({ yearOfAttendance: -1 })
       .limit(50);
 
-    // ✅ FIXED PRIVACY SHIELD:
-    // We ADD 'bio', 'jobTitle', 'organization', etc. here.
-    // If you don't add them, the mobile app receives "undefined".
     const safeList = alumniList.map((user) => ({
       _id: user._id,
       fullName: user.fullName,
@@ -35,8 +36,6 @@ router.get("/", async (req, res) => {
       programmeTitle: user.programmeTitle,
       yearOfAttendance: user.yearOfAttendance,
       alumniId: user.alumniId,
-
-      // 👇 THESE WERE MISSING - ADD THEM NOW 👇
       jobTitle: user.jobTitle,
       organization: user.organization,
       bio: user.bio,
@@ -52,12 +51,15 @@ router.get("/", async (req, res) => {
 });
 
 // =========================================================
-// 2. VERIFICATION ENDPOINT
+// 2. VERIFICATION ENDPOINT (PUBLIC)
 // =========================================================
+// This remains public so Security Guards/HR can scan QR codes
 router.get("/verify/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    // Handle cases where slashes might be URL-encoded or replaced
     const formattedId = id.replace(/-/g, "/");
+
     const user = await User.findOne({ alumniId: formattedId });
 
     if (!user) {
@@ -67,6 +69,7 @@ router.get("/verify/:id", async (req, res) => {
     let status = "Active";
     if (!user.isVerified) status = "Pending";
 
+    // ✅ Minimal Public Profile (No Phone/Email for privacy)
     const publicProfile = {
       fullName: user.fullName,
       profilePicture: user.profilePicture,
@@ -74,8 +77,6 @@ router.get("/verify/:id", async (req, res) => {
       yearOfAttendance: user.yearOfAttendance,
       alumniId: user.alumniId,
       status: status,
-
-      // ✅ Add these here too for QR code scanning
       jobTitle: user.jobTitle,
       organization: user.organization,
     };

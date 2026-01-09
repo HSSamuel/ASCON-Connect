@@ -1,56 +1,33 @@
 const mongoose = require("mongoose");
 
-const EventRegistrationSchema = new mongoose.Schema({
-  // ✅ Changed to ObjectId for proper database linking (joins)
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: false,
+const eventRegistrationSchema = new mongoose.Schema(
+  {
+    eventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
+    },
+    // ✅ ADDED: Snapshot of event details (in case Event is deleted later)
+    eventTitle: { type: String, default: "" },
+    eventType: { type: String, default: "" },
+
+    fullName: { type: String, required: true },
+    email: { type: String, required: true },
+    phone: { type: String, required: true },
+
+    // ✅ ADDED: Extended Profile Data
+    sex: { type: String, default: "" },
+    organization: { type: String, default: "" },
+    jobTitle: { type: String, default: "" },
+    specialRequirements: { type: String, default: "" },
+
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
   },
+  { timestamps: true }
+);
 
-  // Event Reference
-  eventId: { type: String, required: true, index: true }, // Index added for faster lookups
-  eventTitle: { type: String, required: true },
-  eventType: { type: String, default: "Event" }, // e.g., Webinar, Reunion, Seminar
-
-  // Personal Info
-  fullName: { type: String, required: true, trim: true },
-  email: {
-    type: String,
-    required: true,
-    lowercase: true,
-    trim: true,
-    index: true,
-  },
-  phone: { type: String, required: true },
-
-  // ✅ Made Enum more robust
-  sex: {
-    type: String,
-    enum: ["Male", "Female", "Other", "Prefer not to say"],
-    default: "Male",
-  },
-
-  // Professional Info
-  organization: { type: String, trim: true },
-  jobTitle: { type: String, trim: true },
-
-  // Event Specifics
-  specialRequirements: { type: String, trim: true },
-
-  createdAt: { type: Date, default: Date.now },
-});
-
-// ✅ Composite Index: Prevents the same user from registering for the same event twice
-EventRegistrationSchema.index({ eventId: 1, email: 1 }, { unique: true });
-
-// ✅ ADDED FIX: Automatically alias _id to id for the mobile app
-EventRegistrationSchema.set("toJSON", {
-  virtuals: true,
-  transform: (doc, ret) => {
-    ret.id = ret._id;
-    return ret;
-  },
-});
-
-module.exports = mongoose.model("EventRegistration", EventRegistrationSchema);
+module.exports = mongoose.model("EventRegistration", eventRegistrationSchema);

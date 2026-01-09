@@ -97,6 +97,7 @@ function Login({ onLogin }) {
 
           <div className="form-group">
             <label>Password</label>
+            {/* ✅ WRAPPER FOR RELATIVE POSITIONING */}
             <div className="password-wrapper">
               <input
                 type={showPassword ? "text" : "password"}
@@ -109,7 +110,9 @@ function Login({ onLogin }) {
                 type="button"
                 className="password-toggle-btn"
                 onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? "Hide password" : "Show password"}
               >
+                {/* Switch icons based on state */}
                 {showPassword ? "🙈" : "👁️"}
               </button>
             </div>

@@ -6,7 +6,7 @@ function RegistrationsTab({
   isLoading,
   onDelete,
   canEdit,
-  showToast, // ✅ Receive showToast prop
+  showToast,
 }) {
   // Toggle State: 'programmes' or 'events'
   const [view, setView] = useState("programmes");
@@ -26,14 +26,13 @@ function RegistrationsTab({
   const exportToCSV = () => {
     if (!activeList || activeList.length === 0) {
       if (showToast) {
-        showToast("No data to export.", "error"); // ✅ Trigger Error Toast
+        showToast("No data to export.", "error");
       } else {
         alert("No data to export.");
       }
       return;
     }
 
-    // ✅ Trigger Info Toast
     if (showToast) {
       showToast(`Downloading ${view} list...`, "info");
     }
@@ -45,13 +44,14 @@ function RegistrationsTab({
       "Email",
       "Phone",
       view === "programmes" ? "Programme Title" : "Event Title",
-      view === "events" ? "Event Type" : "N/A",
+      view === "events" ? "Event Type" : null,
       "Organization",
       "Job Title",
-      "City",
-      "Country",
-      view === "events" ? "Special Requirements" : "",
-    ].filter((h) => h !== ""); // Remove empty headers
+      // ✅ LOGIC: Only include City/Country for Programmes
+      view === "programmes" ? "City" : null,
+      view === "programmes" ? "Country" : null,
+      view === "events" ? "Special Requirements" : null,
+    ].filter((h) => h !== null); // Remove null headers
 
     // 2. Map Data to Rows
     const rows = activeList.map((reg) =>
@@ -64,11 +64,12 @@ function RegistrationsTab({
         view === "events" ? `"${reg.eventType || ""}"` : null,
         `"${reg.sponsoringOrganisation || reg.organization || ""}"`,
         `"${reg.jobTitle || ""}"`,
-        `"${reg.city || ""}"`,
-        `"${reg.country || ""}"`,
+        // ✅ LOGIC: Only include City/Country data for Programmes
+        view === "programmes" ? `"${reg.city || ""}"` : null,
+        view === "programmes" ? `"${reg.country || ""}"` : null,
         view === "events" ? `"${reg.specialRequirements || ""}"` : null,
       ].filter((cell) => cell !== null)
-    ); // Remove null cells
+    );
 
     // 3. Combine Headers and Rows
     const csvContent = [
@@ -157,7 +158,7 @@ function RegistrationsTab({
             </button>
           </div>
 
-          {/* ✅ EXPORT BUTTON */}
+          {/* EXPORT BUTTON */}
           <button
             onClick={exportToCSV}
             className="approve-btn"
@@ -167,7 +168,7 @@ function RegistrationsTab({
               alignItems: "center",
               gap: "8px",
               padding: "8px 16px",
-              height: "40px", // Match toggle height
+              height: "40px",
               border: "none",
               borderRadius: "6px",
               color: "white",
@@ -187,15 +188,17 @@ function RegistrationsTab({
               <th>Date</th>
               <th>Applicant</th>
               <th>Contact</th>
-              {/* Dynamic Column Header */}
               <th>
                 {view === "programmes" ? "Programme Title" : "Event / Type"}
               </th>
               <th>Organization</th>
-              <th>Location</th>
-              {/* Show "Special Req" only for Events */}
+
+              {/* ✅ LOGIC: Show "Location" Header ONLY for Programmes */}
+              {view === "programmes" && <th>Location</th>}
+
+              {/* Show "Special Req" ONLY for Events */}
               {view === "events" && <th>Special Req</th>}
-              {/* Action Column */}
+
               <th>Action</th>
             </tr>
           </thead>
@@ -203,7 +206,7 @@ function RegistrationsTab({
             {activeList.length === 0 ? (
               <tr>
                 <td
-                  colSpan={view === "events" ? 8 : 7}
+                  colSpan={7} // Both views now have exactly 7 columns
                   style={{
                     textAlign: "center",
                     padding: "40px",
@@ -265,7 +268,6 @@ function RegistrationsTab({
                     >
                       {reg.programmeTitle || reg.eventTitle}
                     </span>
-                    {/* Show Badge for Event Type */}
                     {reg.eventType && (
                       <div
                         style={{
@@ -291,13 +293,15 @@ function RegistrationsTab({
                     </div>
                   </td>
 
-                  {/* LOCATION */}
-                  <td style={{ fontSize: "13px" }}>
-                    {reg.city ? `${reg.city}, ` : ""}
-                    <span style={{ fontWeight: "500" }}>
-                      {reg.country || "N/A"}
-                    </span>
-                  </td>
+                  {/* ✅ LOGIC: Show Location Data Cell ONLY for Programmes */}
+                  {view === "programmes" && (
+                    <td style={{ fontSize: "13px" }}>
+                      {reg.city ? `${reg.city}, ` : ""}
+                      <span style={{ fontWeight: "500" }}>
+                        {reg.country || "N/A"}
+                      </span>
+                    </td>
+                  )}
 
                   {/* SPECIAL REQ (Events Only) */}
                   {view === "events" && (
@@ -329,7 +333,7 @@ function RegistrationsTab({
                     {canEdit ? (
                       <button
                         className="delete-btn compact-btn"
-                        onClick={() => onDelete(reg._id, view)} // Pass ID and current view type
+                        onClick={() => onDelete(reg._id, view)}
                         title="Delete Registration"
                         style={{ padding: "6px 12px" }}
                       >

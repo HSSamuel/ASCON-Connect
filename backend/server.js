@@ -10,12 +10,12 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
+const logger = require("./utils/logger"); // ✅ Import Logger
 
 // 1. Initialize the App
 const app = express();
 
 // ✅ FIX: TELL EXPRESS TO TRUST RENDER'S PROXY
-// This allows rate-limiter to see the real user IP instead of Render's IP
 app.set("trust proxy", 1);
 
 dotenv.config();
@@ -25,19 +25,23 @@ validateEnv();
 // 🛡️ MIDDLEWARE: SECURITY & PERFORMANCE
 // ==========================================
 
-// ✅ A. COMPRESSION (Makes responses 70% smaller)
+// ✅ A. COMPRESSION
 app.use(compression());
 
-// ✅ B. HELMET (Protects HTTP Headers)
+// ✅ B. HELMET
 app.use(helmet());
 
-// ✅ C. MORGAN (Logs requests to console)
-app.use(morgan("common"));
+// ✅ C. MORGAN (Stream logs to Winston)
+app.use(
+  morgan("combined", {
+    stream: { write: (message) => logger.info(message.trim()) },
+  })
+);
 
-// ✅ D. RATE LIMITER (Prevents Spam/Brute-Force)
+// ✅ D. RATE LIMITER
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -47,7 +51,7 @@ const limiter = rateLimit({
   },
 });
 
-app.use("/api", limiter); // Apply to all API routes
+app.use("/api", limiter);
 
 // ==========================================
 // 📖 API DOCUMENTATION (SWAGGER)
@@ -82,7 +86,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5000",
-  "https://asconadmin.netlify.app", // Your Admin Panel
+  "https://asconadmin.netlify.app",
 ];
 
 app.use(
@@ -133,30 +137,28 @@ app.use(errorHandler);
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
-console.log("⏳ Attempting to connect to MongoDB...");
+logger.info("⏳ Attempting to connect to MongoDB..."); // ✅ Logger
 
 mongoose
   .connect(process.env.DB_CONNECT)
   .then(() => {
-    console.log("✅ Connected to MongoDB Successfully!");
+    logger.info("✅ Connected to MongoDB Successfully!"); // ✅ Logger
 
-    // ✅ PRODUCTION HARDENING LOGIC
     if (process.env.NODE_ENV === "production") {
-      console.log("🛡️  Production Security Hardening Active");
+      logger.info("🛡️  Production Security Hardening Active");
     }
 
     app.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
+      logger.info(`🚀 Server is running on port ${PORT}`); // ✅ Logger
 
-      // ✅ DYNAMIC DOCS LINK LOGIC
       const docsUrl =
         process.env.NODE_ENV === "production"
           ? "https://ascon.onrender.com/api-docs"
           : `http://localhost:${PORT}/api-docs`;
 
-      console.log(`📖 API Docs available at ${docsUrl}`);
+      logger.info(`📖 API Docs available at ${docsUrl}`);
     });
   })
   .catch((err) => {
-    console.error("❌ Database Connection Failed:", err);
+    logger.error("❌ Database Connection Failed:", err); // ✅ Logger
   });

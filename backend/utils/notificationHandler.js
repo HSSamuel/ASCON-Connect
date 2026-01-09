@@ -1,103 +1,112 @@
 const admin = require("../config/firebase");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
+const logger = require("./logger"); // ✅ Import Logger
 
-/**
- * 🧹 CLEANUP FUNCTION
- * Removes invalid/expired tokens from a user's database record
- */
 const cleanupTokens = async (userId, tokensToRemove) => {
   if (tokensToRemove.length === 0) return;
   try {
     await User.findByIdAndUpdate(userId, {
       $pull: { fcmTokens: { $in: tokensToRemove } },
     });
-    console.log(
+    // ✅ Log info
+    logger.info(
       `🧹 Cleaned up ${tokensToRemove.length} invalid tokens for user ${userId}`
     );
   } catch (err) {
-    console.error("❌ Token Cleanup Error:", err);
+    // ✅ Log error
+    logger.error(`❌ Token Cleanup Error: ${err.message}`);
   }
 };
 
-/**
- * 📢 SEND BROADCAST (To Everyone)
- */
 const sendBroadcastNotification = async (title, body, data = {}) => {
   try {
+    const newNotification = new Notification({
+      title,
+      message: body,
+      isBroadcast: true,
+      data: data,
+    });
+    await newNotification.save();
+    logger.info("💾 Broadcast saved to database.");
+
     const usersWithTokens = await User.find({
       fcmTokens: { $exists: true, $not: { $size: 0 } },
     });
 
     if (usersWithTokens.length === 0) {
-      console.log("⚠️ No users found with FCM Tokens. Notification skipped.");
+      logger.warn("⚠️ No users found with FCM Tokens. Notification skipped.");
       return;
     }
 
-    console.log(
+    logger.info(
       `📣 Preparing broadcast for ${usersWithTokens.length} users...`
     );
 
-    // We process users individually or in small batches to handle token cleanup accurately
     for (const user of usersWithTokens) {
       const message = {
         notification: { title, body },
-        data: {
-          ...data,
-          click_action: "FLUTTER_NOTIFICATION_CLICK",
-        },
+        data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
         tokens: user.fcmTokens,
       };
 
-      const response = await admin.messaging().sendEachForMulticast(message);
+      try {
+        const response = await admin.messaging().sendEachForMulticast(message);
 
-      // Check for failed tokens (Unregistered or Invalid)
-      const failedTokens = [];
-      response.responses.forEach((res, idx) => {
-        if (!res.success) {
-          const errorCode = res.error?.code;
-          if (
-            errorCode === "messaging/registration-token-not-registered" ||
-            errorCode === "messaging/invalid-registration-token"
-          ) {
-            failedTokens.push(user.fcmTokens[idx]);
+        const failedTokens = [];
+        response.responses.forEach((res, idx) => {
+          if (!res.success) {
+            const errorCode = res.error?.code;
+            if (
+              errorCode === "messaging/registration-token-not-registered" ||
+              errorCode === "messaging/invalid-registration-token"
+            ) {
+              failedTokens.push(user.fcmTokens[idx]);
+            }
           }
-        }
-      });
+        });
 
-      if (failedTokens.length > 0) {
-        await cleanupTokens(user._id, failedTokens);
+        if (failedTokens.length > 0) {
+          await cleanupTokens(user._id, failedTokens);
+        }
+      } catch (sendError) {
+        logger.error(
+          `❌ Failed to send to user ${user._id}: ${sendError.message}`
+        );
       }
     }
 
-    console.log(`✅ Broadcast cycle complete.`);
+    logger.info(`✅ Broadcast cycle complete.`);
   } catch (error) {
-    console.error("❌ Broadcast Failed:", error);
+    logger.error(`❌ Broadcast Failed: ${error.message}`);
   }
 };
 
-/**
- * 👤 SEND PERSONAL NOTIFICATION (To Specific User)
- */
 const sendPersonalNotification = async (userId, title, body, data = {}) => {
   try {
+    const newNotification = new Notification({
+      recipientId: userId,
+      title,
+      message: body,
+      isBroadcast: false,
+      data: data,
+    });
+    await newNotification.save();
+
     const user = await User.findById(userId);
     if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
-      console.log(`⚠️ User ${userId} has no tokens.`);
+      logger.warn(`⚠️ User ${userId} has no tokens.`);
       return;
     }
 
     const message = {
       notification: { title, body },
-      data: {
-        ...data,
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
-      },
+      data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
       tokens: user.fcmTokens,
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
 
-    // Cleanup logic for personal notifications
     const failedTokens = [];
     response.responses.forEach((res, idx) => {
       if (!res.success) {
@@ -115,11 +124,11 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
       await cleanupTokens(user._id, failedTokens);
     }
 
-    console.log(
+    logger.info(
       `👤 Personal Notification sent to ${user.fullName}: ${response.successCount} success.`
     );
   } catch (error) {
-    console.error("❌ Personal Notification Error:", error);
+    logger.error(`❌ Personal Notification Error: ${error.message}`);
   }
 };
 
