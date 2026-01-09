@@ -23,6 +23,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
 
   Future<void> _getUserId() async {
     final prefs = await SharedPreferences.getInstance();
+    // Safety check: Ensure the widget is still on screen before calling setState
+    if (!mounted) return; 
     setState(() {
        _localUserId = prefs.getString('mongo_id');
     });
@@ -82,7 +84,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             ),
             const SizedBox(height: 12),
             
-            // ✅ CUSTOM ADVANCED FORMATTING + JUSTIFY
+            // CUSTOM ADVANCED FORMATTING + JUSTIFY
             _buildFormattedDescription(description, isDark),
             
             const SizedBox(height: 40),
@@ -119,7 +121,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     );
   }
 
-  /// ✅ CUSTOM FORMATTER: Parses Markdown-like text AND Justifies it
+  /// CUSTOM FORMATTER: Parses Markdown-like text AND Justifies it
   Widget _buildFormattedDescription(String text, bool isDark) {
     final baseStyle = GoogleFonts.inter(
       fontSize: 15, 
@@ -159,7 +161,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Text.rich(
             _parseRichText(paragraph, baseStyle),
-            textAlign: TextAlign.justify, // ✅ THE KEY REQUIREMENT
+            textAlign: TextAlign.justify, // THE KEY REQUIREMENT
           ),
         );
       }).toList(),

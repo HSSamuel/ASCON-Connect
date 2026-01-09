@@ -73,3 +73,9 @@
 {"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-09 12:16:29"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-09 12:16:29"}
 {"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-09 12:16:29"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-09 15:10:43"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-09 15:10:43"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-09 15:10:48"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-09 15:10:48"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-09 15:10:48"}
+{"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-09 15:10:48"}

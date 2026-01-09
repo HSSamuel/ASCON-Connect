@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // ✅ ADDED: Required for Channel Setup
 
 // ✅ Services & Config
 import 'services/notification_service.dart';
@@ -14,6 +15,10 @@ import 'screens/home_screen.dart';
 
 // Global Key for Notification Navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// ✅ DEFINE CHANNEL ID (Must match what you use in NotificationService)
+const String channelId = 'high_importance_channel';
+const String channelName = 'High Importance Notifications';
 
 void main() async {
   // ✅ MUST BE FIRST
@@ -47,8 +52,27 @@ void main() async {
   // ✅ Initialize Notifications (Robust Setup - strictly for mobile)
   if (!kIsWeb) {
     try {
+      // 1. SETUP CHANNEL EXPLICITLY (Fixes Vibration Issue)
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        channelId, 
+        channelName, 
+        description: 'This channel is used for important notifications.',
+        importance: Importance.max, // ✅ MAX Importance triggers Heads-up
+        playSound: true,
+        enableVibration: true,      // ✅ FORCE VIBRATION
+      );
+
+      final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+          FlutterLocalNotificationsPlugin();
+
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+
+      // 2. Init Service
       await NotificationService().init();
-      debugPrint("✅ Notifications Initialized Successfully");
+      debugPrint("✅ Notifications Initialized Successfully with Vibration");
     } catch (e) {
       debugPrint("⚠️ Notification Init Failed: $e");
     }

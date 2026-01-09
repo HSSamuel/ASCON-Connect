@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart'; 
-import 'package:flutter/foundation.dart'; 
-// import 'package:flutter_markdown/flutter_markdown.dart'; // ❌ Removed Markdown
 import 'package:url_launcher/url_launcher.dart'; 
-import 'package:flutter/gestures.dart'; // ✅ Added for Clickable Links
+import 'package:flutter/gestures.dart'; 
 import 'event_registration_screen.dart'; 
 import '../services/data_service.dart'; 
 
@@ -29,6 +27,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _event = widget.eventData;
 
     final String? idToFetch = _event['id'] ?? _event['_id'];
+    // If we are missing critical details like date or description, fetch full details
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
     }
@@ -193,7 +192,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
-                  // ✅ CUSTOM FORMATTER REPLACES MARKDOWN
+                  // CUSTOM FORMATTER REPLACES MARKDOWN
                   _buildFormattedDescription(description, isDark, primaryColor),
                   
                   const SizedBox(height: 100),
@@ -243,7 +242,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// ✅ CUSTOM FORMATTER: Parses Text, Links, and Justifies Paragraphs
+  /// CUSTOM FORMATTER: Parses Text, Links, and Justifies Paragraphs
   Widget _buildFormattedDescription(String text, bool isDark, Color linkColor) {
     final baseStyle = GoogleFonts.inter(
       fontSize: 15, 
@@ -283,7 +282,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Text.rich(
             _parseRichText(paragraph, baseStyle, linkColor),
-            textAlign: TextAlign.justify, // ✅ JUSTIFIED
+            textAlign: TextAlign.justify,
           ),
         );
       }).toList(),

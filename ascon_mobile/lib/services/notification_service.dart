@@ -1,6 +1,6 @@
 import 'dart:convert'; 
 import 'dart:io';
-import 'dart:typed_data'; // ✅ Added for vibration patterns
+import 'dart:typed_data'; // ✅ Required for vibration patterns
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -51,7 +51,7 @@ class NotificationService {
 
     // ✅ Create the High Importance Channel with Vibration enabled
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'ascon_high_importance', // Changed ID to force fresh channel creation
+      'ascon_high_importance', 
       'ASCON Notifications',
       description: 'This channel is used for important ASCON updates.',
       importance: Importance.max,
@@ -66,8 +66,10 @@ class NotificationService {
 
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+    // ✅ FOREGROUND HANDLER: This is where we format the UI
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null) {
+      // We only show local notification if data is present or notification block exists
+      if (message.notification != null || message.data.isNotEmpty) {
         _showLocalNotification(message);
       }
     });
@@ -119,8 +121,26 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    // ✅ Custom Vibration Pattern: [Wait 0ms, Vibrate 500ms, Wait 200ms, Vibrate 500ms]
+    // 1. EXTRACT & FORMAT DATA
+    // We look for 'type' in data payload, default to 'Update' if missing
+    String type = message.data['type'] ?? 'Update';
+    String originalTitle = message.notification?.title ?? 'New Message';
+    String body = message.notification?.body ?? '';
+
+    // 2. CONSTRUCT BOLD HEADER: "<b>New Type:</b> Title"
+    // Note: Android supports simple HTML tags in BigTextStyle
+    String formattedTitle = '<b>New $type:</b> $originalTitle';
+
+    // 3. VIBRATION PATTERN
     final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
+
+    // 4. STYLE CONFIGURATION
+    final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
+      body,
+      htmlFormatBigText: true,
+      contentTitle: formattedTitle,
+      htmlFormatContentTitle: true, // ✅ Enables HTML (Bold) in Title
+    );
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
       'ascon_high_importance',
@@ -130,19 +150,20 @@ class NotificationService {
       color: const Color(0xFF1B5E3A),
       icon: 'ic_notification',
       enableVibration: true,
-      vibrationPattern: vibrationPattern, // ✅ Applied pattern
+      vibrationPattern: vibrationPattern,
       enableLights: true,
       ledColor: const Color(0xFF1B5E3A),
       ledOnMs: 1000,
       ledOffMs: 500,
+      styleInformation: bigTextStyleInformation, // ✅ Apply the Bold Style
     );
 
     final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _localNotifications.show(
       message.hashCode,
-      message.notification?.title,
-      message.notification?.body,
+      formattedTitle, // Fallback title
+      body,
       platformDetails,
       payload: jsonEncode(message.data), 
     );

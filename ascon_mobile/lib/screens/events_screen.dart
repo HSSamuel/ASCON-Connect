@@ -75,7 +75,8 @@ class _EventsScreenState extends State<EventsScreen> {
                       maxCrossAxisExtent: 200, 
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.72 : 0.75,
+                      // ✅ UPDATED: Taller ratio (0.80) to make cards shorter/compact
+                      childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85,
                     ),
                     itemCount: _events.length,
                     itemBuilder: (context, index) {
@@ -161,7 +162,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: SizedBox(
-                  height: 95, 
+                  height: 90, // ✅ Reduced slightly to match Home Screen
                   width: double.infinity,
                   child: Stack(
                     fit: StackFit.expand,
@@ -171,7 +172,6 @@ class _EventsScreenState extends State<EventsScreen> {
                         fit: BoxFit.cover,
                         errorBuilder: (c, e, s) => Icon(Icons.event, color: Colors.grey[400], size: 30),
                       ),
-                      // ✅ UPDATED: Badge background color is now dynamic
                       Positioned(
                         top: 8,
                         right: 8,
@@ -198,24 +198,25 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ Reduced Padding
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                    mainAxisAlignment: MainAxisAlignment.center, // ✅ Centered Content
                     children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          maxLines: 2, 
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800, 
-                            fontSize: 13.0,               
-                            color: titleColor,            
-                            height: 1.1,
-                          ),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.visible, // ✅ Allow Full Text
+                        // maxLines removed
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800, 
+                          fontSize: 12.0,            
+                          color: titleColor,            
+                          height: 1.1,
                         ),
                       ),
+                      
+                      const SizedBox(height: 6), // ✅ Fixed Gap
+
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(

@@ -13,6 +13,13 @@ const { generateAlumniId } = require("../utils/idGenerator");
 // Initialize Google Client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+/**
+ * @swagger
+ * tags:
+ * name: Auth
+ * description: Authentication, Registration, and Password Management
+ */
+
 // =========================================================
 // 📝 VALIDATION SCHEMAS
 // =========================================================
@@ -39,6 +46,43 @@ const loginSchema = Joi.object({
 // =========================================================
 // 1. REGISTER (With Auto-ID)
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/register:
+ * post:
+ * summary: Register a new alumni account
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - fullName
+ * - email
+ * - password
+ * - phoneNumber
+ * properties:
+ * fullName:
+ * type: string
+ * email:
+ * type: string
+ * password:
+ * type: string
+ * phoneNumber:
+ * type: string
+ * yearOfAttendance:
+ * type: string
+ * programmeTitle:
+ * type: string
+ * responses:
+ * 201:
+ * description: Registration successful
+ * 400:
+ * description: Validation error or Email exists
+ */
 router.post("/register", async (req, res) => {
   const { error } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
@@ -113,6 +157,37 @@ router.post("/register", async (req, res) => {
 // =========================================================
 // 2. LOGIN (With Self-Healing)
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/login:
+ * post:
+ * summary: Login to an existing account
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - email
+ * - password
+ * properties:
+ * email:
+ * type: string
+ * password:
+ * type: string
+ * fcmToken:
+ * type: string
+ * responses:
+ * 200:
+ * description: Login successful
+ * 400:
+ * description: Invalid credentials
+ * 403:
+ * description: Account pending approval
+ */
 router.post("/login", async (req, res) => {
   const { error } = loginSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
@@ -176,6 +251,27 @@ router.post("/login", async (req, res) => {
 // =========================================================
 // 3. LOGOUT
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ * post:
+ * summary: Logout user and remove notification token
+ * tags: [Auth]
+ * requestBody:
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * properties:
+ * userId:
+ * type: string
+ * fcmToken:
+ * type: string
+ * responses:
+ * 200:
+ * description: Logged out successfully
+ */
 router.post("/logout", async (req, res) => {
   try {
     const { userId, fcmToken } = req.body;
@@ -189,17 +285,75 @@ router.post("/logout", async (req, res) => {
 });
 
 // =========================================================
-// 4. GOOGLE LOGIN
+// 4. GOOGLE LOGIN (UPDATED for Web Support)
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/google:
+ * post:
+ * summary: Login or Register with Google
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - token
+ * properties:
+ * token:
+ * type: string
+ * description: Google ID Token or Access Token
+ * fcmToken:
+ * type: string
+ * responses:
+ * 200:
+ * description: Login successful
+ * 404:
+ * description: User not found (Need to Register)
+ */
 router.post("/google", async (req, res) => {
   try {
     const { token, fcmToken } = req.body;
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const { name, email, picture } = ticket.getPayload();
+    let name, email, picture;
 
+    // ✅ DETECT TOKEN TYPE
+    const isIdToken = token.split(".").length === 3;
+
+    if (isIdToken) {
+      // 🅰️ HANDLE ID TOKEN (Mobile / Standard)
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      name = payload.name;
+      email = payload.email;
+      picture = payload.picture;
+    } else {
+      // 🅱️ HANDLE ACCESS TOKEN (Web Fallback)
+      try {
+        const response = await axios.get(
+          "https://www.googleapis.com/oauth2/v3/userinfo",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        name = response.data.name;
+        email = response.data.email;
+        picture = response.data.picture;
+      } catch (apiError) {
+        console.error(
+          "Google UserInfo API Error:",
+          apiError.response?.data || apiError.message
+        );
+        return res.status(401).json({ message: "Invalid Google Access Token" });
+      }
+    }
+
+    // --- EXISTING USER LOGIC ---
     let user = await User.findOne({ email });
 
     if (user) {
@@ -207,7 +361,8 @@ router.post("/google", async (req, res) => {
         return res.status(403).json({ message: "Account pending approval." });
 
       if (!user.alumniId || user.alumniId === "PENDING") {
-        user.alumniId = await generateAlumniId(user.yearOfAttendance);
+        const year = user.yearOfAttendance || new Date().getFullYear();
+        user.alumniId = await generateAlumniId(year);
         await user.save();
       }
 
@@ -255,6 +410,7 @@ router.post("/google", async (req, res) => {
       });
     }
   } catch (err) {
+    console.error("Google Auth Error:", err);
     res.status(500).json({ message: "Google Authentication Failed" });
   }
 });
@@ -262,6 +418,30 @@ router.post("/google", async (req, res) => {
 // =========================================================
 // 5. FORGOT & RESET PASSWORD
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ * post:
+ * summary: Request a password reset email
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - email
+ * properties:
+ * email:
+ * type: string
+ * responses:
+ * 200:
+ * description: Reset link sent
+ * 400:
+ * description: Email not found
+ */
 router.post("/forgot-password", async (req, res) => {
   try {
     if (!req.body.email)
@@ -305,6 +485,32 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ * post:
+ * summary: Reset password using token
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - token
+ * - newPassword
+ * properties:
+ * token:
+ * type: string
+ * newPassword:
+ * type: string
+ * responses:
+ * 200:
+ * description: Password updated successfully
+ * 400:
+ * description: Invalid or expired token
+ */
 router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -335,6 +541,30 @@ router.post("/reset-password", async (req, res) => {
 // =========================================================
 // 6. REFRESH TOKEN
 // =========================================================
+
+/**
+ * @swagger
+ * /api/auth/refresh:
+ * post:
+ * summary: Refresh access token
+ * tags: [Auth]
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - refreshToken
+ * properties:
+ * refreshToken:
+ * type: string
+ * responses:
+ * 200:
+ * description: New access token generated
+ * 403:
+ * description: Invalid Refresh Token
+ */
 router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken)

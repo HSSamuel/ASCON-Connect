@@ -501,8 +501,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                                     maxCrossAxisExtent: 180,
                                     crossAxisSpacing: 12,
                                     mainAxisSpacing: 12,
-                                    // Child Aspect Ratio adjusted for taller cards
-                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.65 : 0.70, 
+                                    // ✅ FIXED: Increased ratio from 0.70 to 0.80 -> Makes card shorter vertically
+                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85, 
                                   ),
                                   itemCount: programmes.length,
                                   itemBuilder: (context, index) {
@@ -551,8 +551,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                                 maxCrossAxisExtent: 180,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                // Child Aspect Ratio adjusted for taller cards
-                                childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.65 : 0.70, 
+                                // ✅ FIXED: Increased ratio from 0.70 to 0.80 -> Makes card shorter vertically
+                                childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85, 
                               ),
                               itemCount: events.length,
                               itemBuilder: (context, index) {
@@ -625,9 +625,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               ),
               Expanded( 
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ REDUCED PADDING
                   child: Column(
-                    // ✅ CHANGED: Center keeps content grouped together
                     mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
                       Text(
@@ -642,7 +641,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                         ),
                       ),
                       
-                      const SizedBox(height: 8), // ✅ Fixed gap (not spaced out)
+                      const SizedBox(height: 6), // ✅ REDUCED GAP
 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -793,9 +792,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               ),
               Expanded( 
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ REDUCED PADDING
                   child: Column(
-                    // ✅ CHANGED: Center keeps content grouped together
                     mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
                       Text(
@@ -810,7 +808,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                         ),
                       ),
                       
-                      const SizedBox(height: 8), // ✅ Fixed gap
+                      const SizedBox(height: 6), // ✅ REDUCED GAP
 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

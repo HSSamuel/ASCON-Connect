@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
@@ -73,7 +74,7 @@ const swaggerOptions = {
       },
     ],
   },
-  apis: ["./routes/*.js"],
+  apis: [path.join(__dirname, "routes", "*.js")],
 };
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);

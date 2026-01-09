@@ -624,3 +624,44 @@ label {
 .password-toggle-btn:hover {
   color: #1b5e3a; /* ASCON Green on hover */
 }
+
+/* =========================================
+   MOBILE OPTIMIZATIONS (Login & Reset Pages)
+   ========================================= */
+@media (max-width: 768px) {
+  
+  /* Shrink the main white card */
+  .login-card, 
+  .reset-card {
+    width: 90%;          /* Take up most of the screen width */
+    max-width: 350px;    /* But never get too wide */
+    padding: 25px 20px;  /* Reduce internal spacing */
+    margin-top: -50px;   /* Move it up slightly visually */
+  }
+
+  /* Shrink the logo */
+  .login-card img, 
+  .reset-card img {
+    width: 80px !important; /* Force logo smaller */
+  }
+
+  /* Make text smaller */
+  .login-title, 
+  .reset-title {
+    font-size: 1.5rem;   /* Smaller heading */
+    margin-bottom: 5px;
+  }
+
+  .login-subtitle, 
+  .reset-subtitle {
+    font-size: 0.9rem;   /* Smaller subtitle */
+    margin-bottom: 20px;
+  }
+
+  /* Adjust input fields */
+  .login-input, 
+  .reset-input {
+    padding: 10px;       /* Slightly smaller clickable area */
+    font-size: 14px;
+  }
+}

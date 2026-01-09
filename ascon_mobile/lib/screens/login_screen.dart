@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
-import '../services/notification_service.dart'; // ✅ Import Notification Service
+import '../services/notification_service.dart'; 
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'welcome_dialog.dart'; 
@@ -35,28 +35,35 @@ class _LoginScreenState extends State<LoginScreen> {
   // --- HELPER METHODS ---
 
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
-    // ✅ CRITICAL FIX: Force Token Sync immediately after login
-    // This ensures the server gets the FCM token now that we have an Auth Token.
-    try {
-      await NotificationService().init();
-      debugPrint("🔔 Token sync triggered after login");
-    } catch (e) {
-      debugPrint("⚠️ Failed to sync token on login: $e");
-    }
+    // 1. Sync Notification Token (Fail-safe: won't block nav if it fails)
+    _syncNotificationToken();
 
+    // 2. Safe Data Extraction
+    // We use fallback values so navigation never fails even if data is missing
     bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
+    String safeName = user['fullName'] ?? "Alumni"; 
+
     if (hasSeenWelcome) {
-      _navigateToHome(user['fullName']);
+      _navigateToHome(safeName);
     } else {
       if (!mounted) return;
       showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => WelcomeDialog(
-          userName: user['fullName'],
+          userName: safeName,
           onGetStarted: _markWelcomeAsSeen, 
         ),
       );
+    }
+  }
+
+  Future<void> _syncNotificationToken() async {
+    try {
+      await NotificationService().init();
+      debugPrint("🔔 Token sync triggered after login");
+    } catch (e) {
+      debugPrint("⚠️ Failed to sync token on login: $e");
     }
   }
 
@@ -64,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await _authService.markWelcomeSeen(); 
     } catch (e) {
-      print("❌ ERROR: Failed to mark welcome as seen: $e");
+      debugPrint("❌ Failed to mark welcome as seen: $e");
     }
   }
 
@@ -87,36 +94,70 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
     
-    final result = await _authService.login(_emailController.text.trim(), _passwordController.text);
+    try {
+      final result = await _authService.login(_emailController.text.trim(), _passwordController.text);
+      if (!mounted) return;
 
-    if (!mounted) return;
-    setState(() => _isLoading = false);
+      // ✅ FIX: Stop loading immediately after response
+      setState(() => _isLoading = false);
 
-    if (result['success']) {
-      _handleLoginSuccess(result['data']['user']);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
+      if (result['success']) {
+        _handleLoginSuccess(result['data']['user']);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Error: ${e.toString()}"), backgroundColor: Colors.red));
     }
   }
 
   Future<void> signInWithGoogle() async {
     try {
       setState(() => _isLoading = true);
-      GoogleSignInAccount? googleUser;
-      try { googleUser = await _googleSignIn.signIn(); } catch (error) { print("⚠️ Popup closed."); }
-      if (googleUser == null) { googleUser = await _googleSignIn.signInSilently(); }
-      if (googleUser == null) { setState(() => _isLoading = false); return; }
       
+      // 1. Sign In with Google
+      GoogleSignInAccount? googleUser;
+      try {
+        googleUser = await _googleSignIn.signIn();
+      } catch (error) {
+        debugPrint("⚠️ Google Sign In Popup closed: $error");
+        setState(() => _isLoading = false);
+        return; 
+      }
+
+      if (googleUser == null) {
+        // User cancelled
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // 2. Get Token
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final result = await _authService.googleLogin(googleAuth.idToken);
+      
+      // ✅ FIX: Use Access Token if ID Token is null (Common on Web)
+      final String? tokenToSend = googleAuth.idToken ?? googleAuth.accessToken;
+
+      if (tokenToSend == null) {
+        debugPrint("❌ No valid token found from Google");
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // 3. Send to Backend
+      final result = await _authService.googleLogin(tokenToSend);
 
       if (!mounted) return;
+
+      // ✅ FIX: Force loading to stop here, regardless of what happens next
       setState(() => _isLoading = false);
 
       if (result['success']) {
         if (result['statusCode'] == 200) {
+          // ✅ Success: Navigate
           _handleLoginSuccess(result['data']['user']);
         } else if (result['statusCode'] == 404) {
+          // ✅ New User: Go to Register
           final googleData = result['data']['googleData'];
           Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(
             prefilledName: googleData['fullName'], 
@@ -125,10 +166,14 @@ class _LoginScreenState extends State<LoginScreen> {
           )));
         }
       } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? "Google Login Failed"), backgroundColor: Colors.red));
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint("❌ CRITICAL GOOGLE LOGIN ERROR: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("An error occurred during Google Login."), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -150,7 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 
-                // ✅ UPDATED LOGO
+                // LOGO
                 Center(
                   child: Container(
                     height: 100, 
@@ -190,7 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24), 
 
-                // ✅ EMAIL INPUT
+                // EMAIL INPUT
                 TextFormField(
                   controller: _emailController,
                   style: TextStyle(fontSize: 14, color: textColor),
@@ -202,7 +247,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 12), 
 
-                // ✅ PASSWORD INPUT
+                // PASSWORD INPUT
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -229,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // ✅ LOGIN BUTTON
+                // LOGIN BUTTON
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
@@ -249,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // ✅ GOOGLE BUTTON
+                // GOOGLE BUTTON
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
