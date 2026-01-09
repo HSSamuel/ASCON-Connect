@@ -34,9 +34,19 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
+  // ✅ HELPER: Dynamic Badge Colors (Matching Home Screen Logic)
+  Color _getTypeColor(String type) {
+    switch (type) {
+      case 'Reunion': return const Color(0xFF1B5E3A); // Dark Green
+      case 'Webinar': return Colors.blue[700]!;     
+      case 'Seminar': return Colors.purple[700]!;   
+      case 'News':    return Colors.orange[800]!;   
+      default:        return Colors.grey[700]!;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ Dynamic Theme Colors
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
@@ -59,12 +69,17 @@ class _EventsScreenState extends State<EventsScreen> {
             ? Center(child: CircularProgressIndicator(color: primaryColor))
             : _events.isEmpty
                 ? _buildEmptyState()
-                : ListView.separated( 
+                : GridView.builder( 
                     padding: const EdgeInsets.all(16),
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 200, 
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.72 : 0.75,
+                    ),
                     itemCount: _events.length,
-                    separatorBuilder: (ctx, i) => const SizedBox(height: 20),
                     itemBuilder: (context, index) {
-                      return _buildEventCard(_events[index]);
+                      return _buildCompactEventCard(_events[index]);
                     },
                   ),
       ),
@@ -89,235 +104,140 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  Widget _buildEventCard(dynamic event) {
-    // ✅ Dynamic Colors for Card
+  Widget _buildCompactEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final primaryColor = Theme.of(context).primaryColor;
+    final titleColor = isDark ? Colors.greenAccent[400] : const Color(0xFF1B5E20);
 
-    // --- 1. SMART DATE PARSING ---
-    String month = "TBD";
-    String day = "--";
-    String fullDateString = "Date to be announced";
-    
+    // --- DATE PARSING ---
+    String formattedDate = 'TBA';
+    String rawDate = event['date']?.toString() ?? '';
     try {
-      if (event['date'] != null) {
-        final date = DateTime.parse(event['date']);
-        month = DateFormat('MMM').format(date).toUpperCase(); // e.g. DEC
-        day = DateFormat('dd').format(date); // e.g. 25
-        fullDateString = DateFormat('MMMM d, yyyy').format(date);
+      if (rawDate.isNotEmpty) {
+        final dateObj = DateTime.parse(rawDate);
+        formattedDate = DateFormat("d MMM, y").format(dateObj);
       }
     } catch (e) {
-      // If parsing fails, stick to defaults
+      formattedDate = event['date']?.toString() ?? 'TBA';
     }
 
     final String title = event['title']?.toString() ?? 'No Title';
-    final String location = event['location']?.toString() ?? 'ASCON HQ';
-    final String imageUrl = event['image']?.toString() ?? 'https://via.placeholder.com/600x300';
     final String type = event['type'] ?? 'News';
-    final String description = event['description']?.toString() ?? 'No details available.';
+    final String imageUrl = event['image'] ?? event['imageUrl'] ?? 'https://via.placeholder.com/600';
 
-    // Safe Data Payload for Detail Screen
-    final Map<String, String> safeEventData = {
-      'title': title,
-      'date': fullDateString, 
-      'rawDate': event['date']?.toString() ?? '', 
-      'location': location,
-      'image': imageUrl,
-      'description': description,
-    };
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context, 
-          MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            if (!isDark)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 15,
-                offset: const Offset(0, 5),
-              )
-          ],
-        ),
-        clipBehavior: Clip.antiAlias, // Ensures image doesn't bleed out
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- 2. HERO IMAGE TOP SECTION ---
-            Stack(
-              children: [
-                Container(
-                  height: 150,
-                  width: double.infinity,
-                  color: isDark ? Colors.grey[800] : Colors.grey[200],
-                  child: Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Icon(Icons.image_not_supported, color: Colors.grey[400], size: 50),
-                  ),
-                ),
-                // Gradient Overlay for readability
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.6),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                // Type Badge (News/Event)
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: primaryColor,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                    ),
-                    child: Text(
-                      type.toUpperCase(),
-                      style: GoogleFonts.inter(
-                        fontSize: 10, 
-                        fontWeight: FontWeight.bold, 
-                        color: Colors.white,
-                        letterSpacing: 0.5
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            // --- 3. CARD CONTENT ---
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // CALENDAR LEAF (Date Badge)
-                  _buildDateBadge(context, month, day),
-                  
-                  const SizedBox(width: 16),
-                  
-                  // INFO COLUMN
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: textColor,
-                            height: 1.3
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        
-                        Row(
-                          children: [
-                            Icon(Icons.location_on, size: 14, color: subTextColor),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                location,
-                                style: GoogleFonts.inter(fontSize: 12, color: subTextColor),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 12),
-                        
-                        // "View Details" Link
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            "View Details →",
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: primaryColor,
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // --- HELPER: The "Calendar Leaf" Badge ---
-  Widget _buildDateBadge(BuildContext context, String month, String day) {
-    final primaryColor = Theme.of(context).primaryColor;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     return Container(
-      width: 55,
-      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: primaryColor.withOpacity(0.2)),
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           if (!isDark)
             BoxShadow(
-              color: primaryColor.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
+              color: Colors.grey.withOpacity(0.1), 
+              blurRadius: 6, 
+              offset: const Offset(0, 3)
+            ),
         ],
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            month, 
-            style: GoogleFonts.inter(
-              fontSize: 12, 
-              fontWeight: FontWeight.bold, 
-              color: primaryColor
-            ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            final Map<String, dynamic> safeEventData = {
+              ...event,
+              '_id': (event['_id'] ?? event['id'] ?? '').toString(),
+              'date': formattedDate,
+              'rawDate': rawDate,
+            };
+            Navigator.push(
+              context, 
+              MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
+            );
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: SizedBox(
+                  height: 95, 
+                  width: double.infinity,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) => Icon(Icons.event, color: Colors.grey[400], size: 30),
+                      ),
+                      // ✅ UPDATED: Badge background color is now dynamic
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _getTypeColor(type).withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                          ),
+                          child: Text(
+                            type.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white, 
+                              fontSize: 8, 
+                              fontWeight: FontWeight.w900, 
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2, 
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800, 
+                            fontSize: 13.0,               
+                            color: titleColor,            
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : const Color(0xFFE8F5E9), 
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          formattedDate.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9, 
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            day, 
-            style: GoogleFonts.inter(
-              fontSize: 18, 
-              fontWeight: FontWeight.w900, 
-              color: Theme.of(context).textTheme.bodyLarge?.color
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

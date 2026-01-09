@@ -145,6 +145,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   late Future<List<dynamic>> _programmesFuture;
   
   late AnimationController _bellController;
+  Timer? _notificationTimer; // ✅ NEW: Timer for periodic checks
 
   String? _profileImage;
   String _programme = "Member"; 
@@ -164,11 +165,17 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     _loadLocalData();
     _refreshData();
     _checkAuthenticatedNotifications(); // ✅ Check for real unread count
+    
+    // ✅ NEW: Start Heartbeat Polling (Checks every 60 seconds)
+    _notificationTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
+      _checkAuthenticatedNotifications();
+    });
   }
 
   @override
   void dispose() {
     _bellController.dispose();
+    _notificationTimer?.cancel(); // ✅ NEW: Cancel timer to prevent memory leaks
     super.dispose();
   }
 
@@ -185,12 +192,16 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   // ✅ New Authenticated Check
   Future<void> _checkAuthenticatedNotifications() async {
     try {
-      final notifications = await _dataService.fetchMyNotifications();
+      // ✅ Use the new unread count method for lightweight polling
+      final int count = await _dataService.fetchUnreadNotificationCount();
+      
       if (mounted) {
         setState(() {
-          _unreadNotifications = notifications.length;
+          _unreadNotifications = count;
           if (_unreadNotifications > 0) {
-            _bellController.repeat(reverse: true);
+            if (!_bellController.isAnimating) {
+              _bellController.repeat(reverse: true);
+            }
           } else {
             _bellController.stop();
             _bellController.reset();
@@ -198,7 +209,21 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         });
       }
     } catch (e) {
-      debugPrint("⚠️ Notification Auth Error: $e");
+      // Fallback to the full fetch if unread endpoint is not yet available
+      final notifications = await _dataService.fetchMyNotifications();
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = notifications.length;
+          if (_unreadNotifications > 0) {
+            if (!_bellController.isAnimating) {
+              _bellController.repeat(reverse: true);
+            }
+          } else {
+            _bellController.stop();
+            _bellController.reset();
+          }
+        });
+      }
     }
   }
 
@@ -374,7 +399,6 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -493,7 +517,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                                     maxCrossAxisExtent: 180,
                                     crossAxisSpacing: 12,
                                     mainAxisSpacing: 12,
-                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.88 : 0.8, 
+                                    // Adjusted for dynamic content to avoid overflow
+                                    childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.72 : 0.75, 
                                   ),
                                   itemCount: programmes.length,
                                   itemBuilder: (context, index) {
@@ -519,7 +544,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                             ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 15),
 
                         FutureBuilder<List<dynamic>>(
                           future: _eventsFuture,
@@ -535,17 +560,20 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                               return _buildEmptyState("No Upcoming Events");
                             }
 
-                            return Column(
-                              children: events.map((event) {
-                                return _buildEventCard(context, {
-                                  'title': event['title'] ?? 'No Title',
-                                  'date': event['date'] ?? 'TBA', 
-                                  'location': event['location'] ?? 'ASCON Complex',
-                                  'image': event['image'] ?? event['imageUrl'] ?? 'https://via.placeholder.com/600',
-                                  'description': event['description'] ?? 'No description provided.',
-                                  'type': event['type'] ?? 'News', 
-                                });
-                              }).toList(),
+                            return GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                                maxCrossAxisExtent: 180,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                // ✅ Absolute fix: providing taller height by reducing ratio
+                                childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.70 : 0.75, 
+                              ),
+                              itemCount: events.length,
+                              itemBuilder: (context, index) {
+                                return _buildEventCard(context, events[index]);
+                              },
                             );
                           },
                         ),
@@ -594,12 +622,12 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
             );
           },
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min, // Fix: Use minimum size
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: Container(
-                  height: 95, 
+                  height: 90, // Fix: Fixed image height
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
                   child: programmeImage != null && programmeImage.isNotEmpty
@@ -611,25 +639,26 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                       : Icon(Icons.school, color: Colors.grey[400], size: 40),
                 ),
               ),
-              Expanded(
+              Expanded( // Fix: Use expanded to fill remaining space
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center, 
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
                     children: [
-                      Text(
-                        prog['title'] ?? "Programme",
-                        textAlign: TextAlign.center,
-                        maxLines: 3, 
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800, 
-                          fontSize: 15.0,              
-                          color: titleColor,           
-                          height: 1.1,
+                      Flexible(
+                        child: Text(
+                          prog['title'] ?? "Programme",
+                          textAlign: TextAlign.center,
+                          maxLines: 2, 
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800, 
+                            fontSize: 13.0,               
+                            color: titleColor,            
+                            height: 1.1,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 6), 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
@@ -639,7 +668,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                         child: Text(
                           prog['code']?.toUpperCase() ?? "PIC",
                           style: TextStyle(
-                            fontSize: 11, 
+                            fontSize: 10, 
                             fontWeight: FontWeight.bold,
                             color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
                           ),
@@ -687,131 +716,137 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
   Widget _buildEventCard(BuildContext context, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
-    final primaryColor = Theme.of(context).primaryColor;
+    final titleColor = isDark ? Colors.greenAccent[400] : const Color(0xFF1B5E20);
 
     String formattedDate = 'TBA';
     String rawDate = data['date']?.toString() ?? '';
+    String type = data['type'] ?? 'News';
     
     try {
       if (rawDate.isNotEmpty) {
         final dateObj = DateTime.parse(rawDate);
-        formattedDate = DateFormat("EEE, d MMM, y • h:mm a").format(dateObj);
+        formattedDate = DateFormat("d MMM, y").format(dateObj); 
       }
     } catch (e) {
-      // Keep default
+       formattedDate = data['date']?.toString() ?? 'TBA';
     }
 
-    String type = data['type'] ?? 'News';
-
-    return GestureDetector(
-      onTap: () {
-        final safeData = {
-          ...data.map((key, value) => MapEntry(key, value.toString())),
-          'rawDate': rawDate,
-          'date': formattedDate,
-          '_id': data['_id'],
-        };
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeData)),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: cardColor, 
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            if (!isDark)
-              BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: Container(
-                    height: 150, 
-                    width: double.infinity,
-                    color: isDark ? Colors.grey[900] : Colors.grey[50],
-                    child: Image.network(
-                      data['image'] ?? data['imageUrl'] ?? '',
-                      fit: BoxFit.cover,
-                      errorBuilder: (c, e, s) => Center(
-                        child: Icon(Icons.image_not_supported, color: Colors.grey[300], size: 40)
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  right: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _getTypeColor(type),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                    ),
-                    child: Text(
-                      type.toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                    ),
-                  ),
-                ),
-              ],
+    return Container(
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.1), 
+              blurRadius: 6, 
+              offset: const Offset(0, 3)
             ),
-            
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+        ],
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
+
+            final safeData = {
+              ...data.map((key, value) => MapEntry(key, value.toString())),
+              'rawDate': rawDate,
+              'date': formattedDate,
+              '_id': resolvedId,
+            };
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeData)),
+            );
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Fix: Use minimum size
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: Container(
+                  height: 90, // Fix: Reduced image height to make room for text
+                  width: double.infinity,
+                  color: isDark ? Colors.grey[850] : Colors.grey[100],
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Icon(Icons.calendar_month_outlined, size: 14, color: primaryColor),
-                      const SizedBox(width: 6),
-                      Text(
-                        formattedDate,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: primaryColor),
+                      Image.network(
+                        data['image'] ?? data['imageUrl'] ?? '',
+                        fit: BoxFit.cover,
+                        errorBuilder: (c, e, s) => Icon(Icons.event, color: Colors.grey[400], size: 40),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  Text(
-                    data['title'] ?? 'Untitled Event',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor, height: 1.2), 
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  
-                  const SizedBox(height: 8),
-                  
-                  Row(
-                    children: [
-                      Icon(Icons.location_on_outlined, size: 14, color: Colors.grey[500]),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          data['location'] ?? 'ASCON Complex',
-                          style: TextStyle(fontSize: 12, color: subTextColor), 
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _getTypeColor(type).withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
+                          ),
+                          child: Text(
+                            type.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white, 
+                              fontSize: 8, 
+                              fontWeight: FontWeight.w900, 
+                              letterSpacing: 0.3
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+              Expanded( // Fix: Use expanded area to allow text to fill space
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly, // Fix: Balanced distribution
+                    children: [
+                      Flexible( // Fix: Allows title to take variable space
+                        child: Text(
+                          data['title'] ?? "Untitled Event",
+                          textAlign: TextAlign.center,
+                          maxLines: 2, 
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800, 
+                            fontSize: 13.0,               
+                            color: titleColor,            
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : const Color(0xFFE8F5E9), 
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          formattedDate.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9, 
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -142,10 +142,13 @@ class AboutScreen extends StatelessWidget {
                         const SizedBox(height: 20),
                         _buildContactRow(context, Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        // ✅ Clickable Email
                         _buildContactRow(context, Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        // ✅ Clickable Phone
                         _buildContactRow(context, Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
+                        // ✅ Clickable Website
                         _buildContactRow(context, Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
                       ],
                     ),
@@ -188,7 +191,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER: Info Card (Centered Text) ---
+  // --- HELPER: Info Card (Justified Text) ---
   Widget _buildInfoCard(BuildContext context, {required IconData icon, required String title, required String content}) {
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
@@ -229,7 +232,7 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             content,
-            textAlign: TextAlign.center, // ✅ Centralized Text
+            textAlign: TextAlign.justify, // ✅ Apply Justified Alignment
             style: GoogleFonts.inter(
               fontSize: 14,
               height: 1.5,
@@ -256,7 +259,12 @@ class AboutScreen extends StatelessWidget {
             child: Text(
               text,
               textAlign: TextAlign.center, // ✅ Align Text Center
-              style: GoogleFonts.inter(fontSize: 14, color: textColor, fontWeight: FontWeight.w500),
+              style: GoogleFonts.inter(
+                fontSize: 14, 
+                color: onTap != null ? Theme.of(context).primaryColor : textColor, 
+                fontWeight: FontWeight.w500,
+                decoration: onTap != null ? TextDecoration.underline : TextDecoration.none, // Highlight clickable links
+              ),
             ),
           ),
         ],

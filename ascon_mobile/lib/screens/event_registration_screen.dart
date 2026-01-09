@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/data_service.dart';
+import 'package:url_launcher/url_launcher.dart'; // ✅ Added for potential link handling
 
 class EventRegistrationScreen extends StatefulWidget {
   final String eventId;
@@ -51,6 +52,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
 
   Future<void> _submitForm() async {
     // ✅ FIX 1: Explicitly check that eventId is not empty before proceeding
+    // This prevents sending an empty string to the backend which causes the 400 error.
     if (widget.eventId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Error: Missing Event ID. Please try again."))
@@ -68,6 +70,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
     final fullNameCombined = "${_firstNameController.text.trim()} ${_lastNameController.text.trim()}";
 
     // ✅ FIX 2: Ensure the eventId from the widget is passed directly to the service
+    // This maps the required fields from the UI controllers to the backend API.
     final result = await _dataService.registerEventInterest(
       eventId: widget.eventId, 
       eventTitle: widget.eventTitle,
@@ -97,7 +100,7 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
     }
   }
 
-  // ... (Rest of your original UI code remains exactly the same below)
+  // --- UI BUILDERS (NO LINES REMOVED) ---
   
   Widget _buildHeaderWidget(Color primaryColor, bool isDark) {
     // ASCON Logo
@@ -335,6 +338,8 @@ class _EventRegistrationScreenState extends State<EventRegistrationScreen> {
         controller: controller,
         keyboardType: type,
         maxLines: maxLines,
+        // ✅ Added Justified Alignment for Multi-line text
+        textAlign: maxLines > 1 ? TextAlign.justify : TextAlign.start,
         validator: isRequired ? (v) => v!.isEmpty ? "Required" : null : null,
         style: TextStyle(color: isDark ? Colors.white : Colors.black), 
         decoration: InputDecoration(

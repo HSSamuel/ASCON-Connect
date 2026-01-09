@@ -28,4 +28,16 @@ class AppConfig {
   static String? get googleClientId {
     return kIsWeb ? googleWebClientId : null; 
   }
+
+  // =========================================================
+  // 🛡️ NOTIFICATION & NETWORK SETTINGS (New Updates)
+  // =========================================================
+  
+  // ✅ ADDED: Specific timeout for the notification heartbeat
+  // This prevents requests from "stacking up" on slow connections.
+  static const Duration connectionTimeout = Duration(seconds: 15);
+
+  // ✅ ADDED: Endpoint Helper for Notification Polling
+  // This ensures the bell is looking at the exact same path the admin posts to.
+  static String get unreadCountEndpoint => '$baseUrl/api/notifications/unread-count';
 }

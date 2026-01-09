@@ -322,4 +322,23 @@ class DataService {
       return [];
     }
   }
+
+  // ✅ NEW: FETCH UNREAD COUNT (Specifically for Bell Heartbeat)
+  // This allows the app to check for admin posts every 60 seconds without heavy load.
+  Future<int> fetchUnreadNotificationCount() async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/unread-count');
+      
+      final response = await http.get(url, headers: headers);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['unreadCount'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      debugPrint("Unread Count Fetch Error: $e");
+      return 0;
+    }
+  }
 }

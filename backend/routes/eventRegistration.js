@@ -9,25 +9,22 @@ const verifyAdmin = require("./verifyAdmin");
 // @route   POST /api/event-registration
 router.post("/", async (req, res) => {
   try {
-    // 1. Log the incoming data to help debugging
-    console.log("Incoming Registration Data:", req.body);
-
     const { eventId, fullName, email, phone, userId } = req.body;
 
-    // 2. Simple Validation Check
-    if (!eventId || !fullName || !email || !phone) {
+    // ✅ IMPROVED VALIDATION: Check for empty strings/whitespace
+    if (!eventId || eventId.trim() === "" || !fullName || !email || !phone) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: Event ID, Name, Email, or Phone.",
+        message: "Registration failed: Missing Event ID or required contact details.",
       });
     }
 
-    // ✅ 3. DUPLICATE CHECK
-    // Prevents the same email from registering for the same event twice
+    // ✅ EXISTING DUPLICATE CHECK
     const alreadyRegistered = await EventRegistration.findOne({
       eventId,
-      email,
+      email: email.toLowerCase().trim(),
     });
+    
     if (alreadyRegistered) {
       return res.status(400).json({
         success: false,
@@ -35,9 +32,6 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // ✅ 4. USER ID TYPE SAFETY
-    // If Flutter sends an empty string for userId, we convert it to null
-    // This prevents MongoDB from crashing when trying to save a non-ObjectId string.
     const finalData = {
       ...req.body,
       userId: userId && userId.length > 5 ? userId : null,

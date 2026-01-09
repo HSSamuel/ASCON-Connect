@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart'; 
-import 'package:add_2_calendar/add_2_calendar.dart'; 
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter_markdown/flutter_markdown.dart'; 
+import 'package:url_launcher/url_launcher.dart'; // ✅ Added for link functionality
+import 'package:markdown/markdown.dart' as md; // ✅ Added to recognize raw URLs
 import 'event_registration_screen.dart'; 
-// ✅ Import DataService to fetch details if missing
 import '../services/data_service.dart'; 
 
 class EventDetailScreen extends StatefulWidget {
@@ -28,9 +28,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _event = widget.eventData;
 
-    // ✅ CHECK: If data is incomplete (e.g. from Notification), fetch full details
-    if ((_event['date'] == null || _event['description'] == null) && _event['_id'] != null) {
-      _fetchFullEventDetails(_event['_id']);
+    // ✅ CHECK: If data is incomplete, fetch full details using any available ID
+    final String? idToFetch = _event['id'] ?? _event['_id'];
+    if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
+      _fetchFullEventDetails(idToFetch);
     }
   }
 
@@ -70,7 +71,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
     final String eventType = _event['type'] ?? 'News';
     final bool isRegistrable = eventType != 'News';
-    final String eventId = (_event['_id'] ?? _event['id'] ?? '').toString();
+
+    // ✅ ROBUST FIX: Check all possible ID keys from both state and original widget data
+    final String eventId = (_event['_id'] ?? 
+                            _event['id'] ?? 
+                            widget.eventData['_id'] ?? 
+                            widget.eventData['id'] ?? 
+                            '').toString();
 
     // --- DATE LOGIC ---
     String formattedDate = 'Date to be announced';
@@ -95,7 +102,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ? const Center(child: CircularProgressIndicator()) 
         : CustomScrollView(
         slivers: [
-          // HEADER
           SliverAppBar(
             expandedHeight: 280.0,
             pinned: true,
@@ -117,7 +123,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
                 ),
                 onPressed: () {
-                  // ✅ IMPROVED SHARING LOGIC
                   final String shareText = 
                     "🏛️ *ASCON ALUMNI UPDATE* 🏛️\n\n"
                     "🔔 *${title.toUpperCase()}*\n\n"
@@ -190,11 +195,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   const SizedBox(height: 30),
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
+                  
+                  // ✅ UPDATED: Added link handler and URL recognition logic
                   MarkdownBody(
                     data: description,
                     selectable: true,
+                    extensionSet: md.ExtensionSet.gitHubFlavored, // Recognizes raw URLs automatically
+                    onTapLink: (text, url, title) async {
+                      if (url != null) {
+                        final Uri uri = Uri.parse(url);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } else {
+                          debugPrint("Could not launch $url");
+                        }
+                      }
+                    },
                     styleSheet: MarkdownStyleSheet(
                       p: GoogleFonts.inter(fontSize: 15, height: 1.6, color: subTextColor),
+                      a: TextStyle(color: primaryColor, decoration: TextDecoration.underline), // Styles links green
                       strong: const TextStyle(fontWeight: FontWeight.bold),
                       listBullet: TextStyle(color: primaryColor),
                       blockSpacing: 12.0,
@@ -215,79 +234,31 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
             ),
             child: SafeArea(
-              child: Row(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: IconButton(
-                      icon: Icon(Icons.calendar_month_outlined, color: primaryColor),
-                      onPressed: () async {
-                        if (kIsWeb) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Calendar integration is not supported on Web."))
-                          );
-                          return;
-                        }
-
-                        if (eventDateObject != null) {
-                          final Event calendarEvent = Event(
-                            title: title,
-                            description: description,
-                            location: location,
-                            startDate: eventDateObject,
-                            endDate: eventDateObject.add(const Duration(hours: 2)),
-                            allDay: false,
-                          );
-                          
-                          try {
-                            await Add2Calendar.addEvent2Cal(calendarEvent);
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text("Error opening calendar: $e"))
-                              );
-                            }
-                          }
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Cannot add: Event date is invalid or missing."))
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => EventRegistrationScreen(
-                                eventId: eventId,
-                                eventTitle: title,
-                                eventType: eventType,
-                                eventImage: image,
-                              ),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => EventRegistrationScreen(
+                          eventId: eventId, 
+                          eventTitle: title,
+                          eventType: eventType,
+                          eventImage: image,
                         ),
-                        child: Text("Register Now", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold)),
                       ),
-                    ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                ],
+                  child: Text("Register Now", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
               ),
             ),
           )
