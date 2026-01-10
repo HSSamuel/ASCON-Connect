@@ -27,7 +27,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     _event = widget.eventData;
 
     final String? idToFetch = _event['id'] ?? _event['_id'];
-    // If we are missing critical details like date or description, fetch full details
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
     }
@@ -59,7 +58,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final dividerColor = Theme.of(context).dividerColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // --- DATA EXTRACTION ---
     final String image = _event['image'] ?? _event['imageUrl'] ?? 'https://via.placeholder.com/600';
     final String title = _event['title'] ?? 'Event Details';
     final String location = _event['location'] ?? 'Online / ASCON Complex';
@@ -76,7 +74,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             widget.eventData['id'] ?? 
                             '').toString();
 
-    // --- DATE LOGIC ---
     String formattedDate = 'Date to be announced';
     String rawDateString = _event['rawDate'] ?? _event['date'] ?? '';
     DateTime? eventDateObject;
@@ -192,7 +189,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
-                  // CUSTOM FORMATTER REPLACES MARKDOWN
+                  // CUSTOM FORMATTER
                   _buildFormattedDescription(description, isDark, primaryColor),
                   
                   const SizedBox(height: 100),
@@ -242,7 +239,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// CUSTOM FORMATTER: Parses Text, Links, and Justifies Paragraphs
   Widget _buildFormattedDescription(String text, bool isDark, Color linkColor) {
     final baseStyle = GoogleFonts.inter(
       fontSize: 15, 
@@ -250,7 +246,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       color: isDark ? Colors.grey[300] : Colors.grey[700]
     );
 
-    // Split text by newlines to handle paragraphs separately
     List<String> paragraphs = text.split('\n');
 
     return Column(
@@ -258,7 +253,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       children: paragraphs.map((paragraph) {
         if (paragraph.trim().isEmpty) return const SizedBox(height: 10);
 
-        // Handle Bullet Points
         if (paragraph.trim().startsWith('- ') || paragraph.trim().startsWith('* ')) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6.0, left: 8.0),
@@ -268,7 +262,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 Text("• ", style: baseStyle.copyWith(fontWeight: FontWeight.bold)),
                 Expanded(
                   child: Text.rich(
-                    _parseRichText(paragraph.substring(2), baseStyle, linkColor),
+                    _parseRichText(paragraph.substring(2), baseStyle, linkColor, isDark),
                     textAlign: TextAlign.justify,
                   ),
                 ),
@@ -277,11 +271,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           );
         }
 
-        // Handle Normal Paragraphs
         return Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Text.rich(
-            _parseRichText(paragraph, baseStyle, linkColor),
+            _parseRichText(paragraph, baseStyle, linkColor, isDark),
             textAlign: TextAlign.justify,
           ),
         );
@@ -289,13 +282,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
-  /// Helper to parse **bold**, *italic*, and URL Links
-  TextSpan _parseRichText(String text, TextStyle baseStyle, Color linkColor) {
+  TextSpan _parseRichText(String text, TextStyle baseStyle, Color linkColor, bool isDark) {
     List<TextSpan> spans = [];
-    
-    // Regex for Bold, Italic, and URLs
     final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*|((https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?)');
-    
     int lastMatchEnd = 0;
 
     for (final match in regex.allMatches(text)) {
@@ -304,19 +293,22 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
 
       if (match.group(1) != null) {
-        // **Bold**
+        // ✅ BOLD FIX: Use White for Dark Mode, Black for Light Mode
         spans.add(TextSpan(
           text: match.group(1),
-          style: baseStyle.copyWith(fontWeight: FontWeight.bold, color: Colors.black87),
+          style: baseStyle.copyWith(
+            fontWeight: FontWeight.bold, 
+            color: isDark ? Colors.white : Colors.black87
+          ),
         ));
       } else if (match.group(2) != null) {
-        // *Italic*
+        // Italic
         spans.add(TextSpan(
           text: match.group(2),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ));
       } else if (match.group(3) != null) {
-        // 🔗 URL Link
+        // URL
         final url = match.group(3)!;
         spans.add(TextSpan(
           text: url,
@@ -330,7 +322,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             },
         ));
       }
-
       lastMatchEnd = match.end;
     }
 

@@ -2,16 +2,15 @@ const router = require("express").Router();
 const User = require("../models/User");
 const Notification = require("../models/Notification");
 const verify = require("./verifyToken");
-const Joi = require("joi"); // ✅ Added Joi
+const Joi = require("joi");
 
 // ==========================================
-// 1. SAVE FCM TOKEN (For Push Notifications)
+// 1. SAVE FCM TOKEN
 // ==========================================
 router.post("/save-token", verify, async (req, res) => {
-  // Simple validation
   const schema = Joi.object({
     fcmToken: Joi.string().required(),
-  }).unknown(true); // Allow other fields like 'token' for legacy
+  }).unknown(true);
 
   const { error } = schema.validate(req.body);
   const token = req.body.fcmToken || req.body.token;
@@ -23,12 +22,10 @@ router.post("/save-token", verify, async (req, res) => {
   }
 
   try {
-    // Update user: add to array (no duplicates) and update legacy field
     await User.findByIdAndUpdate(req.user._id, {
       $addToSet: { fcmTokens: token },
       fcmToken: token,
     });
-
     res
       .status(200)
       .json({ success: true, message: "Token saved successfully" });
@@ -39,18 +36,28 @@ router.post("/save-token", verify, async (req, res) => {
 });
 
 // ==========================================
-// 2. GET NOTIFICATIONS (Authenticated)
+// 2. GET NOTIFICATIONS (Filters out Deleted)
 // ==========================================
 router.get("/my-notifications", verify, async (req, res) => {
   try {
-    // Fetches personal notifications OR general broadcasts
     const notifications = await Notification.find({
       $or: [{ recipientId: req.user._id }, { isBroadcast: true }],
+      // ✅ FILTER: Exclude notifications deleted by this user
+      deletedBy: { $ne: req.user._id },
     })
       .sort({ createdAt: -1 })
-      .limit(20);
+      .limit(30);
 
-    res.json({ success: true, data: notifications });
+    const result = notifications.map((n) => {
+      const isRead = n.isBroadcast ? n.readBy.includes(req.user._id) : n.isRead;
+
+      return {
+        ...n.toObject(),
+        isRead: isRead,
+      };
+    });
+
+    res.json({ success: true, data: result });
   } catch (err) {
     console.error("Fetch Notifications Error:", err);
     res
@@ -60,20 +67,25 @@ router.get("/my-notifications", verify, async (req, res) => {
 });
 
 // ==========================================
-// 3. GET UNREAD COUNT (For Bell Badge)
+// 3. GET UNREAD COUNT (Smart Badge)
 // ==========================================
-// ✅ ADDED THIS MISSING ENDPOINT
 router.get("/unread-count", verify, async (req, res) => {
   try {
     const count = await Notification.countDocuments({
-      $or: [{ recipientId: req.user._id }, { isBroadcast: true }],
-      readBy: { $ne: req.user._id }, // Assuming you have a 'readBy' array in your model for broadcasts
-      // If your model is simple, this logic might need adjustment based on Schema
+      $and: [
+        // 1. Must be relevant to me
+        {
+          $or: [
+            { recipientId: req.user._id, isRead: false },
+            { isBroadcast: true, readBy: { $ne: req.user._id } },
+          ],
+        },
+        // 2. ✅ MUST NOT be deleted by me
+        { deletedBy: { $ne: req.user._id } },
+      ],
     });
 
-    // Fallback logic if 'readBy' doesn't exist yet:
-    // Just return 0 or rely on local storage logic in Flutter
-    res.json({ success: true, count: count || 0 });
+    res.json({ success: true, count: count });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -82,23 +94,42 @@ router.get("/unread-count", verify, async (req, res) => {
 // ==========================================
 // 4. MARK AS READ
 // ==========================================
-// ✅ ADDED THIS MISSING ENDPOINT
 router.put("/:id/read", verify, async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.id);
     if (!notification) return res.status(404).json({ message: "Not found" });
 
-    // Logic: If it's a broadcast, add user ID to 'readBy'. If personal, set 'isRead'
     if (notification.isBroadcast) {
       await Notification.findByIdAndUpdate(req.params.id, {
         $addToSet: { readBy: req.user._id },
       });
     } else {
-      notification.isRead = true;
-      await notification.save();
+      if (
+        notification.recipientId &&
+        notification.recipientId.toString() === req.user._id.toString()
+      ) {
+        notification.isRead = true;
+        await notification.save();
+      }
     }
-
     res.json({ success: true, message: "Marked as read" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==========================================
+// 5. ✅ DELETE NOTIFICATION
+// ==========================================
+router.delete("/:id", verify, async (req, res) => {
+  try {
+    // We use "Soft Delete" (addToSet) so it disappears for this user
+    // but stays for others (if broadcast).
+    await Notification.findByIdAndUpdate(req.params.id, {
+      $addToSet: { deletedBy: req.user._id },
+    });
+
+    res.json({ success: true, message: "Notification deleted" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

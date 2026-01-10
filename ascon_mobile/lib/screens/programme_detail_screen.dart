@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'programme_registration_screen.dart';
+import '../services/data_service.dart';
 
 class ProgrammeDetailScreen extends StatefulWidget {
   final Map<String, dynamic> programme;
@@ -13,17 +14,42 @@ class ProgrammeDetailScreen extends StatefulWidget {
 }
 
 class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
+  final DataService _dataService = DataService();
+  late Map<String, dynamic> _programme;
   String? _localUserId;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _programme = widget.programme;
     _getUserId();
+
+    final String? idToFetch = _programme['id'] ?? _programme['_id'];
+    if ((_programme['description'] == null || _programme['fee'] == null) && idToFetch != null) {
+      _fetchFullProgrammeDetails(idToFetch);
+    }
+  }
+
+  Future<void> _fetchFullProgrammeDetails(String id) async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final fullData = await _dataService.fetchProgrammeById(id);
+      if (fullData != null && mounted) {
+        setState(() {
+          _programme = fullData;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching programme details: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _getUserId() async {
     final prefs = await SharedPreferences.getInstance();
-    // Safety check: Ensure the widget is still on screen before calling setState
     if (!mounted) return; 
     setState(() {
        _localUserId = prefs.getString('mongo_id');
@@ -36,21 +62,23 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    final title = widget.programme['title'] ?? 'Programme Details';
-    final code = widget.programme['code'] ?? '';
-    final description = widget.programme['description'] ?? 'No description available.';
-    final duration = widget.programme['duration'];
-    final fee = widget.programme['fee'];
-    final programmeId = widget.programme['_id'];
+    final title = _programme['title'] ?? 'Loading...';
+    final code = _programme['code'] ?? '';
+    final description = _programme['description'] ?? 'No description available.';
+    final duration = _programme['duration'];
+    final fee = _programme['fee'];
+    final programmeId = _programme['_id'] ?? _programme['id'];
     
-    final String? programmeImage = widget.programme['image'] ?? widget.programme['imageUrl'];
+    final String? programmeImage = _programme['image'] ?? _programme['imageUrl'];
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Programme Details"), 
         elevation: 0,
       ),
-      body: SingleChildScrollView(
+      body: _isLoading 
+        ? Center(child: CircularProgressIndicator(color: primaryColor))
+        : SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +89,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             
             const SizedBox(height: 25),
 
-            // INFO GRID
             if (duration != null || fee != null)
               Row(
                 children: [
@@ -84,12 +111,11 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             ),
             const SizedBox(height: 12),
             
-            // CUSTOM ADVANCED FORMATTING + JUSTIFY
+            // CUSTOM FORMATTER
             _buildFormattedDescription(description, isDark),
             
             const SizedBox(height: 40),
             
-            // ACTION BUTTON
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -121,7 +147,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     );
   }
 
-  /// CUSTOM FORMATTER: Parses Markdown-like text AND Justifies it
   Widget _buildFormattedDescription(String text, bool isDark) {
     final baseStyle = GoogleFonts.inter(
       fontSize: 15, 
@@ -129,7 +154,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
       color: isDark ? Colors.grey[400] : Colors.grey[700]
     );
 
-    // Split text by newlines to handle paragraphs separately
     List<String> paragraphs = text.split('\n');
 
     return Column(
@@ -137,7 +161,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
       children: paragraphs.map((paragraph) {
         if (paragraph.trim().isEmpty) return const SizedBox(height: 10);
 
-        // Handle Bullet Points
         if (paragraph.trim().startsWith('- ') || paragraph.trim().startsWith('* ')) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6.0, left: 8.0),
@@ -147,8 +170,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
                 Text("• ", style: baseStyle.copyWith(fontWeight: FontWeight.bold)),
                 Expanded(
                   child: Text.rich(
-                    _parseRichText(paragraph.substring(2), baseStyle),
-                    textAlign: TextAlign.justify, // Justify bullets too
+                    _parseRichText(paragraph.substring(2), baseStyle, isDark),
+                    textAlign: TextAlign.justify,
                   ),
                 ),
               ],
@@ -156,53 +179,46 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           );
         }
 
-        // Handle Normal Paragraphs
         return Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Text.rich(
-            _parseRichText(paragraph, baseStyle),
-            textAlign: TextAlign.justify, // THE KEY REQUIREMENT
+            _parseRichText(paragraph, baseStyle, isDark),
+            textAlign: TextAlign.justify,
           ),
         );
       }).toList(),
     );
   }
 
-  /// Helper to parse **bold** and *italic* inside a string
-  TextSpan _parseRichText(String text, TextStyle baseStyle) {
+  TextSpan _parseRichText(String text, TextStyle baseStyle, bool isDark) {
     List<TextSpan> spans = [];
-    
-    // Regex to capture **bold** or *italic*
-    // Group 1: **bold** content
-    // Group 2: *italic* content
     final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*');
-    
     int lastMatchEnd = 0;
 
     for (final match in regex.allMatches(text)) {
-      // Text before match
       if (match.start > lastMatchEnd) {
         spans.add(TextSpan(text: text.substring(lastMatchEnd, match.start)));
       }
 
       if (match.group(1) != null) {
-        // **Bold**
+        // ✅ BOLD FIX: Use White for Dark Mode, Black for Light Mode
         spans.add(TextSpan(
           text: match.group(1),
-          style: baseStyle.copyWith(fontWeight: FontWeight.bold, color: Colors.black87), // Stronger color for bold
+          style: baseStyle.copyWith(
+            fontWeight: FontWeight.bold, 
+            color: isDark ? Colors.white : Colors.black87
+          ), 
         ));
       } else if (match.group(2) != null) {
-        // *Italic*
+        // Italic
         spans.add(TextSpan(
           text: match.group(2),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ));
       }
-
       lastMatchEnd = match.end;
     }
 
-    // Remaining text
     if (lastMatchEnd < text.length) {
       spans.add(TextSpan(text: text.substring(lastMatchEnd)));
     }

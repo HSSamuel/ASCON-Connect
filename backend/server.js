@@ -11,7 +11,7 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
-const logger = require("./utils/logger"); // ✅ Import Logger
+const logger = require("./utils/logger");
 
 // 1. Initialize the App
 const app = express();
@@ -129,6 +129,7 @@ app.use("/api/events", eventsRoute);
 app.use("/api/programme-interest", programmeInterestRoute);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/event-registration", eventRegistrationRoute);
+app.use("/api/jobs", require("./routes/jobs"));
 
 // ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);

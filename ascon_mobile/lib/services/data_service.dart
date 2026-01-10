@@ -7,15 +7,13 @@ import 'package:http_parser/http_parser.dart'; // ✅ REQUIRED for MediaType
 import '../config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart'; 
-import 'auth_service.dart'; // ✅ Added to support AuthService calls
+import 'auth_service.dart'; 
 
 class DataService {
   
-  // ✅ Update the _getHeaders method to trigger the self-healing refresh
+  // ✅ AUTO-REFRESH TOKEN HANDLER
   Future<Map<String, String>> _getHeaders() async {
-    // Use AuthService to get the token (it handles the refresh logic automatically)
-    // This ensures that if a token is expired, it's fixed BEFORE the request is sent.
-    final String? token = await AuthService().getToken(); // ✅ This calls the refresh logic
+    final String? token = await AuthService().getToken(); // Calls refresh logic
     
     return {
       'Content-Type': 'application/json',
@@ -33,7 +31,7 @@ class DataService {
     final prefs = await SharedPreferences.getInstance();
     final String? cachedString = prefs.getString(key);
     if (cachedString != null) {
-      print("📱 Loaded $key from Cache (Offline Mode)");
+      debugPrint("📱 Loaded $key from Cache (Offline Mode)");
       return jsonDecode(cachedString);
     }
     return null;
@@ -41,7 +39,7 @@ class DataService {
 
   dynamic _handleResponse(http.Response response) {
     if (response.statusCode == 401 || response.statusCode == 403) {
-      _forceLogout(); // ✅ Redirects to LoginScreen if session is invalid
+      _forceLogout(); 
       throw Exception('Session expired'); 
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -62,7 +60,9 @@ class DataService {
     );
   }
 
-  // --- 1. USER PROFILE ---
+  // ==========================================
+  // 1. USER PROFILE
+  // ==========================================
   Future<Map<String, dynamic>?> fetchProfile() async {
     try {
       final headers = await _getHeaders();
@@ -75,36 +75,26 @@ class DataService {
       }
       return data;
     } catch (e) {
-      print("⚠️ Network Error. Trying Cache...");
+      debugPrint("⚠️ Network Error. Trying Cache...");
       return null; 
     }
   }
 
-  // ✅ UPDATE PROFILE (With Strict Content-Type)
   Future<bool> updateProfile(Map<String, String> fields, XFile? imageFile) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      // Ensure we use a fresh token for the multipart request
       final token = await AuthService().getToken();
       if (token == null) return false;
 
       final uri = Uri.parse('${AppConfig.baseUrl}/api/profile/update');
-      
       final request = http.MultipartRequest('PUT', uri);
 
-      request.headers.addAll({
-        'auth-token': token,
-      });
-
+      request.headers.addAll({'auth-token': token});
       request.fields.addAll(fields);
 
       if (imageFile != null) {
         final bytes = await imageFile.readAsBytes();
-        
-        String mimeType = "image/jpeg"; // Default
-        if (imageFile.name.toLowerCase().endsWith(".png")) {
-          mimeType = "image/png";
-        }
+        String mimeType = "image/jpeg"; 
+        if (imageFile.name.toLowerCase().endsWith(".png")) mimeType = "image/png";
         
         var type = MediaType.parse(mimeType);
 
@@ -112,27 +102,23 @@ class DataService {
           'profilePicture',
           bytes,
           filename: imageFile.name,
-          contentType: type, // ✅ EXPLICIT CONTENT TYPE
+          contentType: type,
         ));
       }
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode == 200) {
-        print("✅ Profile Updated Successfully");
-        return true;
-      } else {
-        print("❌ Update Failed: ${response.body}");
-        return false;
-      }
+      return response.statusCode == 200;
     } catch (e) {
-      print("❌ Update Error: $e");
+      debugPrint("❌ Update Error: $e");
       return false;
     }
   }
 
-  // --- 2. EVENTS ---
+  // ==========================================
+  // 2. EVENTS
+  // ==========================================
   Future<List<dynamic>> fetchEvents() async {
     const String cacheKey = 'cached_events';
     try {
@@ -158,7 +144,7 @@ class DataService {
     }
   }
 
-  // ✅ FETCH SINGLE EVENT BY ID (Fixes notification loading stuck)
+  // ✅ FETCH SINGLE EVENT (Fixes notification deep link)
   Future<Map<String, dynamic>?> fetchEventById(String id) async {
     try {
       final headers = await _getHeaders();
@@ -167,6 +153,7 @@ class DataService {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        // Handle { "data": {...} } wrapper
         if (data is Map<String, dynamic> && data.containsKey('data')) {
           return data['data'];
         }
@@ -179,38 +166,30 @@ class DataService {
     }
   }
 
-  // --- 3. DIRECTORY ---
-  Future<List<dynamic>> fetchDirectory({String query = ""}) async {
-    final bool isDefaultFetch = query.isEmpty;
-    const String cacheKey = 'cached_directory';
+  // ==========================================
+  // 3. PROGRAMMES (Fixes Notification Loading)
+  // ==========================================
+  // ✅ NEW: Missing function required for Programme Notifications
+  Future<Map<String, dynamic>?> fetchProgrammeById(String id) async {
     try {
       final headers = await _getHeaders();
-      String endpoint = '${AppConfig.baseUrl}/api/directory';
-      if (query.isNotEmpty) endpoint += '?search=$query';
-      
-      final url = Uri.parse(endpoint);
+      // Ensure this matches the route we added in admin.js
+      final url = Uri.parse('${AppConfig.baseUrl}/api/admin/programmes/$id'); 
       final response = await http.get(url, headers: headers);
-      final data = _handleResponse(response);
-      
-      List<dynamic> alumni = [];
-      if (data is List) {
-        alumni = data;
-      } else if (data is Map && data.containsKey('data')) {
-        alumni = data['data']; 
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic> && data.containsKey('data')) {
+          return data['data'];
+        }
+        return data;
       }
-      
-      if (isDefaultFetch) await _cacheData(cacheKey, alumni);
-      return alumni;
     } catch (e) {
-      if (isDefaultFetch) {
-        final cached = await _getCachedData(cacheKey);
-        if (cached != null && cached is List) return cached;
-      }
-      return [];
+      debugPrint("Error fetching programme: $e");
     }
+    return null;
   }
 
-  // ✅ Register Programme Interest
   Future<Map<String, dynamic>> registerProgrammeInterest({
     required String programmeId,
     required String fullName,
@@ -262,7 +241,121 @@ class DataService {
     }
   }
 
-  // ✅ Register for Events (Reunions, Webinars, etc.)
+  // ==========================================
+  // 4. JOBS / CAREERS (New Feature)
+  // ==========================================
+  // ✅ NEW: Fetches jobs list for the Jobs Screen
+  Future<List<dynamic>> fetchJobs() async {
+    const String cacheKey = 'cached_jobs';
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/jobs');
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      List<dynamic> jobs = [];
+      if (data is List) {
+        jobs = data;
+      } else if (data is Map && data.containsKey('data')) {
+        jobs = data['data'];
+      }
+      
+      await _cacheData(cacheKey, jobs);
+      return jobs;
+    } catch (e) {
+      final cached = await _getCachedData(cacheKey);
+      if (cached != null && cached is List) return cached;
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 5. DIRECTORY
+  // ==========================================
+  Future<List<dynamic>> fetchDirectory({String query = ""}) async {
+    final bool isDefaultFetch = query.isEmpty;
+    const String cacheKey = 'cached_directory';
+    try {
+      final headers = await _getHeaders();
+      String endpoint = '${AppConfig.baseUrl}/api/directory';
+      if (query.isNotEmpty) endpoint += '?search=$query';
+      
+      final url = Uri.parse(endpoint);
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+      
+      List<dynamic> alumni = [];
+      if (data is List) {
+        alumni = data;
+      } else if (data is Map && data.containsKey('data')) {
+        alumni = data['data']; 
+      }
+      
+      if (isDefaultFetch) await _cacheData(cacheKey, alumni);
+      return alumni;
+    } catch (e) {
+      if (isDefaultFetch) {
+        final cached = await _getCachedData(cacheKey);
+        if (cached != null && cached is List) return cached;
+      }
+      return [];
+    }
+  }
+
+  // ==========================================
+  // 6. NOTIFICATIONS
+  // ==========================================
+  Future<List<dynamic>> fetchMyNotifications() async {
+    try {
+      final headers = await _getHeaders(); 
+      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/my-notifications');
+      
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      if (data != null && data['success'] == true) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Notification Fetch Error: $e");
+      return [];
+    }
+  }
+
+  Future<int> fetchUnreadNotificationCount() async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/unread-count');
+      
+      final response = await http.get(url, headers: headers);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['count'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  // ✅ NEW: Delete Notification capability
+  Future<bool> deleteNotification(String id) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/$id');
+      
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Error deleting notification: $e");
+      return false;
+    }
+  }
+
+  // ==========================================
+  // 7. MISC REGISTRATIONS
+  // ==========================================
   Future<Map<String, dynamic>> registerEventInterest({
     required String eventId,
     required String eventTitle,
@@ -301,44 +394,6 @@ class DataService {
       return {"success": response.statusCode == 201, "message": data['message'] ?? "Registration submitted"};
     } catch (e) {
       return {"success": false, "message": "Connection error. Please try again."};
-    }
-  }
-
-  // ✅ FETCH MY NOTIFICATIONS (Authenticated)
-  Future<List<dynamic>> fetchMyNotifications() async {
-    try {
-      final headers = await _getHeaders(); // ✅ Automatically includes fresh token
-      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/my-notifications');
-      
-      final response = await http.get(url, headers: headers);
-      final data = _handleResponse(response); // ✅ Automatically handles session expiration
-
-      if (data != null && data['success'] == true) {
-        return data['data'];
-      }
-      return [];
-    } catch (e) {
-      debugPrint("Notification Fetch Error: $e");
-      return [];
-    }
-  }
-
-  // ✅ NEW: FETCH UNREAD COUNT (Specifically for Bell Heartbeat)
-  // This allows the app to check for admin posts every 60 seconds without heavy load.
-  Future<int> fetchUnreadNotificationCount() async {
-    try {
-      final headers = await _getHeaders();
-      final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/unread-count');
-      
-      final response = await http.get(url, headers: headers);
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['unreadCount'] ?? 0;
-      }
-      return 0;
-    } catch (e) {
-      debugPrint("Unread Count Fetch Error: $e");
-      return 0;
     }
   }
 }

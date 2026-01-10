@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // ✅ REQUIRED
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -19,12 +20,10 @@ class AboutScreen extends StatelessWidget {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final dividerColor = Theme.of(context).dividerColor;
 
     return Scaffold(
-      backgroundColor: scaffoldBg, // ✅ Dynamic Background
+      backgroundColor: scaffoldBg, 
       appBar: AppBar(
         title: Text("About ASCON", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
         backgroundColor: primaryColor,
@@ -35,7 +34,7 @@ class AboutScreen extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 1. ENHANCED HERO SECTION ---
+            // --- 1. ENHANCED HERO SECTION (Kept Original) ---
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
@@ -82,7 +81,7 @@ class AboutScreen extends StatelessWidget {
                         color: const Color(0xFFFFD700), // Gold
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
-                        fontStyle: FontStyle.italic, // ✅ ADDED ITALIC
+                        fontStyle: FontStyle.italic, 
                       ),
                     ),
                   ),
@@ -97,7 +96,7 @@ class AboutScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  // Vision Card
+                  // Vision Card (Full Text Restored)
                   _buildInfoCard(
                     context,
                     icon: Icons.visibility_outlined,
@@ -107,7 +106,7 @@ class AboutScreen extends StatelessWidget {
                   
                   const SizedBox(height: 16),
 
-                  // Mission Card
+                  // Mission Card (Full Text Restored)
                   _buildInfoCard(
                     context,
                     icon: Icons.track_changes_outlined,
@@ -117,12 +116,12 @@ class AboutScreen extends StatelessWidget {
                   
                   const SizedBox(height: 16),
 
-                  // Contact Card
+                  // Contact Card (Kept Original)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: cardColor, // ✅ Dynamic Card
+                      color: cardColor, 
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         if (!isDark)
@@ -142,13 +141,10 @@ class AboutScreen extends StatelessWidget {
                         const SizedBox(height: 20),
                         _buildContactRow(context, Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        // ✅ Clickable Email
                         _buildContactRow(context, Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        // ✅ Clickable Phone
                         _buildContactRow(context, Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
                         Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        // ✅ Clickable Website
                         _buildContactRow(context, Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
                       ],
                     ),
@@ -156,7 +152,36 @@ class AboutScreen extends StatelessWidget {
 
                   const SizedBox(height: 30),
 
-                  // Visit Button
+                  // ✅ 3. NEW SOCIAL MEDIA SECTION (Added Here)
+                  Text(
+                    "Connect with ASCON", 
+                    style: GoogleFonts.inter(
+                      fontSize: 14, 
+                      fontWeight: FontWeight.bold, 
+                      color: Colors.grey[600]
+                    )
+                  ),
+                  const SizedBox(height: 15),
+                  
+                  // Social Icons Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSocialIcon(FontAwesomeIcons.facebook, const Color(0xFF1877F2), "https://web.facebook.com/ascontopobadagry/?_rdc=1&_rdr#"),
+                      const SizedBox(width: 20),
+                      _buildSocialIcon(FontAwesomeIcons.xTwitter, isDark ? Colors.white : Colors.black, "https://x.com/AsconBadagry"),
+                      const SizedBox(width: 20),
+                      _buildSocialIcon(FontAwesomeIcons.linkedin, const Color(0xFF0077B5), "https://www.linkedin.com/company/administrative-staff-college-of-nigeria-ascon/about"),
+                      const SizedBox(width: 20),
+                      _buildSocialIcon(FontAwesomeIcons.instagram, const Color(0xFFE4405F), "https://www.instagram.com/asconbadagry"),
+                      const SizedBox(width: 20),
+                      _buildSocialIcon(FontAwesomeIcons.youtube, const Color(0xFFFF0000), "https://www.youtube.com/@asconbadagry9403"),
+                    ],
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // Visit Button (Kept Original)
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -191,7 +216,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER: Info Card (Justified Text) ---
+  // --- HELPER: Info Card (Original) ---
   Widget _buildInfoCard(BuildContext context, {required IconData icon, required String title, required String content}) {
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
@@ -232,7 +257,7 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             content,
-            textAlign: TextAlign.justify, // ✅ Apply Justified Alignment
+            textAlign: TextAlign.justify, 
             style: GoogleFonts.inter(
               fontSize: 14,
               height: 1.5,
@@ -244,30 +269,46 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER: Contact Row (Centered) ---
+  // --- HELPER: Contact Row (Original) ---
   Widget _buildContactRow(BuildContext context, IconData icon, String text, {VoidCallback? onTap}) {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     
     return GestureDetector(
       onTap: onTap,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center, // ✅ Align Center
+        mainAxisAlignment: MainAxisAlignment.center, 
         children: [
           Icon(icon, color: const Color(0xFFD4AF37), size: 18),
           const SizedBox(width: 10),
           Flexible(
             child: Text(
               text,
-              textAlign: TextAlign.center, // ✅ Align Text Center
+              textAlign: TextAlign.center, 
               style: GoogleFonts.inter(
                 fontSize: 14, 
                 color: onTap != null ? Theme.of(context).primaryColor : textColor, 
                 fontWeight: FontWeight.w500,
-                decoration: onTap != null ? TextDecoration.underline : TextDecoration.none, // Highlight clickable links
+                decoration: onTap != null ? TextDecoration.underline : TextDecoration.none, 
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // --- NEW HELPER: Social Icon ---
+  Widget _buildSocialIcon(IconData icon, Color color, String url) {
+    return InkWell(
+      onTap: () => _launchURL(url),
+      borderRadius: BorderRadius.circular(50),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: FaIcon(icon, color: color, size: 22),
       ),
     );
   }

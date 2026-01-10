@@ -43,20 +43,30 @@ function ProgrammesManager({ token, canEdit }) {
     });
   };
 
+  // 🧹 HELPER: Sanitizes data to remove system fields that cause API errors
+  const sanitizePayload = (data) => {
+    // Destructure to separate system fields from the rest
+    const { _id, id, createdAt, updatedAt, __v, ...cleanData } = data;
+    return cleanData;
+  };
+
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
     try {
+      // ✅ SANITIZE: Remove _id and system fields before sending
+      const cleanData = sanitizePayload(progForm);
+
       if (editingId) {
         await axios.put(
           `${BASE_URL}/api/admin/programmes/${editingId}`,
-          progForm,
+          cleanData, // Send cleaned data
           {
             headers: { "auth-token": token },
           }
         );
         showToast("Programme updated");
       } else {
-        await axios.post(`${BASE_URL}/api/admin/programmes`, progForm, {
+        await axios.post(`${BASE_URL}/api/admin/programmes`, cleanData, {
           headers: { "auth-token": token },
         });
         showToast("Programme created");
@@ -64,6 +74,7 @@ function ProgrammesManager({ token, canEdit }) {
       resetForm();
       programmes.refresh();
     } catch (err) {
+      console.error(err); // Log error for debugging
       showToast("Error saving programme", "error");
     }
   };
@@ -108,6 +119,7 @@ function ProgrammesManager({ token, canEdit }) {
         handleProgrammeSubmit={handleProgrammeSubmit}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
+          // Copy existing data. Any extra fields (like _id) will be removed by sanitizePayload on submit.
           setProgForm({ ...prog, image: prog.image || "" });
           window.scrollTo(0, 0);
         }}

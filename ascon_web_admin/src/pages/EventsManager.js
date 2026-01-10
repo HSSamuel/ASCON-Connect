@@ -15,7 +15,6 @@ function EventsManager({ token, canEdit }) {
   const [eventForm, setEventForm] = useState({
     title: "",
     description: "",
-    // ❌ REMOVED: location
     type: "News",
     image: "",
   });
@@ -26,8 +25,15 @@ function EventsManager({ token, canEdit }) {
 
   const resetForm = () => {
     setEditingId(null);
-    // ❌ REMOVED: location
     setEventForm({ title: "", description: "", type: "News", image: "" });
+  };
+
+  // 🧹 HELPER: Sanitizes data to remove system fields AND 'location'
+  const sanitizePayload = (data) => {
+    // Destructure to separate system fields + location from the rest
+    // We explicitly remove 'location' here so the backend doesn't complain
+    const { _id, id, createdAt, updatedAt, __v, location, ...cleanData } = data;
+    return cleanData;
   };
 
   const handleEventSubmit = async (e) => {
@@ -36,10 +42,13 @@ function EventsManager({ token, canEdit }) {
       return showToast("Title must be at least 5 chars", "error");
 
     try {
+      // ✅ SANITIZE: Remove _id, location, and system fields before sending
+      const cleanData = sanitizePayload(eventForm);
+
       if (editingId) {
         await axios.put(
           `${BASE_URL}/api/admin/events/${editingId}`,
-          eventForm,
+          cleanData, // Send cleaned data (no location)
           {
             headers: { "auth-token": token },
           }
@@ -48,7 +57,7 @@ function EventsManager({ token, canEdit }) {
       } else {
         await axios.post(
           `${BASE_URL}/api/admin/events`,
-          { ...eventForm, date: new Date() },
+          { ...cleanData, date: new Date() },
           {
             headers: { "auth-token": token },
           }
@@ -58,6 +67,7 @@ function EventsManager({ token, canEdit }) {
       resetForm();
       events.refresh();
     } catch (err) {
+      console.error(err);
       showToast(err.response?.data?.message || "Error saving event", "error");
     }
   };
@@ -102,7 +112,12 @@ function EventsManager({ token, canEdit }) {
         handleEventSubmit={handleEventSubmit}
         startEditEvent={(evt) => {
           setEditingId(evt._id);
-          setEventForm({ ...evt, image: evt.image || "" });
+          // Even if 'evt' has a location field from old DB data, we copy it here...
+          // BUT sanitizePayload() will strip it out before we save.
+          setEventForm({
+            ...evt,
+            image: evt.image || "",
+          });
           window.scrollTo(0, 0);
         }}
         cancelEditEvent={resetForm}

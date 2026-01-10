@@ -8,6 +8,7 @@ import UsersManager from "./pages/UsersManager";
 import EventsManager from "./pages/EventsManager";
 import ProgrammesManager from "./pages/ProgrammesManager";
 import RegistrationsManager from "./pages/RegistrationsManager";
+import JobsManager from "./pages/JobsManager"; // ✅ 1. NEW IMPORT
 
 import { useAuth } from "./hooks/useAuth";
 import { useStats } from "./hooks/useStats";
@@ -74,6 +75,16 @@ function AdminDashboard({ token, onLogout }) {
           color="#cff4fc"
           onClick={() => setActiveTab("programmes")}
         />
+
+        {/* ✅ 2. NEW STAT CARD FOR JOBS */}
+        <StatCard
+          title="Jobs/Careers"
+          value={stats.jobs || 0} // Safe fallback if API doesn't return count yet
+          icon="💼"
+          color={theme === "light" ? "#e2e3e5" : "#3a3a3a"}
+          onClick={() => setActiveTab("jobs")}
+        />
+
         <StatCard
           title="Registrations"
           value={stats.totalRegistrations}
@@ -98,6 +109,11 @@ function AdminDashboard({ token, onLogout }) {
 
         {activeTab === "programmes" && (
           <ProgrammesManager token={token} canEdit={canEdit} />
+        )}
+
+        {/* ✅ 3. NEW TAB LOGIC */}
+        {activeTab === "jobs" && (
+          <JobsManager token={token} canEdit={canEdit} />
         )}
 
         {activeTab === "registrations" && (

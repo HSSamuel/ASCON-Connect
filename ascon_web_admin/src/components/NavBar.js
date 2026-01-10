@@ -13,19 +13,13 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
     <>
       {/* ==============================
           1. DESKTOP NAVIGATION (Top Bar)
-         ============================== */}
+          ============================== */}
       <nav className="desktop-nav">
         <div className="nav-brand">
-          {/* ✅ REPLACED ICON WITH LOGO */}
-          <img
-            src="/logo.png" // ⚠️ Ensure you have a 'logo.png' in your 'public' folder
-            alt="ASCON Logo"
-            className="brand-logo"
-          />
+          <img src="/logo.png" alt="ASCON Logo" className="brand-logo" />
           <span className="brand-text">ASCON Admin</span>
         </div>
 
-        {/* Links are now pushed to the right via CSS */}
         <div className="nav-links">
           <button
             className={activeTab === "users" ? "active" : ""}
@@ -45,6 +39,15 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           >
             🎓 Programmes
           </button>
+
+          {/* ✅ ADDED JOBS BUTTON HERE */}
+          <button
+            className={activeTab === "jobs" ? "active" : ""}
+            onClick={() => handleTabClick("jobs")}
+          >
+            💼 Jobs
+          </button>
+
           <button
             className={activeTab === "registrations" ? "active" : ""}
             onClick={() => handleTabClick("registrations")}
@@ -60,7 +63,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
 
       {/* ==============================
           2. MOBILE MENU OVERLAY
-         ============================== */}
+          ============================== */}
       {isMenuOpen && (
         <div className="mobile-menu-overlay">
           <div className="mobile-menu-content">
@@ -74,6 +77,12 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
             <button onClick={() => handleTabClick("programmes")}>
               🎓 Programmes
             </button>
+
+            {/* ✅ ADDED JOBS BUTTON HERE */}
+            <button onClick={() => handleTabClick("jobs")}>
+              💼 Jobs / Careers
+            </button>
+
             <button onClick={() => handleTabClick("registrations")}>
               📋 Registrations
             </button>
@@ -90,9 +99,9 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
 
       {/* ==============================
           3. MOBILE BOTTOM BAR
-         ============================== */}
+          ============================== */}
       <div className="mobile-bottom-bar">
-        {/* 1. USERS TAB (Was Home) */}
+        {/* 1. USERS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("users")}
@@ -100,12 +109,12 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           <span
             className={`icon ${activeTab === "users" ? "active-icon" : ""}`}
           >
-            👥 {/* ✅ Changed Icon from 🏠 to 👥 */}
+            👥
           </span>
-          <span className="label">Users</span> {/* ✅ Renamed from "Home" */}
+          <span className="label">Users</span>
         </div>
 
-        {/* 2. EVENTS TAB */}
+        {/* 2. EVENTS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("events")}
@@ -130,7 +139,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           <span className="fab-label">Menu</span>
         </div>
 
-        {/* 3. PROGRAMMES TAB (Was Library) */}
+        {/* 3. PROGRAMMES */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("programmes")}
@@ -140,13 +149,12 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
               activeTab === "programmes" ? "active-icon" : ""
             }`}
           >
-            🎓 {/* ✅ Changed Icon from 📂 to 🎓 */}
+            🎓
           </span>
-          <span className="label">Programmes</span>{" "}
-          {/* ✅ Renamed from "Library" */}
+          <span className="label">Programmes</span>
         </div>
 
-        {/* 4. REGISTRATIONS TAB (Was Contact) */}
+        {/* 4. REGISTRATIONS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("registrations")}
@@ -156,10 +164,9 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
               activeTab === "registrations" ? "active-icon" : ""
             }`}
           >
-            📋 {/* ✅ Changed Icon from ✈️ to 📋 */}
+            📋
           </span>
-          <span className="label">Regs</span>{" "}
-          {/* ✅ Renamed from "Contact" (Shortened for mobile space) */}
+          <span className="label">Regs</span>
         </div>
       </div>
     </>

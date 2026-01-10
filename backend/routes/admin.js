@@ -60,9 +60,19 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-  // ❌ Removed location
   type: Joi.string()
-    .valid("News", "Reunion", "Webinar", "General")
+    .valid(
+      "News",
+      "Event",
+      "Reunion",
+      "Webinar",
+      "Seminar",
+      "Conference",
+      "Workshop",
+      "Symposium",
+      "AGM",
+      "Induction"
+    )
     .default("News"),
   image: Joi.string().optional().allow(""),
 });
@@ -71,7 +81,7 @@ const programmeSchema = Joi.object({
   title: Joi.string().min(3).required(),
   code: Joi.string().optional().allow(""),
   description: Joi.string().min(10).required(),
-  location: Joi.string().required(), // ✅ Added location
+  location: Joi.string().required(),
   duration: Joi.string().required(),
   fee: Joi.string().optional().allow(""),
   image: Joi.string().optional().allow(""),
@@ -123,9 +133,11 @@ router.get("/users", verifyAdmin, async (req, res) => {
     }
 
     const skip = (page - 1) * limit;
+
+    // Sort Admins first, then newest
     const users = await User.find(query)
       .select("-password")
-      .sort({ createdAt: -1 })
+      .sort({ isAdmin: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
@@ -225,7 +237,7 @@ router.post("/events", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { title, description, date, type, image } = req.body; // ❌ No location
+    const { title, description, date, type, image } = req.body;
 
     const newEvent = new Event({
       title,
@@ -236,7 +248,6 @@ router.post("/events", verifyEditor, async (req, res) => {
     });
     await newEvent.save();
 
-    // 🔔 Updated Notification (No Location)
     await sendBroadcastNotification(
       `New ${type}: ${title}`,
       `${description.substring(0, 60)}...`,
@@ -302,13 +313,24 @@ router.get("/programmes", async (req, res) => {
   }
 });
 
+// ✅ NEW: Public route to fetch a single programme by ID (For Notifications)
+router.get("/programmes/:id", async (req, res) => {
+  try {
+    const programme = await Programme.findById(req.params.id);
+    if (!programme) return res.status(404).json({ message: "Programme not found" });
+    res.json({ data: programme }); // Wraps in "data" object
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.post("/programmes", verifyEditor, async (req, res) => {
   const { error } = programmeSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
     const { title, code, description, location, duration, fee, image } =
-      req.body; // ✅ Added location
+      req.body;
 
     const exists = await Programme.findOne({ title });
     if (exists)
@@ -325,9 +347,10 @@ router.post("/programmes", verifyEditor, async (req, res) => {
     });
     await newProg.save();
 
+    // ✅ FIXED: Notification now uses description instead of hardcoded location
     await sendBroadcastNotification(
       `New Programme: ${title}`,
-      `Location: ${location}. Enroll now!`,
+      `${description.substring(0, 60)}...`, // Use description snippet
       {
         route: "programme_detail",
         id: newProg._id.toString(),

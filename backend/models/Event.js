@@ -14,10 +14,21 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  // ❌ REMOVED: Location field
   type: {
     type: String,
-    enum: ["News", "Event", "Webinar", "Reunion", "Seminar"],
+    // ✅ UPDATE: Added new professional terms
+    enum: [
+      "News",
+      "Event",
+      "Webinar",
+      "Reunion",
+      "Seminar",
+      "Conference",
+      "Workshop",
+      "Symposium",
+      "AGM",
+      "Induction",
+    ],
     default: "News",
   },
   image: {

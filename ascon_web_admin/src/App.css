@@ -592,7 +592,7 @@ label {
 
 /* The container that holds input + button */
 .password-wrapper {
-  position: relative; /* Essential for absolute positioning of children */
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -601,23 +601,23 @@ label {
 /* The input field itself */
 .password-wrapper input {
   width: 100%;
-  padding-right: 45px; /* Create space on the right so text doesn't hit the icon */
-  box-sizing: border-box; /* Ensures padding doesn't break the width */
+  padding-right: 45px; /* Space for icon */
+  box-sizing: border-box;
 }
 
 /* The Eye Icon Button */
 .password-toggle-btn {
-  position: absolute; /* Takes it out of flow to overlay on input */
-  right: 12px; /* Distance from right edge */
-  top: 55%; /* Center vertically (tweak if needed) */
-  transform: translateY(-50%); /* Perfect vertical centering */
+  position: absolute;
+  right: 12px;
+  top: 55%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   cursor: pointer;
   font-size: 1.2rem;
   padding: 0;
-  z-index: 10; /* Ensure it sits on top of the input */
-  color: #666; /* Icon color */
+  z-index: 10;
+  color: #666;
   transition: color 0.2s;
 }
 
@@ -626,42 +626,95 @@ label {
 }
 
 /* =========================================
-   MOBILE OPTIMIZATIONS (Login & Reset Pages)
+   📱 RESPONSIVE & MOBILE OPTIMIZATIONS
    ========================================= */
+
+/* 1. TABLET / SMALL LAPTOP (Max Width 768px) */
 @media (max-width: 768px) {
   
-  /* Shrink the main white card */
+  /* Adjust Card for Tablets */
   .login-card, 
   .reset-card {
-    width: 90%;          /* Take up most of the screen width */
-    max-width: 350px;    /* But never get too wide */
-    padding: 25px 20px;  /* Reduce internal spacing */
-    margin-top: -50px;   /* Move it up slightly visually */
+    width: 85%;          
+    max-width: 300px;    /* ✅ Fixed: Set a reasonable width for tablets */
+    padding: 30px;       
+    margin-top: -30px;   
   }
 
   /* Shrink the logo */
   .login-card img, 
   .reset-card img {
-    width: 80px !important; /* Force logo smaller */
+    width: 90px !important; 
   }
 
-  /* Make text smaller */
+  /* Adjust Typography */
   .login-title, 
   .reset-title {
-    font-size: 1.5rem;   /* Smaller heading */
-    margin-bottom: 5px;
+    font-size: 1.6rem;   
+    margin-bottom: 10px;
   }
 
   .login-subtitle, 
   .reset-subtitle {
-    font-size: 0.9rem;   /* Smaller subtitle */
+    font-size: 0.95rem;   
     margin-bottom: 20px;
   }
+}
 
-  /* Adjust input fields */
-  .login-input, 
-  .reset-input {
-    padding: 10px;       /* Slightly smaller clickable area */
+/* =========================================
+   2. MOBILE PHONES (Max Width 600px)
+   ========================================= */
+@media (max-width: 600px) {
+  
+  /* ✅ COMPACT MAIN CARD */
+  .login-card,
+  .reset-card {
+    width: 90%;           /* Use 90% of screen width */
+    max-width: 280px;     /* Slight increase to 280px to fit Google button comfortably */
+    padding: 25px 15px;   /* Reduce side padding to give content more room */
+    overflow: hidden;     /* ⚠️ CRITICAL: Prevents Google button from overflowing */
+  }
+
+  /* ✅ TARGET GOOGLE WRAPPER specifically */
+  /* (Make sure your GoogleLogin component is wrapped in a div with this class or similar) */
+  .google-login-container, 
+  #signInDiv { 
+    width: 100% !important;
+    display: flex;
+    justify-content: center;
+    overflow: hidden; 
+    transform: scale(0.9); /* ⚠️ TRICK: Slightly shrinks Google button to fit tight spaces */
+    margin-top: 10px;
+  }
+
+  /* Force logo smaller on phone */
+  .login-card img, 
+  .reset-card img {
+    width: 70px !important; 
+    margin-bottom: 5px;
+  }
+
+  /* Smaller Text for Mobile */
+  .login-title, .reset-title {
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+  }
+
+  /* Compact Input Fields */
+  .login-input, .reset-input {
+    padding: 10px;
+    font-size: 14px;
+    height: 40px; /* Explicit height helps alignment */
+  }
+
+  /* Adjust spacing between inputs */
+  .form-group {
+    margin-bottom: 10px;
+  }
+  
+  /* Compact Login Button */
+  .login-btn {
+    padding: 10px;
     font-size: 14px;
   }
 }

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math'; // Required for Animation
+import 'dart:math'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import 'directory_screen.dart';
 import 'profile_screen.dart';
 import 'events_screen.dart';
+import 'jobs_screen.dart'; 
 import 'about_screen.dart';
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
@@ -50,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _screens = [
         _DashboardView(userName: _loadedName),
         const EventsScreen(),
+        const JobsScreen(), 
         const DirectoryScreen(),
         ProfileScreen(userName: _loadedName),
       ];
@@ -69,10 +71,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_screens.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final navBarColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
-    final unselectedItemColor = Colors.grey;
-
+    final navBarColor = Theme.of(context).cardColor;
+    
     return PopScope(
       canPop: _tabHistory.length <= 1,
       onPopInvokedWithResult: (didPop, result) {
@@ -84,32 +85,64 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Scaffold(
         body: _screens[_currentIndex],
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
+        
+        // 1. JOBS ICON (Floating Button)
+        floatingActionButton: SizedBox(
+          width: 58, 
+          height: 58, 
+          child: FloatingActionButton(
+            onPressed: () => _onTabTapped(2), 
+            backgroundColor: _currentIndex == 2 ? primaryColor : Colors.grey, 
+            elevation: 6.0, 
+            shape: const CircleBorder(),
+            child: const Icon(Icons.work, color: Colors.white, size: 28), 
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked, 
+
+        // 2. BOTTOM APP BAR (White Box)
+        bottomNavigationBar: SizedBox(
+          height: 60, // ✅ Fixed height
+          child: BottomAppBar(
+            shape: const CircularNotchedRectangle(), 
+            notchMargin: 6.0, 
             color: navBarColor,
-            boxShadow: [
-              if (!isDark) 
-                const BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))
-            ],
+            elevation: 0, 
+            clipBehavior: Clip.antiAlias,
+            padding: EdgeInsets.zero, 
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround, 
+              // ✅ CHANGED: Center vertically instead of pushing to bottom
+              crossAxisAlignment: CrossAxisAlignment.center, 
+              children: <Widget>[
+                _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor),
+                _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor),
+
+                const SizedBox(width: 48), // Spacer
+
+                _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor),
+                _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor),
+              ],
+            ),
           ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: _onTabTapped, 
-            selectedItemColor: primaryColor,
-            unselectedItemColor: unselectedItemColor,
-            backgroundColor: navBarColor, 
-            elevation: 0,
-            type: BottomNavigationBarType.fixed,
-            iconSize: 22,
-            selectedFontSize: 12,
-            unselectedFontSize: 12,
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: "Home"),
-              BottomNavigationBarItem(icon: Icon(Icons.event_outlined), activeIcon: Icon(Icons.event), label: "Events"),
-              BottomNavigationBarItem(icon: Icon(Icons.list_alt), activeIcon: Icon(Icons.list), label: "Directory"),
-              BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: "Profile"),
-            ],
-          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ Helper to position icons
+  Widget _buildNavItem({required IconData icon, required IconData activeIcon, required int index, required Color color}) {
+    final isSelected = _currentIndex == index;
+    return InkWell(
+      onTap: () => _onTabTapped(index),
+      borderRadius: BorderRadius.circular(30),
+      child: Padding(
+        // ✅ CHANGED: Removed bottom padding to ensure true centering
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), 
+        child: Icon(
+          isSelected ? activeIcon : icon,
+          color: isSelected ? color : Colors.grey[400], 
+          size: 28, 
         ),
       ),
     );
@@ -117,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW
+// DASHBOARD VIEW (Unchanged)
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -194,20 +227,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         });
       }
     } catch (e) {
-      final notifications = await _dataService.fetchMyNotifications();
-      if (mounted) {
-        setState(() {
-          _unreadNotifications = notifications.length;
-          if (_unreadNotifications > 0) {
-            if (!_bellController.isAnimating) {
-              _bellController.repeat(reverse: true);
-            }
-          } else {
-            _bellController.stop();
-            _bellController.reset();
-          }
-        });
-      }
+      // Fallback
     }
   }
 
@@ -248,21 +268,22 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     final sheetColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
 
+    Future<List<dynamic>> notificationFuture = _dataService.fetchMyNotifications();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: sheetColor, 
+      isScrollControlled: true, 
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return FutureBuilder<List<dynamic>>(
-          future: _dataService.fetchMyNotifications(),
-          builder: (context, snapshot) {
-            final notifications = snapshot.data ?? [];
-            return Padding(
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.7, 
               padding: const EdgeInsets.all(20),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -281,36 +302,56 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                             _bellController.reset();
                           }); 
                         },
-                        child: const Text("Mark all read", style: TextStyle(color: Colors.grey)),
+                        child: const Text("Close", style: TextStyle(color: Colors.grey)),
                       )
                     ],
                   ),
                   const SizedBox(height: 10),
                   
-                  if (snapshot.connectionState == ConnectionState.waiting)
-                    const Center(child: Padding(
-                      padding: EdgeInsets.all(20.0),
-                      child: CircularProgressIndicator(),
-                    ))
-                  else if (notifications.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 30),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
-                            const SizedBox(height: 10),
-                            const Text("No new notifications", style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    )
-                  else
-                    ...notifications.map((n) => _buildNotificationTile(
-                      n['title'] ?? "ASCON Update", 
-                      n['message'] ?? "",
-                    )).toList(),
-                  const SizedBox(height: 20),
+                  Expanded(
+                    child: FutureBuilder<List<dynamic>>(
+                      future: notificationFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        
+                        final notifications = snapshot.data ?? [];
+                        
+                        if (notifications.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
+                                const SizedBox(height: 10),
+                                const Text("No new notifications", style: TextStyle(color: Colors.grey)),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          itemCount: notifications.length,
+                          itemBuilder: (context, index) {
+                            final n = notifications[index];
+                            return _buildNotificationTile(
+                              n['title'] ?? "Update", 
+                              n['message'] ?? "",
+                              n['_id'],
+                              () async {
+                                await _dataService.deleteNotification(n['_id']);
+                                setSheetState(() {
+                                  notificationFuture = _dataService.fetchMyNotifications();
+                                });
+                                _checkAuthenticatedNotifications();
+                              }
+                            );
+                          },
+                        );
+                      }
+                    ),
+                  ),
                 ],
               ),
             );
@@ -318,17 +359,11 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         );
       },
     ).whenComplete(() {
-      if (_unreadNotifications > 0) {
-          setState(() {
-              _unreadNotifications = 0;
-              _bellController.stop();
-              _bellController.reset();
-          });
-      }
+      _checkAuthenticatedNotifications(); 
     });
   }
 
-  Widget _buildNotificationTile(String title, String subtitle) {
+  Widget _buildNotificationTile(String title, String subtitle, String? id, VoidCallback onDelete) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final tileColor = isDark ? Colors.grey[800] : Colors.grey[50];
     final borderColor = Theme.of(context).dividerColor;
@@ -361,6 +396,13 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               ],
             ),
           ),
+          if (id != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+              onPressed: onDelete,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            )
         ],
       ),
     );
@@ -372,7 +414,13 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
       case 'Webinar': return Colors.blue[700]!;     
       case 'Seminar': return Colors.purple[700]!;   
       case 'News':    return Colors.orange[800]!;   
-      default:        return Colors.grey[700]!;
+      case 'Conference': return const Color(0xFF0D47A1); 
+      case 'Workshop':   return const Color(0xFF00695C); 
+      case 'Symposium':  return const Color(0xFFAD1457); 
+      case 'AGM':        return const Color(0xFFFF8F00); 
+      case 'Induction':  return const Color(0xFF2E7D32); 
+      case 'Event':      return Colors.indigo[900]!;     
+      default:           return Colors.grey[700]!;
     }
   }
 
@@ -625,7 +673,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               ),
               Expanded( 
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ REDUCED PADDING
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
@@ -641,7 +689,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                         ),
                       ),
                       
-                      const SizedBox(height: 6), // ✅ REDUCED GAP
+                      const SizedBox(height: 6), 
 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -792,7 +840,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
               ),
               Expanded( 
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ REDUCED PADDING
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
@@ -808,7 +856,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                         ),
                       ),
                       
-                      const SizedBox(height: 6), // ✅ REDUCED GAP
+                      const SizedBox(height: 6), 
 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

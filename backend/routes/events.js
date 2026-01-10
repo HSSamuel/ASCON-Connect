@@ -12,9 +12,20 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-  // ❌ Removed location
   type: Joi.string()
-    .valid("News", "Reunion", "Webinar", "General")
+    // ✅ UPDATE: Add all the new terms here
+    .valid(
+      "News", 
+      "Event", 
+      "Reunion", 
+      "Webinar", 
+      "Seminar", 
+      "Conference", 
+      "Workshop", 
+      "Symposium", 
+      "AGM", 
+      "Induction"
+    )
     .default("News"),
   image: Joi.string().optional().allow(""),
 });

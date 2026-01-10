@@ -34,14 +34,23 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  // ✅ HELPER: Dynamic Badge Colors (Matching Home Screen Logic)
+  // ✅ UPDATED: Added colors for new professional event types
   Color _getTypeColor(String type) {
     switch (type) {
-      case 'Reunion': return const Color(0xFF1B5E3A); // Dark Green
-      case 'Webinar': return Colors.blue[700]!;     
-      case 'Seminar': return Colors.purple[700]!;   
-      case 'News':    return Colors.orange[800]!;   
-      default:        return Colors.grey[700]!;
+      case 'Reunion':    return const Color(0xFF1B5E3A); // Dark Green
+      case 'Webinar':    return Colors.blue[700]!;     
+      case 'Seminar':    return Colors.purple[700]!;   
+      case 'News':       return Colors.orange[800]!;   
+      
+      // New Types
+      case 'Conference': return const Color(0xFF0D47A1); // Deep Blue
+      case 'Workshop':   return const Color(0xFF00695C); // Teal
+      case 'Symposium':  return const Color(0xFFAD1457); // Pink/Magenta
+      case 'AGM':        return const Color(0xFFFF8F00); // Amber/Gold
+      case 'Induction':  return const Color(0xFF2E7D32); // Success Green
+      case 'Event':      return Colors.indigo[900]!;     // General Event
+      
+      default:           return Colors.grey[700]!;
     }
   }
 
@@ -75,7 +84,6 @@ class _EventsScreenState extends State<EventsScreen> {
                       maxCrossAxisExtent: 200, 
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      // ✅ UPDATED: Taller ratio (0.80) to make cards shorter/compact
                       childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85,
                     ),
                     itemCount: _events.length,
@@ -162,7 +170,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 child: SizedBox(
-                  height: 90, // ✅ Reduced slightly to match Home Screen
+                  height: 90, 
                   width: double.infinity,
                   child: Stack(
                     fit: StackFit.expand,
@@ -198,15 +206,14 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // ✅ Reduced Padding
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center, // ✅ Centered Content
+                    mainAxisAlignment: MainAxisAlignment.center, 
                     children: [
                       Text(
                         title,
                         textAlign: TextAlign.center,
-                        overflow: TextOverflow.visible, // ✅ Allow Full Text
-                        // maxLines removed
+                        overflow: TextOverflow.visible, 
                         style: TextStyle(
                           fontWeight: FontWeight.w800, 
                           fontSize: 12.0,            
@@ -215,7 +222,7 @@ class _EventsScreenState extends State<EventsScreen> {
                         ),
                       ),
                       
-                      const SizedBox(height: 6), // ✅ Fixed Gap
+                      const SizedBox(height: 6), 
 
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

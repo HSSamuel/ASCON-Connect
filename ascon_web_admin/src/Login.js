@@ -92,6 +92,7 @@ function Login({ onLogin }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="Enter admin email"
+              className="login-input" // ✅ Added class for mobile styling
             />
           </div>
 
@@ -105,6 +106,7 @@ function Login({ onLogin }) {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="Enter password"
+                className="login-input" // ✅ Added class for mobile styling
               />
               <button
                 type="button"
@@ -141,13 +143,14 @@ function Login({ onLogin }) {
           ></div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center" }}>
+        {/* ✅ FIXED: Use class name instead of inline style so CSS can target it */}
+        <div className="google-login-container">
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
             onError={() => setError("Google Login Failed")}
             theme="outline"
             size="large"
-            width="320"
+            // width="320"  <-- REMOVED: Let CSS control width to avoid overflow
           />
         </div>
       </div>

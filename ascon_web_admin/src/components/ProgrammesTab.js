@@ -11,19 +11,18 @@ function ProgrammesTab({
   startEditProgramme,
   deleteProgrammeClick,
 }) {
+  // ✅ SMART RESIZE HELPER
+  const handleAutoResize = (e) => {
+    e.target.style.height = "auto";
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
   return (
     <div>
       {canEdit ? (
         <div
-          className="empty-state"
-          style={{
-            textAlign: "left",
-            marginBottom: "30px",
-            backgroundColor: "white",
-            border: "1px solid #ddd",
-            padding: "20px",
-            borderRadius: "8px",
-          }}
+          className="form-card fade-in" // Reused your nice card class
+          style={{ marginBottom: "30px" }}
         >
           <h2
             style={{ color: editingId ? "#d4af37" : "#1B5E3A", marginTop: 0 }}
@@ -85,7 +84,7 @@ function ProgrammesTab({
               </div>
             </div>
 
-            {/* ✅ NEW ROW: Image URL */}
+            {/* ROW 2: Image URL */}
             <div style={{ marginBottom: "15px" }}>
               <label
                 style={{
@@ -103,7 +102,7 @@ function ProgrammesTab({
                   padding: "10px",
                   boxSizing: "border-box",
                 }}
-                placeholder="Paste image link here (e.g. https://imgur.com/...)"
+                placeholder="Paste image link here"
                 value={progForm.image}
                 onChange={(e) =>
                   setProgForm({ ...progForm, image: e.target.value })
@@ -175,19 +174,25 @@ function ProgrammesTab({
               >
                 Description
               </label>
+
+              {/* ✅ UPDATED TEXTAREA */}
               <textarea
                 style={{
                   width: "100%",
                   padding: "10px",
-                  height: "80px",
+                  minHeight: "80px", // Use minHeight instead of fixed height
                   boxSizing: "border-box",
                   fontFamily: "inherit",
+                  resize: "vertical", // Enable dragging for desktop
+                  overflow: "hidden",
                 }}
-                placeholder="Brief details..."
+                placeholder="Brief details (Type to expand)..."
                 value={progForm.description}
-                onChange={(e) =>
-                  setProgForm({ ...progForm, description: e.target.value })
-                }
+                onInput={handleAutoResize} // Auto-grow trigger
+                onChange={(e) => {
+                  handleAutoResize(e);
+                  setProgForm({ ...progForm, description: e.target.value });
+                }}
               />
             </div>
 
@@ -237,7 +242,6 @@ function ProgrammesTab({
           <tbody>
             {programmesList.map((prog) => (
               <tr key={prog._id}>
-                {/* ✅ NEW COLUMN: Image Preview */}
                 <td data-label="Image">
                   {prog.image ? (
                     <img
@@ -310,7 +314,6 @@ function ProgrammesTab({
                       >
                         EDIT
                       </button>
-
                       <button
                         className="delete-btn compact-btn"
                         onClick={() => deleteProgrammeClick(prog._id)}

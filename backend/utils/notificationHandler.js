@@ -1,7 +1,7 @@
 const admin = require("../config/firebase");
 const User = require("../models/User");
 const Notification = require("../models/Notification");
-const logger = require("./logger"); // ✅ Import Logger
+const logger = require("./logger");
 
 const cleanupTokens = async (userId, tokensToRemove) => {
   if (tokensToRemove.length === 0) return;
@@ -9,12 +9,10 @@ const cleanupTokens = async (userId, tokensToRemove) => {
     await User.findByIdAndUpdate(userId, {
       $pull: { fcmTokens: { $in: tokensToRemove } },
     });
-    // ✅ Log info
     logger.info(
       `🧹 Cleaned up ${tokensToRemove.length} invalid tokens for user ${userId}`
     );
   } catch (err) {
-    // ✅ Log error
     logger.error(`❌ Token Cleanup Error: ${err.message}`);
   }
 };
@@ -44,10 +42,13 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     );
 
     for (const user of usersWithTokens) {
+      // ✅ FIX: Remove Duplicate Tokens for this user
+      const uniqueTokens = [...new Set(user.fcmTokens)];
+
       const message = {
         notification: { title, body },
         data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
-        tokens: user.fcmTokens,
+        tokens: uniqueTokens, // Send to unique list
       };
 
       try {
@@ -61,7 +62,7 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
               errorCode === "messaging/registration-token-not-registered" ||
               errorCode === "messaging/invalid-registration-token"
             ) {
-              failedTokens.push(user.fcmTokens[idx]);
+              failedTokens.push(uniqueTokens[idx]);
             }
           }
         });
@@ -99,10 +100,13 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
       return;
     }
 
+    // ✅ FIX: Remove Duplicate Tokens
+    const uniqueTokens = [...new Set(user.fcmTokens)];
+
     const message = {
       notification: { title, body },
       data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
-      tokens: user.fcmTokens,
+      tokens: uniqueTokens,
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
@@ -115,7 +119,7 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
           errorCode === "messaging/registration-token-not-registered" ||
           errorCode === "messaging/invalid-registration-token"
         ) {
-          failedTokens.push(user.fcmTokens[idx]);
+          failedTokens.push(uniqueTokens[idx]);
         }
       }
     });
