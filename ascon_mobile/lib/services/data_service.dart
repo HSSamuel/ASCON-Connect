@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart'; 
-import 'package:http_parser/http_parser.dart'; // ✅ REQUIRED for MediaType
+import 'package:http_parser/http_parser.dart'; 
 import '../config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart'; 
@@ -11,10 +11,8 @@ import 'auth_service.dart';
 
 class DataService {
   
-  // ✅ AUTO-REFRESH TOKEN HANDLER
   Future<Map<String, String>> _getHeaders() async {
-    final String? token = await AuthService().getToken(); // Calls refresh logic
-    
+    final String? token = await AuthService().getToken(); 
     return {
       'Content-Type': 'application/json',
       'auth-token': token ?? '', 
@@ -38,8 +36,9 @@ class DataService {
   }
 
   dynamic _handleResponse(http.Response response) {
+    // ✅ CASE 1: Session Expired (Token Invalid)
     if (response.statusCode == 401 || response.statusCode == 403) {
-      _forceLogout(); 
+      _forceLogout(message: "Your session has expired. Please login again."); 
       throw Exception('Session expired'); 
     }
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -51,23 +50,60 @@ class DataService {
     }
   }
 
-  Future<void> _forceLogout() async {
+  // ✅ IMPROVED LOGOUT: Shows a Dialog so the user knows WHY
+  Future<void> _forceLogout({String message = "Session expired."}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    
+    final context = navigatorKey.currentState?.context;
+    
+    if (context != null && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // User MUST click OK
+        builder: (ctx) => AlertDialog(
+          title: const Text("Access Denied"),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx); // Close dialog
+                // Navigate to Login and clear history
+                navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+              child: const Text("OK", style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+          ],
+        ),
+      );
+    } else {
+      // Fallback if context is missing (rare)
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
   // ==========================================
-  // 1. USER PROFILE
+  // 1. USER PROFILE (Updated Logic)
   // ==========================================
   Future<Map<String, dynamic>?> fetchProfile() async {
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
       final response = await http.get(url, headers: headers);
+
+      // ✅ CASE 2: Account Deleted / Not Found (404)
+      // This happens if you wiped the database.
+      if (response.statusCode == 404) {
+        _forceLogout(message: "We could not find your account details. You may need to register again.");
+        return null;
+      }
+
       final data = _handleResponse(response);
 
       if (data is Map<String, dynamic> && data.containsKey('data')) {
@@ -75,7 +111,7 @@ class DataService {
       }
       return data;
     } catch (e) {
-      debugPrint("⚠️ Network Error. Trying Cache...");
+      debugPrint("⚠️ Network Error or Logout triggered. Trying Cache...");
       return null; 
     }
   }
@@ -144,7 +180,6 @@ class DataService {
     }
   }
 
-  // ✅ FETCH SINGLE EVENT (Fixes notification deep link)
   Future<Map<String, dynamic>?> fetchEventById(String id) async {
     try {
       final headers = await _getHeaders();
@@ -153,7 +188,6 @@ class DataService {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Handle { "data": {...} } wrapper
         if (data is Map<String, dynamic> && data.containsKey('data')) {
           return data['data'];
         }
@@ -167,13 +201,11 @@ class DataService {
   }
 
   // ==========================================
-  // 3. PROGRAMMES (Fixes Notification Loading)
+  // 3. PROGRAMMES
   // ==========================================
-  // ✅ NEW: Missing function required for Programme Notifications
   Future<Map<String, dynamic>?> fetchProgrammeById(String id) async {
     try {
       final headers = await _getHeaders();
-      // Ensure this matches the route we added in admin.js
       final url = Uri.parse('${AppConfig.baseUrl}/api/admin/programmes/$id'); 
       final response = await http.get(url, headers: headers);
 
@@ -242,9 +274,8 @@ class DataService {
   }
 
   // ==========================================
-  // 4. JOBS / CAREERS (New Feature)
+  // 4. JOBS / CAREERS
   // ==========================================
-  // ✅ NEW: Fetches jobs list for the Jobs Screen
   Future<List<dynamic>> fetchJobs() async {
     const String cacheKey = 'cached_jobs';
     try {
@@ -339,7 +370,6 @@ class DataService {
     }
   }
 
-  // ✅ NEW: Delete Notification capability
   Future<bool> deleteNotification(String id) async {
     try {
       final headers = await _getHeaders();

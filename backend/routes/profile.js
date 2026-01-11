@@ -53,6 +53,11 @@ router.put("/update", verifyToken, (req, res) => {
         { new: true, runValidators: true }
       ).select("-password");
 
+      // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
       console.log("✅ PROFILE UPDATED");
       res.status(200).json(updatedUser);
     } catch (dbError) {
@@ -68,6 +73,13 @@ router.put("/update", verifyToken, (req, res) => {
 router.get("/me", verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select("-password");
+
+    // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404
+    // This tells the mobile app to trigger the "Account Not Found" dialog
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     res.status(200).json(user);
   } catch (err) {
     res.status(500).json(err);
@@ -78,7 +90,15 @@ router.get("/me", verifyToken, async (req, res) => {
 // @desc    Mark the user as having seen the welcome dialog
 router.put("/welcome-seen", verifyToken, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user._id, { hasSeenWelcome: true });
+    // We can also add a check here, though less critical for this specific route
+    const user = await User.findByIdAndUpdate(req.user._id, {
+      hasSeenWelcome: true,
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     res.status(200).json({ message: "Welcome status updated" });
   } catch (err) {
     res.status(500).json({ message: err.message });
