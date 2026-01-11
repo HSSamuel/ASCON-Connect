@@ -13,13 +13,6 @@ const { generateAlumniId } = require("../utils/idGenerator");
 // Initialize Google Client
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/**
- * @swagger
- * tags:
- * name: Auth
- * description: Authentication, Registration, and Password Management
- */
-
 // =========================================================
 // 📝 VALIDATION SCHEMAS
 // =========================================================
@@ -46,43 +39,6 @@ const loginSchema = Joi.object({
 // =========================================================
 // 1. REGISTER (With Auto-Sequential ID)
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/register:
- * post:
- * summary: Register a new alumni account
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - fullName
- * - email
- * - password
- * - phoneNumber
- * properties:
- * fullName:
- * type: string
- * email:
- * type: string
- * password:
- * type: string
- * phoneNumber:
- * type: string
- * yearOfAttendance:
- * type: string
- * programmeTitle:
- * type: string
- * responses:
- * 201:
- * description: Registration successful
- * 400:
- * description: Validation error or Email exists
- */
 router.post("/register", async (req, res) => {
   const { error } = registerSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
@@ -106,7 +62,6 @@ router.post("/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // ✅ SEQUENTIAL ID GENERATION
-    // If yearOfAttendance is missing, generator defaults to current year
     const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     const newUser = new User({
@@ -118,13 +73,12 @@ router.post("/register", async (req, res) => {
       programmeTitle,
       customProgramme: customProgramme || "",
       isVerified: true,
-      alumniId: newAlumniId, // e.g. ASCON/2026/001
+      alumniId: newAlumniId,
       hasSeenWelcome: false,
     });
 
     const savedUser = await newUser.save();
 
-    // Updated Expiration to 2 Hours and 30 Days
     const token = jwt.sign(
       { _id: savedUser._id, isAdmin: false, canEdit: false },
       process.env.JWT_SECRET,
@@ -158,37 +112,6 @@ router.post("/register", async (req, res) => {
 // =========================================================
 // 2. LOGIN (With ID Self-Healing)
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/login:
- * post:
- * summary: Login to an existing account
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - email
- * - password
- * properties:
- * email:
- * type: string
- * password:
- * type: string
- * fcmToken:
- * type: string
- * responses:
- * 200:
- * description: Login successful
- * 400:
- * description: Invalid credentials
- * 403:
- * description: Account pending approval
- */
 router.post("/login", async (req, res) => {
   const { error } = loginSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
@@ -254,27 +177,6 @@ router.post("/login", async (req, res) => {
 // =========================================================
 // 3. LOGOUT
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/logout:
- * post:
- * summary: Logout user and remove notification token
- * tags: [Auth]
- * requestBody:
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * userId:
- * type: string
- * fcmToken:
- * type: string
- * responses:
- * 200:
- * description: Logged out successfully
- */
 router.post("/logout", async (req, res) => {
   try {
     const { userId, fcmToken } = req.body;
@@ -290,33 +192,6 @@ router.post("/logout", async (req, res) => {
 // =========================================================
 // 4. GOOGLE LOGIN (UPDATED for Web Support)
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/google:
- * post:
- * summary: Login or Register with Google
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - token
- * properties:
- * token:
- * type: string
- * description: Google ID Token or Access Token
- * fcmToken:
- * type: string
- * responses:
- * 200:
- * description: Login successful
- * 404:
- * description: User not found (Need to Register)
- */
 router.post("/google", async (req, res) => {
   try {
     const { token, fcmToken } = req.body;
@@ -421,30 +296,6 @@ router.post("/google", async (req, res) => {
 // =========================================================
 // 5. FORGOT & RESET PASSWORD
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/forgot-password:
- * post:
- * summary: Request a password reset email
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - email
- * properties:
- * email:
- * type: string
- * responses:
- * 200:
- * description: Reset link sent
- * 400:
- * description: Email not found
- */
 router.post("/forgot-password", async (req, res) => {
   try {
     if (!req.body.email)
@@ -488,32 +339,6 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/auth/reset-password:
- * post:
- * summary: Reset password using token
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - token
- * - newPassword
- * properties:
- * token:
- * type: string
- * newPassword:
- * type: string
- * responses:
- * 200:
- * description: Password updated successfully
- * 400:
- * description: Invalid or expired token
- */
 router.post("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -544,30 +369,6 @@ router.post("/reset-password", async (req, res) => {
 // =========================================================
 // 6. REFRESH TOKEN
 // =========================================================
-
-/**
- * @swagger
- * /api/auth/refresh:
- * post:
- * summary: Refresh access token
- * tags: [Auth]
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - refreshToken
- * properties:
- * refreshToken:
- * type: string
- * responses:
- * 200:
- * description: New access token generated
- * 403:
- * description: Invalid Refresh Token
- */
 router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken)

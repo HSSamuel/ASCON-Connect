@@ -1,4 +1,4 @@
-import React from "react"; // ✅ FIXED: Removed unused useEffect, useRef
+import React from "react"; 
 
 function EventsTab({
   eventsList,
@@ -35,6 +35,17 @@ function EventsTab({
                 required
               />
 
+              {/* ✅ NEW LOCATION FIELD */}
+              <input
+                type="text"
+                placeholder="Location (e.g. Abuja Hall or Zoom)"
+                value={eventForm.location || ""}
+                onChange={(e) =>
+                  setEventForm({ ...eventForm, location: e.target.value })
+                }
+                required
+              />
+
               <select
                 value={eventForm.type}
                 onChange={(e) =>
@@ -62,20 +73,20 @@ function EventsTab({
               />
             </div>
 
-            {/* ✅ UPDATED TEXTAREA: Auto-Expanding */}
+            {/* ✅ AUTO-EXPANDING TEXTAREA */}
             <textarea
               placeholder="Description (Type to expand)..."
               rows="3"
               value={eventForm.description}
-              onInput={handleAutoResize} // Trigger resize on typing
+              onInput={handleAutoResize} 
               onChange={(e) => {
-                handleAutoResize(e); // Ensure it resizes on paste/change
+                handleAutoResize(e); 
                 setEventForm({ ...eventForm, description: e.target.value });
               }}
               style={{
                 minHeight: "80px",
-                resize: "vertical", // Keep manual resize for desktop
-                overflow: "hidden", // Hide scrollbar for cleaner look
+                resize: "vertical", 
+                overflow: "hidden", 
               }}
               required
             ></textarea>
@@ -106,6 +117,7 @@ function EventsTab({
               <th>Date</th>
               <th>Type</th>
               <th>Title</th>
+              <th>Location</th> {/* ✅ Show Location in Table too */}
               <th>Actions</th>
             </tr>
           </thead>
@@ -123,6 +135,7 @@ function EventsTab({
                   </span>
                 </td>
                 <td>{evt.title}</td>
+                <td>{evt.location || "ASCON Complex"}</td> {/* ✅ Display Location */}
                 <td>
                   {canEdit && (
                     <div className="action-buttons-container">

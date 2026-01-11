@@ -372,9 +372,26 @@ class _DashboardViewState extends State<_DashboardView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              "Events",
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                            // ✅ MODIFIED SECTION: Two-tone coloring using Text.rich
+                            Text.rich(
+                              TextSpan(
+                                style: TextStyle(
+                                  fontSize: 16, 
+                                  fontWeight: FontWeight.bold
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: "Recent & Upcoming ",
+                                    // Uses textColor (Black in Light mode, White in Dark mode)
+                                    style: TextStyle(color: textColor), 
+                                  ),
+                                  TextSpan(
+                                    text: "Events",
+                                    // Uses primaryColor (Uniform Green)
+                                    style: TextStyle(color: primaryColor), 
+                                  ),
+                                ],
+                              ),
                             ),
                             GestureDetector(
                               onTap: _refreshData,

@@ -60,6 +60,8 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
+  // ✅ FIX: Added location to Admin Validation Schema
+  location: Joi.string().optional().allow(""),
   type: Joi.string()
     .valid(
       "News",
@@ -134,7 +136,6 @@ router.get("/users", verifyAdmin, async (req, res) => {
 
     const skip = (page - 1) * limit;
 
-    // Sort Admins first, then newest
     const users = await User.find(query)
       .select("-password")
       .sort({ isAdmin: -1, createdAt: -1 })
@@ -237,7 +238,8 @@ router.post("/events", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { title, description, date, type, image } = req.body;
+    // ✅ FIX: Extract location from request body
+    const { title, description, date, type, image, location } = req.body;
 
     const newEvent = new Event({
       title,
@@ -245,6 +247,7 @@ router.post("/events", verifyEditor, async (req, res) => {
       date,
       type,
       image,
+      location, // ✅ Save location
     });
     await newEvent.save();
 
@@ -272,7 +275,7 @@ router.put("/events/:id", verifyEditor, async (req, res) => {
   try {
     const updatedEvent = await Event.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      req.body, // req.body now contains 'location', and the schema above now allows it!
       { new: true }
     );
     res.json({ message: "Event updated!", event: updatedEvent });
@@ -313,12 +316,12 @@ router.get("/programmes", async (req, res) => {
   }
 });
 
-// ✅ NEW: Public route to fetch a single programme by ID (For Notifications)
 router.get("/programmes/:id", async (req, res) => {
   try {
     const programme = await Programme.findById(req.params.id);
-    if (!programme) return res.status(404).json({ message: "Programme not found" });
-    res.json({ data: programme }); // Wraps in "data" object
+    if (!programme)
+      return res.status(404).json({ message: "Programme not found" });
+    res.json({ data: programme });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -347,10 +350,9 @@ router.post("/programmes", verifyEditor, async (req, res) => {
     });
     await newProg.save();
 
-    // ✅ FIXED: Notification now uses description instead of hardcoded location
     await sendBroadcastNotification(
       `New Programme: ${title}`,
-      `${description.substring(0, 60)}...`, // Use description snippet
+      `${description.substring(0, 60)}...`,
       {
         route: "programme_detail",
         id: newProg._id.toString(),

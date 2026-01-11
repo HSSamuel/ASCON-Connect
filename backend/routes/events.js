@@ -12,8 +12,7 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-  // ✅ NEW: Allow location string (optional, defaults handled in model)
-  location: Joi.string().optional().allow(""),
+  location: Joi.string().optional().allow(""), // ✅ Allow location
   type: Joi.string()
     .valid(
       "News",
@@ -32,7 +31,7 @@ const eventSchema = Joi.object({
 });
 
 // @route   GET /api/events
-// @desc    Get all events (Sorted by Newest First)
+// @desc    Get all events
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -58,9 +57,8 @@ router.get("/", async (req, res) => {
 });
 
 // @route   POST /api/events
-// @desc    Create a new Event (Secured with Joi)
+// @desc    Create a new Event
 router.post("/", verifyToken, verifyAdmin, async (req, res) => {
-  // ✅ Validate Input
   const { error } = eventSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
@@ -69,15 +67,13 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       title: req.body.title,
       description: req.body.description,
       date: req.body.date,
-      // ✅ NEW: Save location from request
-      location: req.body.location,
+      location: req.body.location, // ✅ Save Location
       type: req.body.type,
       image: req.body.image,
     });
 
     const savedEvent = await event.save();
 
-    // ✅ Send Notification
     try {
       await sendBroadcastNotification(
         `New ${savedEvent.type}: ${savedEvent.title}`,
@@ -85,7 +81,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
         { route: "event_detail", id: savedEvent._id.toString() }
       );
     } catch (notifyErr) {
-      console.error("Notification failed inside events.js:", notifyErr);
+      console.error("Notification failed:", notifyErr);
     }
 
     res.status(201).json(savedEvent);
@@ -94,8 +90,37 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
   }
 });
 
+// @route   PUT /api/events/:id
+// @desc    Update an existing Event (✅ NEW ROUTE)
+router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
+  // Validate the new data
+  const { error } = eventSchema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.details[0].message });
+
+  try {
+    const updatedEvent = await Event.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: req.body.title,
+        description: req.body.description,
+        date: req.body.date,
+        location: req.body.location, // ✅ Allow updating location
+        type: req.body.type,
+        image: req.body.image,
+      },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedEvent)
+      return res.status(404).json({ message: "Event not found" });
+    res.json(updatedEvent);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // @route   DELETE /api/events/:id
-// @desc    Delete an event by ID
+// @desc    Delete an event
 router.delete("/:id", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const removedEvent = await Event.findByIdAndDelete(req.params.id);

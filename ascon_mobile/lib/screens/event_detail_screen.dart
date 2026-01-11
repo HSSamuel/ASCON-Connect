@@ -306,7 +306,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   TextSpan _parseRichText(String text, TextStyle baseStyle, Color linkColor, bool isDark) {
     List<TextSpan> spans = [];
-    final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*|((https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?)');
+    
+    // ✅ IMPROVED REGEX: Now captures ?, =, &, %, _, -, + (essential for Drive/Zoom links)
+    final regex = RegExp(
+      r'\*\*(.*?)\*\*|\*(.*?)\*|((https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([-a-zA-Z0-9@:%_\+.~#?&//=]*))',
+      caseSensitive: false,
+    );
+
     int lastMatchEnd = 0;
 
     for (final match in regex.allMatches(text)) {
@@ -315,7 +321,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
 
       if (match.group(1) != null) {
-        // ✅ BOLD FIX: Use White for Dark Mode, Black for Light Mode
+        // **Bold**
         spans.add(TextSpan(
           text: match.group(1),
           style: baseStyle.copyWith(
@@ -324,22 +330,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ));
       } else if (match.group(2) != null) {
-        // Italic
+        // *Italic*
         spans.add(TextSpan(
           text: match.group(2),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ));
       } else if (match.group(3) != null) {
-        // URL
-        final url = match.group(3)!;
+        // 🔗 URL Handling
+        String url = match.group(3)!;
+        
+        // Fix: Clean up trailing punctuation if the regex caught a closing parenthesis or dot by mistake
+        if (url.endsWith(')') || url.endsWith('.')) {
+           url = url.substring(0, url.length - 1);
+        }
+
         spans.add(TextSpan(
           text: url,
-          style: baseStyle.copyWith(color: linkColor, decoration: TextDecoration.underline),
+          style: baseStyle.copyWith(
+            color: linkColor, 
+            decoration: TextDecoration.underline,
+            decorationColor: linkColor.withOpacity(0.5),
+          ),
           recognizer: TapGestureRecognizer()
             ..onTap = () async {
+              // Ensure http/https prefix exists
               final Uri uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              try {
+                // Try launching in external browser (best for Drive/Zoom)
+                if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+                   debugPrint("Could not launch $uri");
+                }
+              } catch (e) {
+                debugPrint("Error launching URL: $e");
               }
             },
         ));

@@ -12,11 +12,14 @@ function EventsManager({ token, canEdit }) {
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
   const [editingId, setEditingId] = useState(null);
+
+  // ✅ UPDATE 1: Add 'location' to initial state
   const [eventForm, setEventForm] = useState({
     title: "",
     description: "",
     type: "News",
     image: "",
+    location: "",
   });
 
   const events = usePaginatedFetch(`${BASE_URL}/api/events`, token);
@@ -25,14 +28,25 @@ function EventsManager({ token, canEdit }) {
 
   const resetForm = () => {
     setEditingId(null);
-    setEventForm({ title: "", description: "", type: "News", image: "" });
+    // ✅ UPDATE 2: Reset location too
+    setEventForm({
+      title: "",
+      description: "",
+      type: "News",
+      image: "",
+      location: "",
+    });
   };
 
-  // 🧹 HELPER: Sanitizes data to remove system fields AND 'location'
+  // 🧹 HELPER: Sanitizes data to remove system fields
   const sanitizePayload = (data) => {
-    // Destructure to separate system fields + location from the rest
-    // We explicitly remove 'location' here so the backend doesn't complain
-    const { _id, id, createdAt, updatedAt, __v, location, ...cleanData } = data;
+    // ✅ FIX: Do NOT remove 'location' anymore!
+    // We only remove system fields (_id, createdAt, etc.)
+    const { _id, id, createdAt, updatedAt, __v, ...cleanData } = data;
+
+    // Ensure location is never undefined (send empty string if missing)
+    if (!cleanData.location) cleanData.location = "";
+
     return cleanData;
   };
 
@@ -42,13 +56,12 @@ function EventsManager({ token, canEdit }) {
       return showToast("Title must be at least 5 chars", "error");
 
     try {
-      // ✅ SANITIZE: Remove _id, location, and system fields before sending
       const cleanData = sanitizePayload(eventForm);
 
       if (editingId) {
         await axios.put(
-          `${BASE_URL}/api/admin/events/${editingId}`,
-          cleanData, // Send cleaned data (no location)
+          `${BASE_URL}/api/admin/events/${editingId}`, // Ensure this route exists in backend/routes/admin.js or events.js
+          cleanData,
           {
             headers: { "auth-token": token },
           }
@@ -56,7 +69,7 @@ function EventsManager({ token, canEdit }) {
         showToast("Event updated successfully");
       } else {
         await axios.post(
-          `${BASE_URL}/api/admin/events`,
+          `${BASE_URL}/api/events`, // Changed from /api/admin/events to match your backend route
           { ...cleanData, date: new Date() },
           {
             headers: { "auth-token": token },
@@ -74,7 +87,8 @@ function EventsManager({ token, canEdit }) {
 
   const handleDelete = async () => {
     try {
-      await axios.delete(`${BASE_URL}/api/admin/events/${deleteModal.id}`, {
+      await axios.delete(`${BASE_URL}/api/events/${deleteModal.id}`, {
+        // Updated route to match backend
         headers: { "auth-token": token },
       });
       showToast("Event deleted");
@@ -112,11 +126,11 @@ function EventsManager({ token, canEdit }) {
         handleEventSubmit={handleEventSubmit}
         startEditEvent={(evt) => {
           setEditingId(evt._id);
-          // Even if 'evt' has a location field from old DB data, we copy it here...
-          // BUT sanitizePayload() will strip it out before we save.
+          // ✅ UPDATE 3: Ensure location is loaded when editing
           setEventForm({
             ...evt,
             image: evt.image || "",
+            location: evt.location || "",
           });
           window.scrollTo(0, 0);
         }}
