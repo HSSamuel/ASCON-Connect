@@ -17,34 +17,38 @@ mongoose
 
 const runTest = async () => {
   try {
-    // 2. FIND A TEST USER
-    // Replace the email with your own account email used in the app
-    const testEmail = "idarajoy199@gmail.com";
-    const user = await User.findOne({ email: testEmail });
+    // 2. DEFINE TEST USERS
+    // ✅ Add as many emails as you want to test here
+    const testEmails = [
+      "idarajoy199@gmail.com",
+      "smkmayomisamuel@gmail.com", // ✅ Added Samuel's email
+    ];
 
-    if (!user) {
-      console.log(`❌ Could not find user with email: ${testEmail}`);
-      console.log(
-        "Tip: Register a user in the app first or change the email in this script."
+    console.log(`🔍 Looking for ${testEmails.length} test users...`);
+
+    for (const email of testEmails) {
+      const user = await User.findOne({ email: email });
+
+      if (!user) {
+        console.log(`❌ Skipped: Could not find user with email: ${email}`);
+        continue;
+      }
+
+      if (!user.fcmTokens || user.fcmTokens.length === 0) {
+        console.log(`⚠️  User ${user.fullName} found, but has NO FCM TOKENS.`);
+        continue;
+      }
+
+      console.log(`🚀 Sending personal test to: ${user.fullName}...`);
+
+      // 3. TRIGGER PERSONAL NOTIFICATION
+      await sendPersonalNotification(
+        user._id,
+        "Test Internal Alert 🔔",
+        `Hello ${user.fullName}, your ASCON Notification is working!`,
+        { route: "profile", status: "testing" }
       );
-      process.exit(0);
     }
-
-    if (!user.fcmTokens || user.fcmTokens.length === 0) {
-      console.log(`⚠️ User ${user.fullName} found, but has NO FCM TOKENS.`);
-      console.log("Tip: Log in to the app on a real device to sync a token.");
-      process.exit(0);
-    }
-
-    console.log(`🚀 Sending test notification to ${user.fullName}...`);
-
-    // 3. TRIGGER PERSONAL NOTIFICATION
-    await sendPersonalNotification(
-      user._id,
-      "Test Internal Alert 🔔",
-      "If you see this, your ASCON Notification System is 100% working!",
-      { route: "profile", status: "testing" }
-    );
 
     console.log("\n📢 Sending a Broadcast test to ALL users...");
 
@@ -54,8 +58,8 @@ const runTest = async () => {
       "This is a broadcast test from the ASCON Backend."
     );
 
-    console.log("\n✅ Test sequence complete. Check your phone!");
-    setTimeout(() => process.exit(0), 2000); // Give it time to finish logs
+    console.log("\n✅ Test sequence complete. Check your phones!");
+    setTimeout(() => process.exit(0), 2000);
   } catch (error) {
     console.error("💥 Test Script Crashed:", error);
     process.exit(1);

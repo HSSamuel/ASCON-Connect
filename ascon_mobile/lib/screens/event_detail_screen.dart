@@ -26,6 +26,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _event = widget.eventData;
 
+    // Check if we need to fetch full details (e.g. if opened from a notification with incomplete data)
     final String? idToFetch = _event['id'] ?? _event['_id'];
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
@@ -58,9 +59,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final dividerColor = Theme.of(context).dividerColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // ✅ DATA EXTRACTION
     final String image = _event['image'] ?? _event['imageUrl'] ?? 'https://via.placeholder.com/600';
     final String title = _event['title'] ?? 'Event Details';
-    final String location = _event['location'] ?? 'Online / ASCON Complex';
+    
+    // ✅ LOCATION LOGIC: Uses backend data, or falls back to default
+    final String location = (_event['location'] != null && _event['location'].toString().isNotEmpty)
+        ? _event['location']
+        : 'ASCON Complex, Topo-Badagry';
+
     final String description = _event['description'] != null && _event['description']!.isNotEmpty
         ? _event['description']!
         : "No detailed description available.";
@@ -74,6 +81,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             widget.eventData['id'] ?? 
                             '').toString();
 
+    // ✅ DATE FORMATTING
     String formattedDate = 'Date to be announced';
     String rawDateString = _event['rawDate'] ?? _event['date'] ?? '';
     DateTime? eventDateObject;
@@ -95,6 +103,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ? const Center(child: CircularProgressIndicator()) 
         : CustomScrollView(
         slivers: [
+          // 1. APP BAR IMAGE
           SliverAppBar(
             expandedHeight: 280.0,
             pinned: true,
@@ -120,7 +129,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     "🏛️ *ASCON ALUMNI UPDATE* 🏛️\n\n"
                     "🔔 *${title.toUpperCase()}*\n\n"
                     "📅 *Date:* $formattedDate\n"
-                    "📍 *Location:* $location\n\n"
+                    "📍 *Location:* $location\n\n" // ✅ Sharable Location
                     "${description.length > 200 ? "${description.substring(0, 200)}..." : description}\n\n"
                     "📲 _Get the full details and register on the ASCON Alumni App._";
                   
@@ -147,6 +156,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ),
           ),
+
+          // 2. CONTENT BODY
           SliverToBoxAdapter(
             child: Container(
               transform: Matrix4.translationValues(0, -20, 0),
@@ -165,6 +176,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
+                  
+                  // EVENT TYPE BADGE
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
@@ -174,22 +187,31 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  
+                  // TITLE
                   Text(
                     title,
                     style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: textColor, height: 1.2),
                   ),
                   const SizedBox(height: 24),
+                  
+                  // INFO ROWS
                   _buildInfoRow(context, Icons.calendar_today_outlined, "Date", formattedDate),
+                  
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Divider(color: dividerColor.withOpacity(0.5), height: 1),
                   ),
+                  
+                  // ✅ DYNAMIC LOCATION ROW
                   _buildInfoRow(context, Icons.location_on_outlined, "Location", location),
+                  
                   const SizedBox(height: 30),
+                  
+                  // DESCRIPTION
                   Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
-                  // CUSTOM FORMATTER
                   _buildFormattedDescription(description, isDark, primaryColor),
                   
                   const SizedBox(height: 100),

@@ -14,6 +14,12 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  // ✅ NEW FIELD: Location
+  location: {
+    type: String,
+    trim: true,
+    default: "ASCON Complex, Topo-Badagry", // Default fallback if admin leaves it empty
+  },
   type: {
     type: String,
     // ✅ UPDATE: Added new professional terms

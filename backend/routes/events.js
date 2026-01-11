@@ -12,18 +12,19 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
+  // ✅ NEW: Allow location string (optional, defaults handled in model)
+  location: Joi.string().optional().allow(""),
   type: Joi.string()
-    // ✅ UPDATE: Add all the new terms here
     .valid(
-      "News", 
-      "Event", 
-      "Reunion", 
-      "Webinar", 
-      "Seminar", 
-      "Conference", 
-      "Workshop", 
-      "Symposium", 
-      "AGM", 
+      "News",
+      "Event",
+      "Reunion",
+      "Webinar",
+      "Seminar",
+      "Conference",
+      "Workshop",
+      "Symposium",
+      "AGM",
       "Induction"
     )
     .default("News"),
@@ -68,7 +69,8 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       title: req.body.title,
       description: req.body.description,
       date: req.body.date,
-      // location: req.body.location, ❌ REMOVED
+      // ✅ NEW: Save location from request
+      location: req.body.location,
       type: req.body.type,
       image: req.body.image,
     });
@@ -79,7 +81,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     try {
       await sendBroadcastNotification(
         `New ${savedEvent.type}: ${savedEvent.title}`,
-        `${savedEvent.description.substring(0, 50)}...`, // Updated notification logic
+        `${savedEvent.description.substring(0, 50)}...`,
         { route: "event_detail", id: savedEvent._id.toString() }
       );
     } catch (notifyErr) {

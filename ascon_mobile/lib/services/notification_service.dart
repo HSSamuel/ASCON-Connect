@@ -101,7 +101,7 @@ class NotificationService {
       });
     }
 
-    await _syncToken();
+    await syncToken();
   }
 
   void _handleNavigation(Map<String, dynamic> data) {
@@ -179,7 +179,7 @@ class NotificationService {
     );
   }
 
-  Future<void> _syncToken() async {
+  Future<void> syncToken() async {
     try {
       String? fcmToken;
       if (kIsWeb) {

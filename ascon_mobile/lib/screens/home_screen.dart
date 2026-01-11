@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/data_service.dart'; 
-import '../services/auth_service.dart'; 
+import '../services/auth_service.dart';
+import '../main.dart'; // ✅ IMPORTED MAIN.DART FOR THEME ACCESS
 import 'directory_screen.dart';
 import 'profile_screen.dart';
 import 'events_screen.dart';
@@ -150,7 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (Unchanged)
+// DASHBOARD VIEW (Updated with Dark Mode Toggle)
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -160,43 +161,31 @@ class _DashboardView extends StatefulWidget {
   State<_DashboardView> createState() => _DashboardViewState();
 }
 
-class _DashboardViewState extends State<_DashboardView> with SingleTickerProviderStateMixin {
+class _DashboardViewState extends State<_DashboardView> {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
 
   late Future<List<dynamic>> _eventsFuture;
   late Future<List<dynamic>> _programmesFuture;
   
-  late AnimationController _bellController;
-  Timer? _notificationTimer; 
+  // ✅ REMOVED: Bell Animation Controller & Timer
+  // ✅ REMOVED: Unread Notification Count
 
   String? _profileImage;
   String _programme = "Member"; 
   String _year = "....";
   String _alumniID = "PENDING"; 
-  int _unreadNotifications = 0; 
 
   @override
   void initState() {
     super.initState();
-    _bellController = AnimationController(
-      duration: const Duration(milliseconds: 1000), 
-      vsync: this,
-    );
-
     _loadLocalData();
     _refreshData();
-    _checkAuthenticatedNotifications(); 
-    
-    _notificationTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
-      _checkAuthenticatedNotifications();
-    });
   }
 
   @override
   void dispose() {
-    _bellController.dispose();
-    _notificationTimer?.cancel(); 
+    // ✅ No controllers to dispose anymore
     super.dispose();
   }
 
@@ -210,33 +199,11 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
     }
   }
 
-  Future<void> _checkAuthenticatedNotifications() async {
-    try {
-      final int count = await _dataService.fetchUnreadNotificationCount();
-      if (mounted) {
-        setState(() {
-          _unreadNotifications = count;
-          if (_unreadNotifications > 0) {
-            if (!_bellController.isAnimating) {
-              _bellController.repeat(reverse: true);
-            }
-          } else {
-            _bellController.stop();
-            _bellController.reset();
-          }
-        });
-      }
-    } catch (e) {
-      // Fallback
-    }
-  }
-
   void _refreshData() {
     setState(() {
       _eventsFuture = _dataService.fetchEvents();
       _programmesFuture = _authService.getProgrammes();
       _loadUserProfile(); 
-      _checkAuthenticatedNotifications(); 
     });
   }
 
@@ -260,152 +227,8 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
         }
       }
     } catch (e) {
-      print("⚠️ Error loading profile: $e");
+      debugPrint("⚠️ Error loading profile: $e");
     }
-  }
-
-  void _showNotificationSheet() {
-    final sheetColor = Theme.of(context).cardColor;
-    final primaryColor = Theme.of(context).primaryColor;
-
-    Future<List<dynamic>> notificationFuture = _dataService.fetchMyNotifications();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: sheetColor, 
-      isScrollControlled: true, 
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setSheetState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.7, 
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "Notifications",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          setState(() {
-                            _unreadNotifications = 0;
-                            _bellController.stop(); 
-                            _bellController.reset();
-                          }); 
-                        },
-                        child: const Text("Close", style: TextStyle(color: Colors.grey)),
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  
-                  Expanded(
-                    child: FutureBuilder<List<dynamic>>(
-                      future: notificationFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        
-                        final notifications = snapshot.data ?? [];
-                        
-                        if (notifications.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.notifications_none, size: 40, color: Colors.grey[300]),
-                                const SizedBox(height: 10),
-                                const Text("No new notifications", style: TextStyle(color: Colors.grey)),
-                              ],
-                            ),
-                          );
-                        }
-
-                        return ListView.builder(
-                          itemCount: notifications.length,
-                          itemBuilder: (context, index) {
-                            final n = notifications[index];
-                            return _buildNotificationTile(
-                              n['title'] ?? "Update", 
-                              n['message'] ?? "",
-                              n['_id'],
-                              () async {
-                                await _dataService.deleteNotification(n['_id']);
-                                setSheetState(() {
-                                  notificationFuture = _dataService.fetchMyNotifications();
-                                });
-                                _checkAuthenticatedNotifications();
-                              }
-                            );
-                          },
-                        );
-                      }
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-        );
-      },
-    ).whenComplete(() {
-      _checkAuthenticatedNotifications(); 
-    });
-  }
-
-  Widget _buildNotificationTile(String title, String subtitle, String? id, VoidCallback onDelete) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tileColor = isDark ? Colors.grey[800] : Colors.grey[50];
-    final borderColor = Theme.of(context).dividerColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final primaryColor = Theme.of(context).primaryColor;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: tileColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(Icons.notifications, color: primaryColor, size: 16),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textColor)),
-                const SizedBox(height: 4),
-                Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-              ],
-            ),
-          ),
-          if (id != null)
-            IconButton(
-              icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-              onPressed: onDelete,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            )
-        ],
-      ),
-    );
   }
 
   Color _getTypeColor(String type) {
@@ -426,6 +249,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
 
   @override
   Widget build(BuildContext context) {
+    // ignore: unused_local_variable
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
@@ -447,49 +271,31 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
             icon: Icon(Icons.info_outline, color: primaryColor, size: 22),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
           ),
+          
+          // ✅ NEW DARK MODE TOGGLE (Replaces Bell)
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
-            child: GestureDetector(
-              onTap: _showNotificationSheet,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  RotationTransition(
-                    turns: Tween(begin: -0.05, end: 0.05).animate(
-                      CurvedAnimation(parent: _bellController, curve: Curves.easeInOut),
-                    ),
-                    child: Icon(
-                      _unreadNotifications > 0 ? Icons.notifications_active : Icons.notifications_none_outlined,
-                      color: _unreadNotifications > 0 ? const Color(0xFFD32F2F) : primaryColor,
-                      size: 26,
-                    ),
-                  ),
-                  if (_unreadNotifications > 0)
-                    Positioned(
-                      top: 8,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: cardColor, width: 1.5),
-                        ),
-                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                        child: Center(
-                          child: Text(
-                            '$_unreadNotifications',
-                            style: const TextStyle(
-                              color: Colors.white, 
-                              fontSize: 9, 
-                              fontWeight: FontWeight.bold
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+            child: IconButton(
+              tooltip: 'Switch Theme',
+              icon: ValueListenableBuilder<ThemeMode>(
+                valueListenable: themeNotifier, // Accessing global notifier from main.dart
+                builder: (context, currentMode, _) {
+                  // If system, check brightness. If explicit, check mode.
+                  bool isCurrentlyDark = currentMode == ThemeMode.dark || 
+                      (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
+                  
+                  return Icon(
+                    isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                    color: primaryColor,
+                    size: 24,
+                  );
+                },
               ),
+              onPressed: () {
+                themeNotifier.value = themeNotifier.value == ThemeMode.dark
+                    ? ThemeMode.light
+                    : ThemeMode.dark;
+              },
             ),
           ),
         ],
@@ -567,7 +373,7 @@ class _DashboardViewState extends State<_DashboardView> with SingleTickerProvide
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              "Upcoming Events",
+                              "Events",
                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                             ),
                             GestureDetector(

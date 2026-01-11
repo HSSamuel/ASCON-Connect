@@ -7,7 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
 
-// ✅ IMPORT THE NEW GENERATOR
+// ✅ IMPORT THE NEW SEQUENTIAL GENERATOR
 const { generateAlumniId } = require("../utils/idGenerator");
 
 // Initialize Google Client
@@ -44,7 +44,7 @@ const loginSchema = Joi.object({
 });
 
 // =========================================================
-// 1. REGISTER (With Auto-ID)
+// 1. REGISTER (With Auto-Sequential ID)
 // =========================================================
 
 /**
@@ -105,7 +105,8 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // ✅ USES IMPORTED FUNCTION
+    // ✅ SEQUENTIAL ID GENERATION
+    // If yearOfAttendance is missing, generator defaults to current year
     const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     const newUser = new User({
@@ -117,7 +118,7 @@ router.post("/register", async (req, res) => {
       programmeTitle,
       customProgramme: customProgramme || "",
       isVerified: true,
-      alumniId: newAlumniId,
+      alumniId: newAlumniId, // e.g. ASCON/2026/001
       hasSeenWelcome: false,
     });
 
@@ -155,7 +156,7 @@ router.post("/register", async (req, res) => {
 });
 
 // =========================================================
-// 2. LOGIN (With Self-Healing)
+// 2. LOGIN (With ID Self-Healing)
 // =========================================================
 
 /**
@@ -204,8 +205,10 @@ router.post("/login", async (req, res) => {
     if (user.isVerified === false)
       return res.status(403).json({ message: "Account pending approval." });
 
+    // ✅ CHECK FOR MISSING ID & AUTO-GENERATE
     if (!user.alumniId || user.alumniId === "PENDING" || user.alumniId === "") {
-      user.alumniId = await generateAlumniId(user.yearOfAttendance);
+      const yearToUse = user.yearOfAttendance || new Date().getFullYear();
+      user.alumniId = await generateAlumniId(yearToUse);
       await user.save();
     }
 

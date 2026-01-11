@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // ✅ ADDED: Required for Channel Setup
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // ✅ Required for Channel Setup
 
 // ✅ Services & Config
 import 'services/notification_service.dart';
@@ -17,8 +17,12 @@ import 'screens/home_screen.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // ✅ DEFINE CHANNEL ID (Must match what you use in NotificationService)
-const String channelId = 'high_importance_channel';
-const String channelName = 'High Importance Notifications';
+const String channelId = 'ascon_high_importance'; 
+const String channelName = 'ASCON Notifications';
+
+// ✅ GLOBAL THEME CONTROLLER
+// This allows the Home Screen to toggle Dark/Light mode dynamically.
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
 void main() async {
   // ✅ MUST BE FIRST
@@ -28,7 +32,7 @@ void main() async {
   await dotenv.load(fileName: ".env");
 
   if (kIsWeb) {
-    // ✅ FIX: Ensure Firebase for Web is initialized only once to prevent assertion errors
+    // ✅ FIX: Ensure Firebase for Web is initialized only once
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
@@ -52,14 +56,14 @@ void main() async {
   // ✅ Initialize Notifications (Robust Setup - strictly for mobile)
   if (!kIsWeb) {
     try {
-      // 1. SETUP CHANNEL EXPLICITLY (Fixes Vibration Issue)
+      // 1. SETUP CHANNEL EXPLICITLY
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         channelId, 
         channelName, 
-        description: 'This channel is used for important notifications.',
-        importance: Importance.max, // ✅ MAX Importance triggers Heads-up
+        description: 'This channel is used for important ASCON updates.',
+        importance: Importance.max, 
         playSound: true,
-        enableVibration: true,      // ✅ FORCE VIBRATION
+        enableVibration: true,
       );
 
       final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -72,7 +76,7 @@ void main() async {
 
       // 2. Init Service
       await NotificationService().init();
-      debugPrint("✅ Notifications Initialized Successfully with Vibration");
+      debugPrint("✅ Notifications Initialized Successfully");
     } catch (e) {
       debugPrint("⚠️ Notification Init Failed: $e");
     }
@@ -86,24 +90,29 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: navigatorKey,
-      title: 'ASCON Alumni',
-      debugShowCheckedModeBanner: false,
+    // ✅ Wrap MaterialApp in a builder that listens to theme changes
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        return MaterialApp(
+          navigatorKey: navigatorKey,
+          title: 'ASCON Alumni',
+          debugShowCheckedModeBanner: false,
 
-      // ✅ 1. THEMES
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system, 
+          // Themes
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          
+          // ✅ This connects to the Toggle Button on Home Screen
+          themeMode: currentMode, 
 
-      // ✅ 2. HOME
-      home: const SplashScreen(),
+          home: const SplashScreen(),
 
-      // ✅ 3. CRITICAL: NAMED ROUTES (Restored)
-      // These are required for Navigator.pushNamed to work
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
+          routes: {
+            '/login': (context) => const LoginScreen(),
+            '/home': (context) => const HomeScreen(),
+          },
+        );
       },
     );
   }

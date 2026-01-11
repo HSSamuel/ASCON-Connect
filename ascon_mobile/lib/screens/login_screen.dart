@@ -60,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _syncNotificationToken() async {
     try {
-      await NotificationService().init();
+      await NotificationService().syncToken();
       debugPrint("🔔 Token sync triggered after login");
     } catch (e) {
       debugPrint("⚠️ Failed to sync token on login: $e");
