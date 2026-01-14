@@ -10,7 +10,7 @@
   display: flex;
   justify-content: center;
   align-items: center; /* Centers the box perfectly */
-  z-index: 1000;
+  z-index: 20000; /* ✅ UPDATED: High Z-Index ensures it sits above Toast/Navbar */
   padding: 16px; /* Prevents box from touching edges on tiny phones */
 }
 

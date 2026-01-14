@@ -40,12 +40,20 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
             🎓 Programmes
           </button>
 
-          {/* ✅ ADDED JOBS BUTTON HERE */}
+          {/* ✅ JOBS BUTTON */}
           <button
             className={activeTab === "jobs" ? "active" : ""}
             onClick={() => handleTabClick("jobs")}
           >
             💼 Jobs
+          </button>
+
+          {/* ✅ FACILITIES BUTTON */}
+          <button
+            className={activeTab === "facilities" ? "active" : ""}
+            onClick={() => setActiveTab("facilities")}
+          >
+            🏢 Facilities
           </button>
 
           <button
@@ -78,9 +86,14 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
               🎓 Programmes
             </button>
 
-            {/* ✅ ADDED JOBS BUTTON HERE */}
+            {/* ✅ JOBS BUTTON */}
             <button onClick={() => handleTabClick("jobs")}>
               💼 Jobs / Careers
+            </button>
+
+            {/* ✅ FACILITIES BUTTON (Added here for Mobile) */}
+            <button onClick={() => handleTabClick("facilities")}>
+              🏢 Facilities
             </button>
 
             <button onClick={() => handleTabClick("registrations")}>

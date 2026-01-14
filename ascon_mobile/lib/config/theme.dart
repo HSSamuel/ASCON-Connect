@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // ✅ Brand Colors
   static const Color primaryGreen = Color(0xFF1B5E3A);
+  
+  // ✅ ADDED: Alias for 'asconGreen' to fix the error in jobs_screen.dart
+  static const Color asconGreen = primaryGreen; 
+
   static const Color accentGold = Color(0xFFD4AF37);
 
   // 🌞 LIGHT THEME (The Standard View)

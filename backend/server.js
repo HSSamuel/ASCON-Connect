@@ -130,6 +130,7 @@ app.use("/api/programme-interest", programmeInterestRoute);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/event-registration", eventRegistrationRoute);
 app.use("/api/jobs", require("./routes/jobs"));
+app.use("/api/facilities", require("./routes/facilities"));
 
 // ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);

@@ -1,16 +1,19 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // ✅ NEW IMPORT
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'package:flutter/foundation.dart'; // For kIsWeb
-import '../main.dart'; // For navigatorKey
+import 'package:flutter/foundation.dart'; 
+import '../main.dart'; 
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
 
 class AuthService {
-  // Use the singleton ApiClient instance
   final ApiClient _api = ApiClient();
+  
+  // ✅ SECURE STORAGE INSTANCE (For Tokens)
+  final _storage = const FlutterSecureStorage(); 
 
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -22,17 +25,13 @@ class AuthService {
 
       if (result['success']) {
         final data = result['data'];
-        // ✅ Updated to save both access and refresh tokens
         await _saveUserSession(
           data['token'], 
           data['user'], 
           refreshToken: data['refreshToken']
         );
 
-        // ✅ Initialize notifications after successful login
-        if (!kIsWeb) {
-           NotificationService().init();
-        }
+        if (!kIsWeb) NotificationService().init();
       }
       return result;
     } catch (e) {
@@ -130,55 +129,45 @@ class AuthService {
   // --- MARK WELCOME SEEN ---
   Future<void> markWelcomeSeen() async {
     try {
-      // ✅ Now using the .put method added to ApiClient
       await _api.put('/api/profile/welcome-seen', {});
     } catch (e) {
       print("Error marking welcome seen: $e");
     }
   }
 
-  // --- SESSION HELPERS ---
+  // =================================================
+  // 🔐 SESSION MANAGEMENT (SECURE)
+  // =================================================
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
-    
-    // ✅ Save Refresh Token if provided by backend
+    // ✅ 1. STORE SENSITIVE TOKENS IN SECURE STORAGE
+    await _storage.write(key: 'auth_token', value: token);
     if (refreshToken != null) {
-      await prefs.setString('refresh_token', refreshToken);
+      await _storage.write(key: 'refresh_token', value: refreshToken);
     }
-    
-    // ✅ CACHE USER DATA FOR OFFLINE USE
+
+    // ✅ 2. STORE UI DATA IN SHARED PREFS (For Speed)
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setString('cached_user', jsonEncode(user));
     
-    _api.setAuthToken(token);
-
     if (user['fullName'] != null) {
       await prefs.setString('user_name', user['fullName']);
     }
     if (user['alumniId'] != null) {
       await prefs.setString('alumni_id', user['alumniId']);
     }
-  }
-
-  // ✅ NEW: Helper to retrieve cached data when offline
-  Future<Map<String, dynamic>?> getCachedUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userData = prefs.getString('cached_user');
-    if (userData != null) {
-      return jsonDecode(userData);
-    }
-    return null;
+    
+    _api.setAuthToken(token);
   }
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? token = prefs.getString('auth_token');
-    final String? refreshToken = prefs.getString('refresh_token');
+    // ✅ READ FROM SECURE STORAGE
+    String? token = await _storage.read(key: 'auth_token');
+    String? refreshToken = await _storage.read(key: 'refresh_token');
 
     if (token == null) return null;
 
-    // ✅ SELF-HEALING: If token is expired, attempt to refresh it automatically
+    // ✅ AUTO-REFRESH LOGIC
     if (JwtDecoder.isExpired(token)) {
       print("⚠️ Token Expired. Attempting Refresh...");
       
@@ -187,7 +176,10 @@ class AuthService {
           final result = await _api.post('/api/auth/refresh', {'refreshToken': refreshToken});
           if (result['success']) {
             final newToken = result['data']['token'];
-            await prefs.setString('auth_token', newToken);
+            
+            // Update Secure Storage
+            await _storage.write(key: 'auth_token', value: newToken);
+            
             _api.setAuthToken(newToken);
             return newToken;
           }
@@ -210,9 +202,23 @@ class AuthService {
     return token != null;
   }
 
+  Future<Map<String, dynamic>?> getCachedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userData = prefs.getString('cached_user');
+    if (userData != null) {
+      return jsonDecode(userData);
+    }
+    return null;
+  }
+
   Future<void> logout() async {
+    // ✅ WIPE SECURE DATA
+    await _storage.deleteAll();
+    
+    // Wipe UI Data
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+    
     _api.clearAuthToken();
     
     navigatorKey.currentState?.pushAndRemoveUntil(

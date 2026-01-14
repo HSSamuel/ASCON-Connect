@@ -37,6 +37,10 @@
 .toast-error { border-left: 6px solid #d32f2f; }
 .toast-info { border-left: 6px solid #0288d1; } /* Blue for Export */
 
+/* ✅ Added Warning/Default for robustness (Does not affect existing code) */
+.toast-warning { border-left: 6px solid #fbc02d; }
+.toast-default { border-left: 6px solid #333; }
+
 /* Icon Styling */
 .toast-icon {
   font-size: 1.2rem;
@@ -71,4 +75,12 @@
 
 .toast-close:hover {
   color: #333;
+}
+
+/* ✅ Mobile Optimization: Prevents overflow on small screens */
+@media (max-width: 400px) {
+  .toast-container {
+    min-width: auto;
+    width: 90%;
+  }
 }

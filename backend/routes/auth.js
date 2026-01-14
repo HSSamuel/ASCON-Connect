@@ -190,7 +190,7 @@ router.post("/logout", async (req, res) => {
 });
 
 // =========================================================
-// 4. GOOGLE LOGIN (UPDATED for Web Support)
+// 4. GOOGLE LOGIN (With Auto-Registration)
 // =========================================================
 router.post("/google", async (req, res) => {
   try {
@@ -199,9 +199,7 @@ router.post("/google", async (req, res) => {
 
     // ✅ DETECT TOKEN TYPE
     const isIdToken = token.split(".").length === 3;
-
     if (isIdToken) {
-      // 🅰️ HANDLE ID TOKEN (Mobile / Standard)
       const ticket = await client.verifyIdToken({
         idToken: token,
         audience: process.env.GOOGLE_CLIENT_ID,
@@ -211,82 +209,92 @@ router.post("/google", async (req, res) => {
       email = payload.email;
       picture = payload.picture;
     } else {
-      // 🅱️ HANDLE ACCESS TOKEN (Web Fallback)
-      try {
-        const response = await axios.get(
-          "https://www.googleapis.com/oauth2/v3/userinfo",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-        name = response.data.name;
-        email = response.data.email;
-        picture = response.data.picture;
-      } catch (apiError) {
-        console.error(
-          "Google UserInfo API Error:",
-          apiError.response?.data || apiError.message
-        );
-        return res.status(401).json({ message: "Invalid Google Access Token" });
-      }
+      const response = await axios.get(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      name = response.data.name;
+      email = response.data.email;
+      picture = response.data.picture;
     }
 
-    // --- EXISTING USER LOGIC ---
+    // --- CHECK IF USER EXISTS ---
     let user = await User.findOne({ email });
 
-    if (user) {
-      if (!user.isVerified)
-        return res.status(403).json({ message: "Account pending approval." });
+    // ✅ NEW: IF USER DOES NOT EXIST, CREATE THEM AUTOMATICALLY
+    if (!user) {
+      const currentYear = new Date().getFullYear();
 
-      if (!user.alumniId || user.alumniId === "PENDING") {
-        const year = user.yearOfAttendance || new Date().getFullYear();
-        user.alumniId = await generateAlumniId(year);
-        await user.save();
-      }
+      // Generate secure random password since they used Google
+      const randomPassword = crypto.randomBytes(16).toString("hex");
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(randomPassword, salt);
 
-      if (fcmToken) {
-        await User.updateOne(
-          { _id: user._id },
-          { $addToSet: { fcmTokens: fcmToken } }
-        );
-      }
+      const newAlumniId = await generateAlumniId(currentYear);
 
-      const authToken = jwt.sign(
-        {
-          _id: user._id,
-          isAdmin: user.isAdmin || false,
-          canEdit: user.canEdit || false,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: "2h" }
-      );
-
-      const refreshToken = jwt.sign(
-        { _id: user._id },
-        process.env.REFRESH_SECRET,
-        { expiresIn: "30d" }
-      );
-
-      return res.json({
-        token: authToken,
-        refreshToken: refreshToken,
-        user: {
-          id: user._id,
-          fullName: user.fullName,
-          email: user.email,
-          isAdmin: user.isAdmin,
-          canEdit: user.canEdit,
-          profilePicture: user.profilePicture,
-          hasSeenWelcome: user.hasSeenWelcome || false,
-          alumniId: user.alumniId,
-        },
+      user = new User({
+        fullName: name,
+        email: email,
+        password: hashedPassword, // Dummy password
+        phoneNumber: "", // User can update this later
+        yearOfAttendance: currentYear,
+        profilePicture: picture,
+        isVerified: true, // Google emails are verified by default
+        alumniId: newAlumniId,
+        hasSeenWelcome: false,
       });
-    } else {
-      return res.status(404).json({
-        message: "User not found",
-        googleData: { fullName: name, email: email, photo: picture },
-      });
+
+      await user.save();
+      console.log(`✅ New User created via Google: ${email}`);
     }
+
+    // --- PROCEED WITH LOGIN LOGIC ---
+    if (!user.isVerified)
+      return res.status(403).json({ message: "Account pending approval." });
+
+    if (!user.alumniId || user.alumniId === "PENDING") {
+      const year = user.yearOfAttendance || new Date().getFullYear();
+      user.alumniId = await generateAlumniId(year);
+      await user.save();
+    }
+
+    if (fcmToken) {
+      await User.updateOne(
+        { _id: user._id },
+        { $addToSet: { fcmTokens: fcmToken } }
+      );
+    }
+
+    const authToken = jwt.sign(
+      {
+        _id: user._id,
+        isAdmin: user.isAdmin || false,
+        canEdit: user.canEdit || false,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "2h" }
+    );
+
+    const refreshToken = jwt.sign(
+      { _id: user._id },
+      process.env.REFRESH_SECRET,
+      { expiresIn: "30d" }
+    );
+
+    return res.json({
+      token: authToken,
+      refreshToken: refreshToken,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        canEdit: user.canEdit,
+        profilePicture: user.profilePicture,
+        hasSeenWelcome: user.hasSeenWelcome || false,
+        alumniId: user.alumniId,
+      },
+    });
   } catch (err) {
     console.error("Google Auth Error:", err);
     res.status(500).json({ message: "Google Authentication Failed" });
