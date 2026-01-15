@@ -4,6 +4,7 @@ const Event = require("../models/Event");
 const Programme = require("../models/Programme");
 const ProgrammeInterest = require("../models/ProgrammeInterest");
 const EventRegistration = require("../models/EventRegistration");
+const Facility = require("../models/Facility"); // ✅ Added Facility Model
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
 
@@ -60,7 +61,6 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-  // ✅ FIX: Added location to Admin Validation Schema
   location: Joi.string().optional().allow(""),
   type: Joi.string()
     .valid(
@@ -94,20 +94,29 @@ const programmeSchema = Joi.object({
 // ==========================================
 router.get("/stats", verifyAdmin, async (req, res) => {
   try {
-    const [userCount, eventCount, progCount, progInterestCount, eventRegCount] =
-      await Promise.all([
-        User.countDocuments(),
-        Event.countDocuments(),
-        Programme.countDocuments(),
-        ProgrammeInterest.countDocuments(),
-        EventRegistration.countDocuments(),
-      ]);
+    // ✅ Added facilityCount to the Promise.all
+    const [
+      userCount,
+      eventCount,
+      progCount,
+      progInterestCount,
+      eventRegCount,
+      facilityCount,
+    ] = await Promise.all([
+      User.countDocuments(),
+      Event.countDocuments(),
+      Programme.countDocuments(),
+      ProgrammeInterest.countDocuments(),
+      EventRegistration.countDocuments(),
+      Facility.countDocuments(), // ✅ Fetch Facility Count
+    ]);
 
     res.json({
       users: userCount,
       events: eventCount,
       programmes: progCount,
       totalRegistrations: progInterestCount + eventRegCount,
+      facilities: facilityCount, // ✅ Return it in response
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -238,7 +247,6 @@ router.post("/events", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    // ✅ FIX: Extract location from request body
     const { title, description, date, type, image, location } = req.body;
 
     const newEvent = new Event({
@@ -247,7 +255,7 @@ router.post("/events", verifyEditor, async (req, res) => {
       date,
       type,
       image,
-      location, // ✅ Save location
+      location,
     });
     await newEvent.save();
 
@@ -275,7 +283,7 @@ router.put("/events/:id", verifyEditor, async (req, res) => {
   try {
     const updatedEvent = await Event.findByIdAndUpdate(
       req.params.id,
-      req.body, // req.body now contains 'location', and the schema above now allows it!
+      req.body,
       { new: true }
     );
     res.json({ message: "Event updated!", event: updatedEvent });

@@ -15,13 +15,12 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   final DataService _dataService = DataService();
 
   List<dynamic> _allAlumni = [];
-  List<dynamic> _searchResults = []; // ✅ NEW: Holds filtered results
+  List<dynamic> _searchResults = [];
   Map<String, List<dynamic>> _groupedAlumni = {};
   
   bool _isLoading = false;
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
-  // Timer? _debounce; // ❌ Removed: Not needed for local search
 
   @override
   void initState() {
@@ -31,22 +30,19 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
 
   @override
   void dispose() {
-    // _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  // ✅ UPDATED: Fetch ALL data once (ignore query param for fetching)
   Future<void> _loadDirectory({String query = ""}) async {
     setState(() => _isLoading = true);
     
-    // We fetch EVERYTHING so we can filter locally
     final list = await _dataService.fetchDirectory(); 
 
     if (mounted) {
       setState(() {
         _allAlumni = list;
-        _searchResults = list; // Initialize results with full list
+        _searchResults = list; 
         _groupedAlumni = _groupUsersByYear(list);
         _isLoading = false;
       });
@@ -70,7 +66,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     return sortedGroups;
   }
 
-  // ✅ UPDATED: Robust Client-Side Search Logic
   void _onSearchChanged(String query) {
     setState(() {
       _isSearching = query.isNotEmpty;
@@ -81,14 +76,12 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         final lowerQuery = query.toLowerCase();
         
         _searchResults = _allAlumni.where((user) {
-          // Safely get fields and convert to lowercase for comparison
           final name = (user['fullName'] ?? '').toString().toLowerCase();
           final org = (user['organization'] ?? '').toString().toLowerCase();
           final year = (user['yearOfAttendance'] ?? '').toString().toLowerCase();
           final job = (user['jobTitle'] ?? '').toString().toLowerCase();
           final prog = (user['programmeTitle'] ?? '').toString().toLowerCase();
           
-          // Check if any field contains the query
           return name.contains(lowerQuery) || 
                  org.contains(lowerQuery) || 
                  year.contains(lowerQuery) ||
@@ -111,7 +104,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ AUTO-DETECT THEME COLORS
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     
@@ -156,7 +148,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           // --- CONTENT AREA ---
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _loadDirectory(), // Load all data on refresh
+              onRefresh: () => _loadDirectory(), 
               color: primaryColor,
               child: _isLoading
                   ? Center(child: CircularProgressIndicator(color: primaryColor))
@@ -216,8 +208,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                   color: isDark ? Colors.white : primaryColor, 
                 ),
               ),
+              // ✅ FIXED: Singular/Plural Grammar Logic
               subtitle: Text(
-                "${classMembers.length} Members",
+                "${classMembers.length} ${classMembers.length == 1 ? 'Member' : 'Members'}",
                 style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
               ),
               childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -230,7 +223,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   }
 
   Widget _buildSearchResults() {
-    // ✅ UPDATED: Now uses _searchResults instead of _allAlumni
     if (_searchResults.isEmpty) {
       return Center(
         child: Column(
@@ -269,7 +261,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  // ✅ SINGLE CLICK CARD (Navigates to Details)
   Widget _buildAlumniCard(dynamic user) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
@@ -301,7 +292,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            // ✅ NAVIGATE TO PROFILE DETAILS
             Navigator.push(
               context,
               MaterialPageRoute(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart'; // ✅ Required for Currency Formatting
+import 'package:intl/intl.dart';
+import 'dart:math'; 
 import '../services/data_service.dart';
 import 'job_detail_screen.dart';
 import 'facility_detail_screen.dart';
@@ -16,7 +17,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   late TabController _tabController;
   final DataService _dataService = DataService();
   
-  // ✅ Currency Formatter for "Starts at ₦..."
+  // Currency Formatter
   final NumberFormat _currency = NumberFormat.currency(symbol: "₦", decimalDigits: 0);
 
   @override
@@ -25,9 +26,16 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     _tabController = TabController(length: 2, vsync: this);
   }
 
+  // Helper to generate consistent colors for companies
+  Color _getCompanyColor(String name) {
+    final List<Color> colors = [
+      Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.teal, Colors.redAccent
+    ];
+    return colors[name.hashCode.abs() % colors.length];
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ✅ 1. Theme Detection
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
@@ -35,45 +43,44 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: scaffoldBg,
       appBar: AppBar(
-        // ✅ 2. PRO REQUEST: Uniform Green in Light Mode, White in Dark Mode
+        // ✅ 1. Uniform Green Background
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white, 
+        iconTheme: const IconThemeData(color: Colors.white),
+        
         title: Text(
-          "Opportunities & Resources",
+          "Opportunities",
           style: GoogleFonts.inter(
             fontWeight: FontWeight.w800,
-            color: isDark ? Colors.white : primaryColor,
-            letterSpacing: 0.5,
+            color: Colors.white,
+            fontSize: 22,
           ),
         ),
-        centerTitle: true,
+        centerTitle: false,
         elevation: 0,
-        backgroundColor: Theme.of(context).cardColor,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : primaryColor),
         
-        // ✅ 3. Custom Tab Bar Container
+        // ✅ 2. Cleaner Tab Bar
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
+          preferredSize: const Size.fromHeight(70),
           child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[800] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
+              color: isDark ? Colors.black26 : Colors.white, 
+              borderRadius: BorderRadius.circular(16),
             ),
             child: TabBar(
               controller: _tabController,
               indicator: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
-                ],
+                color: isDark ? primaryColor : primaryColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
               ),
-              labelColor: primaryColor,
-              unselectedLabelColor: Colors.grey,
+              labelColor: isDark ? Colors.white : primaryColor,
+              unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
               labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
               tabs: const [
-                Tab(text: "CAREERS", iconMargin: EdgeInsets.zero),
-                Tab(text: "FACILITIES", iconMargin: EdgeInsets.zero),
+                Tab(text: "JOBS", height: 40),
+                Tab(text: "FACILITIES", height: 40),
               ],
             ),
           ),
@@ -90,7 +97,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   }
 
   // ==========================================
-  // 💼 1. JOBS LIST (Professional Card Layout)
+  // 💼 1. JOBS LIST (Optimized & Modern)
   // ==========================================
   Widget _buildJobsList(bool isDark, Color primaryColor) {
     return FutureBuilder(
@@ -104,79 +111,119 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         }
 
         final jobs = snapshot.data as List;
-        return ListView.separated(
+        return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: jobs.length,
-          separatorBuilder: (c, i) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            final job = jobs[index];
-            return _buildJobCard(job, isDark, primaryColor);
+            return _buildModernJobCard(jobs[index], isDark, primaryColor);
           },
         );
       },
     );
   }
 
-  Widget _buildJobCard(dynamic job, bool isDark, Color primaryColor) {
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
+  Widget _buildModernJobCard(dynamic job, bool isDark, Color primaryColor) {
+    final String company = job['company'] ?? "ASCON";
+    final String initial = company.isNotEmpty ? company[0].toUpperCase() : "A";
+    final Color brandColor = _getCompanyColor(company);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job))),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job))),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Row
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar
+                    Container(
+                      width: 48, height: 48,
+                      decoration: BoxDecoration(
+                        color: brandColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        initial,
+                        style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: brandColor),
+                      ),
                     ),
-                    child: Icon(Icons.business_center, color: primaryColor, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          job['title'] ?? "Untitled",
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          job['company'] ?? "ASCON Network",
-                          style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
-                        ),
-                      ],
+                    const SizedBox(width: 12),
+                    // Title Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            job['title'] ?? "Untitled",
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            company,
+                            style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
-                  const SizedBox(width: 8),
-                  _buildTag(job['location'] ?? 'Remote', Colors.orange, isDark),
-                  const Spacer(),
-                  if (job['salary'] != null && job['salary'] != "Negotiable")
+                    // Salary Pill
+                    if (job['salary'] != null && job['salary'] != "Negotiable")
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          job['salary'],
+                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green[700]),
+                        ),
+                      ),
+                  ],
+                ),
+                
+                const SizedBox(height: 16),
+                Divider(height: 1, color: Colors.grey.withOpacity(0.1)),
+                const SizedBox(height: 12),
+
+                // Tags Row
+                Row(
+                  children: [
+                    _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
+                    const SizedBox(width: 8),
+                    _buildTag(job['location'] ?? 'Remote', Colors.orange, isDark),
+                    const Spacer(),
+                    Icon(Icons.access_time, size: 14, color: Colors.grey[400]),
+                    const SizedBox(width: 4),
                     Text(
-                      job['salary'],
-                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.green[700]),
+                      "Recently", 
+                      style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[400]),
                     ),
-                ],
-              )
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -184,7 +231,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   }
 
   // ==========================================
-  // 🏢 2. FACILITIES LIST (Immersive Hero Layout)
+  // 🏢 2. FACILITIES LIST (Refined)
   // ==========================================
   Widget _buildFacilitiesList(bool isDark, Color primaryColor) {
     return FutureBuilder(
@@ -202,8 +249,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
           padding: const EdgeInsets.all(16),
           itemCount: facilities.length,
           itemBuilder: (context, index) {
-            final facility = facilities[index];
-            return _buildFacilityCard(facility, isDark, primaryColor);
+            return _buildFacilityCard(facilities[index], isDark, primaryColor);
           },
         );
       },
@@ -215,7 +261,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     final bool isActive = facility['isActive'] == true;
     final List<dynamic> rates = facility['rates'] ?? [];
     
-    // ✅ SMART PRICING: Shows "From ₦50,000" if rates exist
     String priceTag = "View Details";
     if (rates.isNotEmpty) {
       try {
@@ -235,14 +280,14 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: isDark ? [] : [
+          boxShadow: [
             BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 8))
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🖼️ HERO IMAGE AREA
+            // Hero Image
             Stack(
               children: [
                 Hero(
@@ -250,36 +295,30 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                     child: SizedBox(
-                      height: 200,
+                      height: 180,
                       width: double.infinity,
                       child: imageUrl != null && imageUrl.isNotEmpty
-                          ? Image.network(
-                              imageUrl, 
-                              fit: BoxFit.cover,
-                              errorBuilder: (c, e, s) => Container(color: Colors.grey[300], child: const Icon(Icons.image_not_supported)),
-                            )
+                          ? Image.network(imageUrl, fit: BoxFit.cover)
                           : Container(color: Colors.grey[300], child: Icon(Icons.business, size: 50, color: Colors.grey[400])),
                     ),
                   ),
                 ),
-                // ✨ GLASSMORPHISM STATUS BADGE
                 Positioned(
-                  top: 16,
-                  right: 16,
+                  top: 12, right: 12,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: isActive ? Colors.green.withOpacity(0.9) : Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(30),
+                      color: isActive ? Colors.green.withOpacity(0.9) : Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(20),
                       boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
                     ),
                     child: Row(
                       children: [
-                        Icon(isActive ? Icons.check_circle : Icons.lock, color: Colors.white, size: 12),
+                        Icon(isActive ? Icons.check_circle : Icons.lock, color: Colors.white, size: 10),
                         const SizedBox(width: 4),
                         Text(
                           isActive ? "AVAILABLE" : "BOOKED",
-                          style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -288,9 +327,9 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
               ],
             ),
 
-            // 📝 CONTENT AREA
+            // Content
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -300,46 +339,36 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                       Expanded(
                         child: Text(
                           facility['name'] ?? "Facility Name",
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 18),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 17),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      // 🏷️ PRICE BADGE
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          priceTag,
-                          style: GoogleFonts.inter(color: primaryColor, fontWeight: FontWeight.w700, fontSize: 12),
-                        ),
-                      )
+                      Text(
+                        priceTag,
+                        style: GoogleFonts.inter(color: primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     facility['description'] ?? "No description available.",
-                    style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14, height: 1.5),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13, height: 1.4),
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   
-                  // 🦶 FOOTER ACTIONS
+                  // Footer
                   Row(
                     children: [
-                      Icon(Icons.star, size: 16, color: Colors.orange[400]),
-                      const SizedBox(width: 4),
-                      Text("4.8 (Rating)", style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+                      Icon(Icons.star_rounded, size: 16, color: Colors.amber),
+                      Text(" 4.8", style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
                       const Spacer(),
                       Text(
-                        "View Details",
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: primaryColor, fontSize: 13),
+                        "Book Now",
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: primaryColor, fontSize: 12),
                       ),
-                      Icon(Icons.arrow_forward, size: 16, color: primaryColor),
+                      const SizedBox(width: 2),
+                      Icon(Icons.arrow_right_alt, size: 16, color: primaryColor),
                     ],
                   )
                 ],
@@ -351,18 +380,16 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     );
   }
 
-  // --- HELPERS ---
   Widget _buildTag(String text, Color color, bool isDark) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+        style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 11),
       ),
     );
   }
@@ -372,9 +399,16 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 60, color: Colors.grey[300]),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 40, color: Colors.grey[400]),
+          ),
           const SizedBox(height: 16),
-          Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
         ],
       ),
     );

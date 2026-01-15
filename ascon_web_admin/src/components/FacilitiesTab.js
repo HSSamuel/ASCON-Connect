@@ -1,58 +1,402 @@
-import React from "react";
-import "./FacilitiesTab.css"; // Ensure you create/update this CSS
+import React, { useState, useEffect, useCallback } from "react";
+import axios from "axios";
+import { FaTrash, FaEdit, FaTimes, FaLink } from "react-icons/fa"; // ✅ Added FaLink icon
+import "./FacilitiesTab.css";
+import Toast from "../Toast";
+import ConfirmModal from "../ConfirmModal";
+import SkeletonTable from "./SkeletonTable";
 
-function FacilitiesTab({ facilitiesList, deleteFacility, toggleAvailability }) {
-  if (!facilitiesList || facilitiesList.length === 0) {
-    return (
-      <div className="empty-state">No Facilities Found. Add one above!</div>
-    );
-  }
+function FacilitiesTab({ onRefreshStats }) {
+  const [facilities, setFacilities] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  // UI STATE
+  const [toast, setToast] = useState(null);
+  const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
+
+  const [formData, setFormData] = useState({
+    name: "",
+    image: "",
+    description: "",
+    paymentUrl: "", // ✅ 1. ADDED STATE FIELD
+  });
+
+  const [rates, setRates] = useState([{ type: "", naira: "", dollar: "" }]);
+
+  const API_URL =
+    process.env.REACT_APP_API_URL || "https://ascon-connect-api.onrender.com";
+  const token = localStorage.getItem("auth_token");
+
+  // Fetch Facilities
+  const fetchFacilities = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/facilities`);
+      setFacilities(res.data.data || []);
+      setIsLoading(false);
+    } catch (err) {
+      console.error("Error fetching facilities:", err);
+      setIsLoading(false);
+    }
+  }, [API_URL]);
+
+  useEffect(() => {
+    fetchFacilities();
+  }, [fetchFacilities]);
+
+  // Toast Helper
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+  };
+
+  // Form Handlers
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleRateChange = (index, e) => {
+    const newRates = [...rates];
+    newRates[index][e.target.name] = e.target.value;
+    setRates(newRates);
+  };
+
+  const addRateRow = () => {
+    setRates([...rates, { type: "", naira: "", dollar: "" }]);
+  };
+
+  const removeRateRow = (index) => {
+    const newRates = rates.filter((_, i) => i !== index);
+    setRates(newRates);
+  };
+
+  // Edit Mode
+  const handleEdit = (facility) => {
+    setEditingId(facility._id);
+    setFormData({
+      name: facility.name,
+      image: facility.image,
+      description: facility.description || "",
+      paymentUrl: facility.paymentUrl || "", // ✅ 2. LOAD EXISTING URL
+    });
+    setRates(facility.rates || []);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Toggle Status Logic
+  const toggleStatus = async (facility) => {
+    try {
+      const newStatus = !facility.isActive;
+      await axios.put(
+        `${API_URL}/api/facilities/${facility._id}`,
+        { isActive: newStatus },
+        { headers: { "auth-token": token } }
+      );
+
+      showToast(`Facility ${newStatus ? "Enabled" : "Disabled"}`, "success");
+      fetchFacilities();
+    } catch (err) {
+      showToast("Failed to update status", "error");
+    }
+  };
+
+  // Delete Logic
+  const confirmDelete = (id) => {
+    setDeleteModal({ show: true, id });
+  };
+
+  const handleDelete = async () => {
+    const id = deleteModal.id;
+    setDeleteModal({ show: false, id: null });
+
+    try {
+      await axios.delete(`${API_URL}/api/facilities/${id}`, {
+        headers: { "auth-token": token },
+      });
+      showToast("Facility Deleted Successfully!", "success");
+      fetchFacilities();
+
+      if (onRefreshStats) onRefreshStats();
+    } catch (err) {
+      showToast("Failed to delete facility", "error");
+    }
+  };
+
+  // Reset Logic
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormData({ name: "", image: "", description: "", paymentUrl: "" }); // ✅ 3. RESET FIELD
+    setRates([{ type: "", naira: "", dollar: "" }]);
+  };
+
+  const toggleForm = () => {
+    if (showForm) {
+      resetForm();
+    } else {
+      setShowForm(true);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.name || !formData.image) {
+      showToast("Name and Image are required!", "error");
+      return;
+    }
+
+    try {
+      if (editingId) {
+        await axios.put(
+          `${API_URL}/api/facilities/${editingId}`,
+          { ...formData, rates },
+          { headers: { "auth-token": token } }
+        );
+        showToast("Facility Updated Successfully!", "success");
+      } else {
+        await axios.post(
+          `${API_URL}/api/facilities`,
+          { ...formData, rates },
+          { headers: { "auth-token": token } }
+        );
+        showToast("Facility Added Successfully!", "success");
+      }
+
+      resetForm();
+      fetchFacilities();
+
+      if (onRefreshStats) onRefreshStats();
+    } catch (err) {
+      showToast(err.response?.data?.message || "Operation failed", "error");
+    }
+  };
+
+  if (isLoading) return <SkeletonTable columns={5} />;
 
   return (
-    <div className="facilities-grid">
-      {facilitiesList.map((facility) => (
-        <div key={facility._id} className="facility-card">
-          <div
-            className="facility-image"
-            style={{
-              backgroundImage: `url(${
-                facility.image || "/default-building.png"
-              })`,
-            }}
-          >
-            <span
-              className={`status-badge ${
-                facility.isAvailable ? "open" : "closed"
-              }`}
-            >
-              {facility.isAvailable ? "Available" : "Booked"}
-            </span>
-          </div>
+    <div className="tab-content-container">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
-          <div className="facility-content">
-            <h3>{facility.name}</h3>
-            <p className="capacity">
-              👥 Capacity: {facility.capacity || "N/A"}
-            </p>
-            <p className="desc">{facility.description?.substring(0, 60)}...</p>
+      <ConfirmModal
+        isOpen={deleteModal.show}
+        title="Delete Facility"
+        message="Are you sure you want to remove this facility?"
+        confirmText="Delete"
+        isDanger={true}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteModal({ show: false, id: null })}
+      />
 
-            <div className="facility-actions">
+      <div className="tab-header">
+        <h2>Facility Rentals</h2>
+        <button className="btn-primary" onClick={toggleForm}>
+          {showForm ? "Cancel" : "+ Add New Facility"}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="form-card fade-in">
+          <h3>{editingId ? "Edit Facility" : "Add New Facility"}</h3>
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid">
+              <input
+                type="text"
+                name="name"
+                placeholder="Facility Name"
+                value={formData.name}
+                onChange={handleInputChange}
+                required
+              />
+              <input
+                type="text"
+                name="image"
+                placeholder="Image URL"
+                value={formData.image}
+                onChange={handleInputChange}
+                required
+              />
+
+              {/* ✅ 4. NEW INPUT FIELD FOR PAYMENT URL */}
+              <input
+                type="text"
+                name="paymentUrl"
+                placeholder="Payment/Booking URL (Optional)"
+                value={formData.paymentUrl}
+                onChange={handleInputChange}
+                style={{ gridColumn: "1 / -1" }} // Make it span full width
+              />
+
+              <textarea
+                name="description"
+                placeholder="Description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows="3"
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  border: "1px solid #ddd",
+                  resize: "vertical",
+                }}
+              />
+            </div>
+
+            <div className="form-section-title">Rental Rates</div>
+
+            <div className="rates-container">
+              {rates.map((rate, index) => (
+                <div key={index} className="rate-row">
+                  <input
+                    placeholder="Type (e.g. Daily)"
+                    name="type"
+                    value={rate.type}
+                    onChange={(e) => handleRateChange(index, e)}
+                    className="rate-input type"
+                  />
+                  <input
+                    placeholder="₦ Amount"
+                    name="naira"
+                    value={rate.naira}
+                    onChange={(e) => handleRateChange(index, e)}
+                    className="rate-input"
+                  />
+                  <input
+                    placeholder="$ Amount"
+                    name="dollar"
+                    value={rate.dollar}
+                    onChange={(e) => handleRateChange(index, e)}
+                    className="rate-input"
+                  />
+                  {rates.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRateRow(index)}
+                      className="delete-btn icon-only"
+                    >
+                      <FaTimes />
+                    </button>
+                  )}
+                </div>
+              ))}
               <button
-                onClick={() => toggleAvailability(facility._id)}
-                className="btn-toggle"
+                type="button"
+                onClick={addRateRow}
+                className="add-rate-btn"
               >
-                {facility.isAvailable ? "Mark Booked" : "Mark Open"}
-              </button>
-              <button
-                onClick={() => deleteFacility(facility._id)}
-                className="btn-delete"
-              >
-                Delete
+                + Add Another Rate
               </button>
             </div>
-          </div>
+
+            <div className="form-actions">
+              <button type="submit" className="approve-btn">
+                {editingId ? "Update Facility" : "Save Facility"}
+              </button>
+              <button type="button" onClick={resetForm} className="delete-btn">
+                Cancel
+              </button>
+            </div>
+          </form>
         </div>
-      ))}
+      )}
+
+      <div className="table-responsive">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Facility Name</th>
+              <th>Rates Summary</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {facilities.length > 0 ? (
+              facilities.map((fac) => (
+                <tr key={fac._id}>
+                  <td>
+                    <img
+                      src={fac.image}
+                      alt={fac.name}
+                      className="table-thumbnail"
+                    />
+                  </td>
+                  <td className="font-bold">
+                    {fac.name}
+                    {/* ✅ 5. VISUAL INDICATOR IF PAYMENT LINK EXISTS */}
+                    {fac.paymentUrl && (
+                      <FaLink
+                        style={{
+                          marginLeft: "8px",
+                          color: "#1B5E3A",
+                          fontSize: "0.8rem",
+                        }}
+                        title="Payment Link Active"
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {fac.rates && fac.rates.length > 0 ? (
+                      fac.rates.map((r, i) => (
+                        <div key={i} className="rate-item">
+                          <span className="rate-type">{r.type}:</span>
+                          <strong>₦{r.naira}</strong> / ${r.dollar}
+                        </div>
+                      ))
+                    ) : (
+                      <span className="text-muted">No rates set</span>
+                    )}
+                  </td>
+                  <td>
+                    <span
+                      className={`status-badge ${
+                        fac.isActive ? "active" : "inactive"
+                      }`}
+                      onClick={() => toggleStatus(fac)}
+                      title="Click to toggle status"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {fac.isActive ? "Active" : "Disabled"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="action-buttons-container">
+                      <button
+                        onClick={() => handleEdit(fac)}
+                        className="approve-btn compact-btn"
+                        title="Edit"
+                      >
+                        <FaEdit />
+                      </button>
+                      <button
+                        onClick={() => confirmDelete(fac._id)}
+                        className="delete-btn compact-btn"
+                        title="Delete"
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="5" className="empty-state">
+                  No facilities found. Click "Add New Facility" to create one.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

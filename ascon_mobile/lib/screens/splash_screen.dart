@@ -45,18 +45,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (!mounted) return;
 
+    // ✅ FIX: Use AuthService to check validity (It checks Secure Storage)
+    final bool isValid = await _authService.isSessionValid();
+    
+    // We still need Prefs to get the User Name for the UI
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth_token');
     final userName = prefs.getString('user_name');
-
-    bool isValid = false;
-    if (token != null) {
-       isValid = await _authService.isSessionValid(); 
-    }
 
     if (!mounted) return;
 
-    if (token != null && isValid) {
+    // ✅ LOGIC UPDATED: Rely on the result from AuthService
+    if (isValid) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => HomeScreen(userName: userName ?? "Alumnus")),
@@ -76,16 +75,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     const asconGreen = Color(0xFF1B5E20); 
     final glowColor = Colors.greenAccent.withOpacity(0.8);
 
-    // Responsive sizing:
-    // 1. Get screen width & height
+    // Responsive sizing
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
 
-    // 2. Calculate safe logo size
-    // Use the SMALLER of width or height to ensure it fits on landscape phones or web
     double logoSize = (screenWidth < screenHeight ? screenWidth : screenHeight) * 0.5; 
-    
-    // 3. Cap the max size so it doesn't get ridiculously huge on tablets/web
     if (logoSize > 300) logoSize = 300;
 
     return Scaffold(
@@ -93,12 +87,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       body: Center(
         child: FadeTransition(
           opacity: _animation,
-          // ✅ FIX: SingleChildScrollView prevents overflow on small screens
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min, // Shrink to fit content
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // 1. THE LOGO
                 Container(

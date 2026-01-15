@@ -5,6 +5,10 @@ const facilitySchema = new mongoose.Schema(
     name: { type: String, required: true },
     image: { type: String, required: true }, // URL from Cloudinary
     description: { type: String },
+
+    // ✅ ADDED: Payment URL Field
+    paymentUrl: { type: String, default: "" },
+
     rates: [
       {
         type: { type: String, required: true }, // e.g., "Daily", "Weekend"

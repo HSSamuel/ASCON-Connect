@@ -1,13 +1,42 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./NavBar.css";
 
 function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // Mobile Menu
+  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false); // ✅ Desktop Dropdown
+
+  // Ref to close dropdown when clicking outside
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDesktopDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleTabClick = (tab) => {
     setActiveTab(tab);
-    setIsMenuOpen(false);
+    setIsMenuOpen(false); // Close mobile menu
+    setIsDesktopDropdownOpen(false); // ✅ Close desktop dropdown
   };
+
+  const navItems = [
+    { id: "users", label: "Users", icon: "👥" },
+    { id: "events", label: "Events", icon: "📅" },
+    { id: "programmes", label: "Programmes", icon: "🎓" },
+    { id: "jobs", label: "Jobs", icon: "💼" },
+    { id: "facilities", label: "Facilities", icon: "🏢" },
+    { id: "registrations", label: "Registrations", icon: "📋" },
+  ];
+
+  // Get the object for the currently active tab
+  const activeItem =
+    navItems.find((item) => item.id === activeTab) || navItems[0];
 
   return (
     <>
@@ -20,48 +49,41 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           <span className="brand-text">ASCON Admin</span>
         </div>
 
-        <div className="nav-links">
-          <button
-            className={activeTab === "users" ? "active" : ""}
-            onClick={() => handleTabClick("users")}
-          >
-            👥 Users
-          </button>
-          <button
-            className={activeTab === "events" ? "active" : ""}
-            onClick={() => handleTabClick("events")}
-          >
-            📅 Events
-          </button>
-          <button
-            className={activeTab === "programmes" ? "active" : ""}
-            onClick={() => handleTabClick("programmes")}
-          >
-            🎓 Programmes
-          </button>
-
-          {/* ✅ JOBS BUTTON */}
-          <button
-            className={activeTab === "jobs" ? "active" : ""}
-            onClick={() => handleTabClick("jobs")}
-          >
-            💼 Jobs
-          </button>
-
-          {/* ✅ FACILITIES BUTTON */}
-          <button
-            className={activeTab === "facilities" ? "active" : ""}
-            onClick={() => setActiveTab("facilities")}
-          >
-            🏢 Facilities
-          </button>
+        {/* ✅ NEW DROPDOWN MENU CONTAINER */}
+        <div className="nav-dropdown-container" ref={dropdownRef}>
+          <span className="nav-label-text">Current View:</span>
 
           <button
-            className={activeTab === "registrations" ? "active" : ""}
-            onClick={() => handleTabClick("registrations")}
+            className="dropdown-trigger"
+            onClick={() => setIsDesktopDropdownOpen(!isDesktopDropdownOpen)}
           >
-            📋 Registrations
+            <span className="trigger-content">
+              {activeItem.icon} {activeItem.label}
+            </span>
+            <span className="trigger-arrow">
+              {isDesktopDropdownOpen ? "▲" : "▼"}
+            </span>
           </button>
+
+          {/* THE DROPDOWN LIST */}
+          {isDesktopDropdownOpen && (
+            <div className="dropdown-menu">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={`dropdown-item ${
+                    activeTab === item.id ? "active" : ""
+                  }`}
+                  onClick={() => handleTabClick(item.id)}
+                >
+                  {item.icon} {item.label}
+                  {activeTab === item.id && (
+                    <span className="check-mark">✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <button className="logout-btn" onClick={onLogout}>
@@ -70,35 +92,17 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
       </nav>
 
       {/* ==============================
-          2. MOBILE MENU OVERLAY
+          2. MOBILE MENU OVERLAY (Unchanged)
           ============================== */}
       {isMenuOpen && (
         <div className="mobile-menu-overlay">
           <div className="mobile-menu-content">
             <h3>Menu</h3>
-            <button onClick={() => handleTabClick("users")}>
-              👥 Users Management
-            </button>
-            <button onClick={() => handleTabClick("events")}>
-              📅 Events Management
-            </button>
-            <button onClick={() => handleTabClick("programmes")}>
-              🎓 Programmes
-            </button>
-
-            {/* ✅ JOBS BUTTON */}
-            <button onClick={() => handleTabClick("jobs")}>
-              💼 Jobs / Careers
-            </button>
-
-            {/* ✅ FACILITIES BUTTON (Added here for Mobile) */}
-            <button onClick={() => handleTabClick("facilities")}>
-              🏢 Facilities
-            </button>
-
-            <button onClick={() => handleTabClick("registrations")}>
-              📋 Registrations
-            </button>
+            {navItems.map((item) => (
+              <button key={item.id} onClick={() => handleTabClick(item.id)}>
+                {item.icon} {item.label}
+              </button>
+            ))}
             <hr />
             <button className="mobile-logout" onClick={onLogout}>
               🚪 Logout
@@ -111,10 +115,9 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
       )}
 
       {/* ==============================
-          3. MOBILE BOTTOM BAR
+          3. MOBILE BOTTOM BAR (Unchanged)
           ============================== */}
       <div className="mobile-bottom-bar">
-        {/* 1. USERS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("users")}
@@ -126,8 +129,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           </span>
           <span className="label">Users</span>
         </div>
-
-        {/* 2. EVENTS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("events")}
@@ -139,8 +140,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           </span>
           <span className="label">Events</span>
         </div>
-
-        {/* CENTER MENU BUTTON */}
         <div className="fab-container">
           <div className="fab-notch"></div>
           <button
@@ -151,8 +150,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           </button>
           <span className="fab-label">Menu</span>
         </div>
-
-        {/* 3. PROGRAMMES */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("programmes")}
@@ -164,10 +161,8 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           >
             🎓
           </span>
-          <span className="label">Programmes</span>
+          <span className="label">Progs</span>
         </div>
-
-        {/* 4. REGISTRATIONS */}
         <div
           className="bottom-nav-item"
           onClick={() => handleTabClick("registrations")}

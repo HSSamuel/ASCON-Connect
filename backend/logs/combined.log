@@ -199,3 +199,21 @@
 {"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-14 15:58:31"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-14 15:58:31"}
 {"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-14 15:58:31"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-15 07:40:42"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-15 07:40:42"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-15 07:40:47"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-15 07:40:47"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-15 07:40:47"}
+{"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-15 07:40:47"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-15 07:47:36"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-15 07:47:37"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-15 07:47:42"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-15 07:47:42"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-15 07:47:42"}
+{"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-15 07:47:42"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-15 07:47:51"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-15 07:47:52"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-15 07:47:56"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-15 07:47:56"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-15 07:47:56"}
+{"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-15 07:47:56"}

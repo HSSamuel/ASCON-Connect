@@ -7,7 +7,8 @@ export function useStats(baseUrl, token, refreshTrigger) {
     events: 0,
     programmes: 0,
     totalRegistrations: 0,
-    jobs: 0, // ✅ Initialize jobs count
+    jobs: 0,
+    facilities: 0, // ✅ Initialize facilities count
   });
 
   useEffect(() => {
@@ -18,29 +19,27 @@ export function useStats(baseUrl, token, refreshTrigger) {
         const config = { headers: { "auth-token": token } };
 
         // ✅ Run both fetches in parallel
-        // 1. Get legacy stats (Users, Events, etc.)
-        // 2. Get Jobs count directly from the jobs route
         const [adminStatsRes, jobsRes] = await Promise.all([
           axios.get(`${baseUrl}/api/admin/stats`, config),
           axios.get(`${baseUrl}/api/jobs`, config),
         ]);
 
-        // ✅ Calculate Job Count safely (handles Array or Object response)
+        // ✅ Calculate Job Count safely
         let jobsCount = 0;
         const jobsData = jobsRes.data;
 
         if (Array.isArray(jobsData)) {
           jobsCount = jobsData.length;
         } else if (jobsData.data && Array.isArray(jobsData.data)) {
-          jobsCount = jobsData.data.length; // Handles { success: true, data: [...] }
+          jobsCount = jobsData.data.length;
         } else if (jobsData.count) {
           jobsCount = jobsData.count;
         }
 
-        // ✅ Merge them into state
+        // ✅ Merge stats (adminStatsRes.data now includes facilities)
         setStats({
-          ...adminStatsRes.data, // Keep existing structure (users, events, etc.)
-          jobs: jobsCount, // Add the new number
+          ...adminStatsRes.data,
+          jobs: jobsCount,
         });
       } catch (e) {
         console.error("Stats error:", e);

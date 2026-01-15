@@ -5,9 +5,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* ✅ Reduced Height for compact look */
-  height: 55px; 
-  padding: 0 20px;
+  height: 60px; 
+  padding: 0 30px;
   background-color: white;
   box-shadow: 0 2px 10px rgba(0,0,0,0.05);
   position: sticky;
@@ -15,82 +14,142 @@
   z-index: 1000;
 }
 
-/* --- Brand Section --- */
+/* --- Brand --- */
 .nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  height: 36px; 
+  width: auto;
+}
+
+.brand-text {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #1B5E3A;
+  white-space: nowrap;
+}
+
+/* --- ✅ NEW DROPDOWN STYLES --- */
+.nav-dropdown-container {
+  position: relative; /* Anchor for absolute menu */
+  margin-left: auto; /* Push to right */
+  margin-right: 20px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.brand-logo {
-  /* ✅ Smaller Logo to fit slim bar */
-  height: 32px; 
-  width: auto;
-  object-fit: contain;
+.nav-label-text {
+  font-size: 0.9rem;
+  color: #666;
+  font-weight: 500;
 }
 
-.brand-text {
-  font-size: 18px;
+/* The Button you click to open menu */
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 180px;
+  transition: all 0.2s;
+}
+
+.dropdown-trigger:hover {
+  background-color: #e8f5e9;
+  border-color: #1B5E3A;
+}
+
+.trigger-content {
   font-weight: 700;
   color: #1B5E3A;
-  white-space: nowrap;
+  font-size: 0.95rem;
 }
 
-/* --- Navigation Links Section --- */
-.nav-links {
-  display: flex;
-  align-items: center;
-  /* ✅ Tighter spacing */
-  gap: 8px; 
-  margin-left: auto; 
+.trigger-arrow {
+  font-size: 0.7rem;
+  color: #888;
 }
 
-.nav-links button {
+/* The Actual Menu List */
+.dropdown-menu {
+  position: absolute;
+  top: 120%; /* Just below trigger */
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  border: 1px solid #f0f0f0;
+  width: 220px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: slideDown 0.2s ease-out;
+  z-index: 1100;
+}
+
+/* Menu Items */
+.dropdown-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   background: transparent;
   border: none;
+  padding: 10px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  /* ✅ Compact Padding & Font */
-  padding: 6px 12px;
-  font-size: 13.5px; 
-  font-weight: 600;
-  color: #555;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  white-space: nowrap;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #444;
+  font-weight: 500;
+  transition: background 0.2s;
 }
 
-.nav-links button:hover {
+.dropdown-item:hover {
   background-color: #f5f5f5;
   color: #1B5E3A;
 }
 
-.nav-links button.active {
+.dropdown-item.active {
   background-color: #e8f5e9;
   color: #1B5E3A;
-  border: 1px solid rgba(27, 94, 32, 0.1);
+  font-weight: 700;
+}
+
+.check-mark {
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* --- Logout Button --- */
 .logout-btn {
-  background-color: #ffebee;
-  color: #d32f2f;
-  border: 1px solid #ffcdd2;
-  /* ✅ Compact Pill Shape */
-  padding: 6px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 20px; 
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
   cursor: pointer;
+  font-weight: 600;
   transition: background 0.2s;
-  white-space: nowrap;
-  margin-left: 15px;
 }
 
 .logout-btn:hover {
-  background-color: #ffcdd2;
+  background-color: #fecaca;
 }
 
 /* Hide Mobile Elements on Desktop */
@@ -102,12 +161,11 @@
    2. MOBILE STYLES (Max Width 900px)
    ========================================= */
 @media (max-width: 900px) {
-  /* Hide Desktop Nav */
   .desktop-nav {
     display: none;
   }
 
-  /* 1. BOTTOM BAR CONTAINER */
+  /* ... (Existing Mobile CSS remains unchanged) ... */
   .mobile-bottom-bar {
     display: flex;
     justify-content: space-between;
@@ -121,14 +179,11 @@
     box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
     z-index: 1000;
     padding: 0 10px;
-    
-    /* Notch Effect */
     background-image: radial-gradient(circle at 50% 0, transparent 35px, white 36px);
     background-size: 100% 100%;
     background-repeat: no-repeat;
   }
 
-  /* 2. NAV ITEMS */
   .bottom-nav-item {
     flex: 1;
     display: flex;
@@ -155,7 +210,6 @@
     font-weight: 500;
   }
 
-  /* 3. CENTER FAB */
   .fab-container {
     position: relative;
     top: -25px; 
@@ -191,7 +245,6 @@
     margin-top: 4px;
   }
 
-  /* 4. MENU OVERLAY */
   .mobile-menu-overlay {
     display: block;
     position: fixed;

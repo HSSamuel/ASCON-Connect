@@ -2,6 +2,9 @@ const router = require("express").Router();
 const Facility = require("../models/Facility");
 const verify = require("./verifyToken"); // Security Middleware
 
+// ✅ 1. IMPORT NOTIFICATION HANDLER
+const { sendBroadcastNotification } = require("../utils/notificationHandler");
+
 // 1. GET ALL FACILITIES (Public)
 router.get("/", async (req, res) => {
   try {
@@ -21,18 +24,30 @@ router.post("/", verify, async (req, res) => {
     name: req.body.name,
     image: req.body.image,
     description: req.body.description,
+    paymentUrl: req.body.paymentUrl,
     rates: req.body.rates,
   });
 
   try {
     const savedFacility = await facility.save();
+
+    // ✅ 2. TRIGGER BROADCAST NOTIFICATION
+    await sendBroadcastNotification(
+      `New Facility: ${savedFacility.name}`,
+      `Available for booking! ${savedFacility.description.substring(0, 50)}...`,
+      {
+        route: "facility_detail", // Needs to be handled in Mobile App routing if deep linking is required
+        id: savedFacility._id.toString(),
+      }
+    );
+
     res.json({ success: true, data: savedFacility });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 });
 
-// ✅ 3. UPDATE A FACILITY (Admin Only)
+// 3. UPDATE A FACILITY (Admin Only)
 router.put("/:id", verify, async (req, res) => {
   if (!req.user.isAdmin)
     return res.status(403).json({ message: "Access Denied" });
@@ -45,10 +60,12 @@ router.put("/:id", verify, async (req, res) => {
           name: req.body.name,
           image: req.body.image,
           description: req.body.description,
+          paymentUrl: req.body.paymentUrl,
           rates: req.body.rates,
+          isActive: req.body.isActive, // Allow toggling status
         },
       },
-      { new: true } // Return the updated document
+      { new: true }
     );
     res.json({ success: true, data: updatedFacility });
   } catch (err) {
@@ -56,7 +73,7 @@ router.put("/:id", verify, async (req, res) => {
   }
 });
 
-// ✅ 4. DELETE A FACILITY (Admin Only)
+// 4. DELETE A FACILITY (Admin Only)
 router.delete("/:id", verify, async (req, res) => {
   if (!req.user.isAdmin)
     return res.status(403).json({ message: "Access Denied" });
