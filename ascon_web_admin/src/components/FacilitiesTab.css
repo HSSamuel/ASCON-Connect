@@ -1,0 +1,74 @@
+.facilities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 20px 0;
+}
+
+.facility-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transition: transform 0.2s;
+}
+
+.facility-card:hover {
+  transform: translateY(-5px);
+}
+
+.facility-image {
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  background-color: #eee;
+}
+
+.status-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: bold;
+  color: white;
+}
+
+.status-badge.open { background-color: #28a745; }
+.status-badge.closed { background-color: #dc3545; }
+
+.facility-content {
+  padding: 15px;
+}
+
+.facility-content h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.facility-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+
+.btn-toggle {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  color: #333;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-delete {
+  background: #fff0f0;
+  color: #dc3545;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}

@@ -426,4 +426,31 @@ class DataService {
       return {"success": false, "message": "Connection error. Please try again."};
     }
   }
+
+  // ==========================================
+  // 8. FACILITIES (New)
+  // ==========================================
+  Future<List<dynamic>> fetchFacilities() async {
+    const String cacheKey = 'cached_facilities';
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/facilities');
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      List<dynamic> facilities = [];
+      if (data is List) {
+        facilities = data;
+      } else if (data is Map && data.containsKey('data')) {
+        facilities = data['data'];
+      }
+      
+      await _cacheData(cacheKey, facilities);
+      return facilities;
+    } catch (e) {
+      final cached = await _getCachedData(cacheKey);
+      if (cached != null && cached is List) return cached;
+      return [];
+    }
+  }
 }

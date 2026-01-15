@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart'; // ✅ Added for Share functionality
 
 class JobDetailScreen extends StatelessWidget {
   final Map<String, dynamic> job;
   const JobDetailScreen({super.key, required this.job});
 
+  // ✅ RESTORED: Your original robust logic (In-App Browser -> Fallback to External)
   Future<void> _launchApplyLink(BuildContext context, String? urlString) async {
     if (urlString == null || urlString.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -21,97 +23,179 @@ class JobDetailScreen extends StatelessWidget {
     final Uri url = Uri.parse(urlString);
 
     try {
+      // 1. Try launching inside the app (cleaner experience)
       final bool launched = await launchUrl(
         url,
-        mode: LaunchMode.inAppWebView, // Keeps user inside the app
+        mode: LaunchMode.inAppWebView,
         webViewConfiguration: const WebViewConfiguration(enableJavaScript: true),
       );
 
       if (!launched) {
-        throw 'Could not launch';
+        throw 'Could not launch in-app';
       }
     } catch (e) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      // 2. Fallback to external browser (Chrome/Safari)
+      debugPrint("⚠️ In-App Launch failed, trying external: $e");
+      try {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } catch (err) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Could not launch URL")),
+          );
+        }
+      }
     }
+  }
+
+  // ✅ NEW: Share the job with others
+  void _shareJob() {
+    final String title = job['title'] ?? "Job Opportunity";
+    final String company = job['company'] ?? "ASCON Network";
+    final String link = job['applicationLink'] ?? "";
+    Share.share("Check out this job: $title at $company.\nApply here: $link");
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 1. DETECT DARK MODE
+    // 1. Theme Awareness
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     
-    // ✅ 2. ADAPTIVE TEXT COLORS
+    // 2. Adaptive Colors
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final cardBg = isDark ? Colors.grey[850] : Colors.grey[100];
 
     return Scaffold(
       appBar: AppBar(
         title: const Text("Job Details"),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _shareJob,
+            tooltip: "Share Job",
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Title
-            Text(
-              job['title'] ?? "Untitled Role",
-              style: GoogleFonts.inter(
-                fontSize: 24, 
-                fontWeight: FontWeight.w800,
-                color: textColor, // Adaptive Color
+      // ✅ IMPROVEMENT: Flex Layout puts the button at the bottom
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- HEADER SECTION ---
+                  Row(
+                    children: [
+                      Container(
+                        width: 64, height: 64,
+                        decoration: BoxDecoration(
+                          color: cardBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.withOpacity(0.2)),
+                        ),
+                        child: Icon(Icons.business_center, color: primaryColor, size: 32),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              job['title'] ?? "Untitled Role",
+                              style: GoogleFonts.inter(
+                                fontSize: 22, 
+                                fontWeight: FontWeight.w800,
+                                color: textColor,
+                                height: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              job['company'] ?? "Unknown Company",
+                              style: GoogleFonts.inter(
+                                fontSize: 16, 
+                                color: subTextColor, 
+                                fontWeight: FontWeight.w500
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // --- TAGS ROW (Enhanced) ---
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
+                      if (job['location'] != null)
+                        _buildTag(job['location'], Colors.orange, isDark),
+                      if (job['salary'] != null && job['salary'] != "Negotiable")
+                        _buildTag(job['salary'], Colors.green, isDark),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 30),
+                  Divider(color: Colors.grey.withOpacity(0.2)),
+                  const SizedBox(height: 24),
+
+                  // --- DESCRIPTION ---
+                  Text(
+                    "Job Description",
+                    style: GoogleFonts.inter(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold,
+                      color: textColor
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  Text(
+                    job['description'] ?? "No description available.",
+                    style: GoogleFonts.inter(
+                      fontSize: 16, 
+                      height: 1.6,
+                      color: isDark ? Colors.grey[300] : Colors.grey[800]
+                    ),
+                    textAlign: TextAlign.justify, // ✅ Kept justify alignment
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            
-            // Company & Location
-            Text(
-              "${job['company'] ?? 'Unknown Company'} • ${job['location'] ?? 'Remote'}",
-              style: GoogleFonts.inter(
-                fontSize: 16, 
-                color: subTextColor, // Adaptive Grey
-                fontWeight: FontWeight.w500
-              ),
+          ),
+          
+          // --- FIXED BOTTOM BUTTON ---
+          Container(
+            padding: const EdgeInsets.all(24.0),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  offset: const Offset(0, -4),
+                  blurRadius: 10,
+                )
+              ],
             ),
-            const SizedBox(height: 20),
-            
-            // ✅ 3. ADAPTIVE TAG (See helper function below)
-            _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
-            
-            const SizedBox(height: 30),
-            
-            Text(
-              "Description",
-              style: GoogleFonts.inter(
-                fontSize: 18, 
-                fontWeight: FontWeight.bold,
-                color: textColor
-              ),
-            ),
-            const SizedBox(height: 10),
-            
-            Text(
-              job['description'] ?? "No description available.",
-              style: GoogleFonts.inter(
-                fontSize: 15, 
-                height: 1.6,
-                color: isDark ? Colors.grey[300] : Colors.black87 // Softer white for reading
-              ),
-              textAlign: TextAlign.justify,
-            ),
-            const SizedBox(height: 40),
-            
-            // Apply Button
-            SizedBox(
+            child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: isDark ? 0 : 2, // Flatten in dark mode for cleaner look
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 4,
+                  shadowColor: primaryColor.withOpacity(0.4),
                 ),
                 onPressed: () => _launchApplyLink(context, job['applicationLink']),
                 child: const Text(
@@ -119,27 +203,28 @@ class JobDetailScreen extends StatelessWidget {
                   style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
-            )
-          ],
-        ),
+            ),
+          )
+        ],
       ),
     );
   }
 
+  // ✅ Helper for Tabs
   Widget _buildTag(String text, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        // ✅ Dark Mode Tip: Increase opacity so the color is visible against dark grey
-        color: color.withOpacity(isDark ? 0.25 : 0.1), 
+        color: color.withOpacity(isDark ? 0.15 : 0.1), 
         borderRadius: BorderRadius.circular(20),
-        border: isDark ? Border.all(color: color.withOpacity(0.5), width: 1) : null, // Add border in dark mode for pop
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
         text, 
         style: TextStyle(
-          color: isDark ? color.withOpacity(0.9) : color, 
-          fontWeight: FontWeight.bold
+          color: color, 
+          fontWeight: FontWeight.bold,
+          fontSize: 13
         )
       ),
     );

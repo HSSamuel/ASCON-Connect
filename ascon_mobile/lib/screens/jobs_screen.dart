@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../services/api_client.dart';
-import '../config/theme.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart'; // ✅ Required for Currency Formatting
+import '../services/data_service.dart';
 import 'job_detail_screen.dart';
+import 'facility_detail_screen.dart';
 
 class JobsScreen extends StatefulWidget {
   const JobsScreen({super.key});
@@ -12,239 +13,370 @@ class JobsScreen extends StatefulWidget {
 }
 
 class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateMixin {
-  final ApiClient _api = ApiClient();
   late TabController _tabController;
+  final DataService _dataService = DataService();
   
-  // Data States
-  bool _isJobsLoading = true;
-  bool _isFacilitiesLoading = true;
-  List<dynamic> _jobs = [];
-  List<dynamic> _facilities = [];
-  String _errorMessage = '';
+  // ✅ Currency Formatter for "Starts at ₦..."
+  final NumberFormat _currency = NumberFormat.currency(symbol: "₦", decimalDigits: 0);
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _fetchAllData();
-  }
-
-  Future<void> _fetchAllData() async {
-    _fetchJobs();
-    _fetchFacilities();
-  }
-
-  // 1. FETCH JOBS
-  Future<void> _fetchJobs() async {
-    try {
-      final response = await _api.get('/api/jobs'); 
-      if (mounted) {
-        setState(() {
-          _jobs = response['data'] ?? [];
-          _isJobsLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isJobsLoading = false);
-    }
-  }
-
-  // 2. FETCH FACILITIES (✅ NOW DYNAMIC)
-  Future<void> _fetchFacilities() async {
-    try {
-      final response = await _api.get('/api/facilities'); 
-      if (mounted) {
-        setState(() {
-          _facilities = response['data'] ?? [];
-          _isFacilitiesLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Could not load facilities.";
-          _isFacilitiesLoading = false;
-        });
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // ✅ 1. Theme Detection
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: scaffoldBg,
       appBar: AppBar(
-        title: const Text("Opportunities & Facilities"),
-        backgroundColor: AppTheme.asconGreen,
-        foregroundColor: Colors.white,
+        // ✅ 2. PRO REQUEST: Uniform Green in Light Mode, White in Dark Mode
+        title: Text(
+          "Opportunities & Resources",
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w800,
+            color: isDark ? Colors.white : primaryColor,
+            letterSpacing: 0.5,
+          ),
+        ),
+        centerTitle: true,
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          tabs: const [
-            Tab(text: "VACANCIES"),
-            Tab(text: "FACILITY RENTALS"),
-          ],
+        backgroundColor: Theme.of(context).cardColor,
+        iconTheme: IconThemeData(color: isDark ? Colors.white : primaryColor),
+        
+        // ✅ 3. Custom Tab Bar Container
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[800] : Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))
+                ],
+              ),
+              labelColor: primaryColor,
+              unselectedLabelColor: Colors.grey,
+              labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: const [
+                Tab(text: "CAREERS", iconMargin: EdgeInsets.zero),
+                Tab(text: "FACILITIES", iconMargin: EdgeInsets.zero),
+              ],
+            ),
+          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildJobsTab(),       // Tab 1
-          _buildFacilitiesTab(), // Tab 2
+          _buildJobsList(isDark, primaryColor),
+          _buildFacilitiesList(isDark, primaryColor),
         ],
       ),
     );
   }
 
-  // ... (Keep your existing _buildJobsTab logic here) ...
-  Widget _buildJobsTab() {
-    // ... [PASTE YOUR PREVIOUS JOBS TAB CODE HERE] ...
-    // Or ask me if you want me to paste it again fully.
-    if (_isJobsLoading) return const Center(child: CircularProgressIndicator());
-    if (_jobs.isEmpty) return const Center(child: Text("No vacancies found"));
+  // ==========================================
+  // 💼 1. JOBS LIST (Professional Card Layout)
+  // ==========================================
+  Widget _buildJobsList(bool isDark, Color primaryColor) {
+    return FutureBuilder(
+      future: _dataService.fetchJobs(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: primaryColor));
+        }
+        if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
+          return _buildEmptyState("No active job openings.", Icons.work_off);
+        }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _jobs.length,
-      itemBuilder: (context, index) {
-        final job = _jobs[index];
-        return Card(
-           // ... Same Job Card Code ...
-           child: ListTile(
-             title: Text(job['title'] ?? 'Job'),
-             subtitle: Text(job['company'] ?? 'ASCON'),
-             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job))),
-           ),
+        final jobs = snapshot.data as List;
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: jobs.length,
+          separatorBuilder: (c, i) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final job = jobs[index];
+            return _buildJobCard(job, isDark, primaryColor);
+          },
         );
       },
     );
   }
 
-  // =========================================================
-  // 🏨 TAB 2: FACILITIES (Dynamic from Database)
-  // =========================================================
-  Widget _buildFacilitiesTab() {
-    if (_isFacilitiesLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_facilities.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.apartment, size: 60, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text("No facilities listed yet", style: TextStyle(color: Colors.grey[600])),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _facilities.length,
-      itemBuilder: (context, index) {
-        final facility = _facilities[index];
-        final List rates = facility['rates'] ?? [];
-
-        return Card(
-          clipBehavior: Clip.antiAlias,
-          margin: const EdgeInsets.only(bottom: 24),
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  Widget _buildJobCard(dynamic job, bool isDark, Color primaryColor) {
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job))),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. IMAGE HEADER
-              Stack(
+              Row(
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: facility['image'] ?? "",
-                    height: 180,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(color: Colors.grey[200]),
-                    errorWidget: (context, url, error) => Container(
-                      height: 180, 
-                      color: Colors.grey[300],
-                      child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    child: Icon(Icons.business_center, color: primaryColor, size: 24),
                   ),
-                  Positioned(
-                    bottom: 0, left: 0, right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.black87, Colors.transparent],
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                        )
-                      ),
-                      child: Text(
-                        facility['name'] ?? "Facility",
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          job['title'] ?? "Untitled",
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          job['company'] ?? "ASCON Network",
+                          style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-
-              // 2. THE TABLE HEADER
-              Container(
-                color: Colors.grey[100],
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                child: const Row(
-                  children: [
-                    Expanded(flex: 3, child: Text("TYPE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
-                    Expanded(flex: 2, child: Text("AMOUNT (₦)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
-                    Expanded(flex: 2, child: Text("AMOUNT (\$)", textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
-                  ],
-                ),
-              ),
-
-              // 3. THE TABLE ROWS (Dynamic Mapping)
-              ...rates.map<Widget>((rate) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.1))),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(flex: 3, child: Text(rate['type'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                      Expanded(flex: 2, child: Text("₦${rate['naira']}", style: const TextStyle(color: AppTheme.asconGreen, fontWeight: FontWeight.bold))),
-                      Expanded(flex: 2, child: Text("\$${rate['dollar']}", textAlign: TextAlign.right, style: const TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold))),
-                    ],
-                  ),
-                );
-              }).toList(),
-
-              // 4. ACTION BUTTON
-               Padding(
-                padding: const EdgeInsets.all(12),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("To book, please contact ASCON Admin via the Help Desk.")));
-                  },
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: const Text("Check Availability"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                ),
-              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
+                  const SizedBox(width: 8),
+                  _buildTag(job['location'] ?? 'Remote', Colors.orange, isDark),
+                  const Spacer(),
+                  if (job['salary'] != null && job['salary'] != "Negotiable")
+                    Text(
+                      job['salary'],
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: Colors.green[700]),
+                    ),
+                ],
+              )
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 🏢 2. FACILITIES LIST (Immersive Hero Layout)
+  // ==========================================
+  Widget _buildFacilitiesList(bool isDark, Color primaryColor) {
+    return FutureBuilder(
+      future: _dataService.fetchFacilities(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: primaryColor));
+        }
+        if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
+          return _buildEmptyState("No facilities listed.", Icons.apartment);
+        }
+
+        final facilities = snapshot.data as List;
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: facilities.length,
+          itemBuilder: (context, index) {
+            final facility = facilities[index];
+            return _buildFacilityCard(facility, isDark, primaryColor);
+          },
         );
       },
+    );
+  }
+
+  Widget _buildFacilityCard(dynamic facility, bool isDark, Color primaryColor) {
+    final String? imageUrl = facility['image'];
+    final bool isActive = facility['isActive'] == true;
+    final List<dynamic> rates = facility['rates'] ?? [];
+    
+    // ✅ SMART PRICING: Shows "From ₦50,000" if rates exist
+    String priceTag = "View Details";
+    if (rates.isNotEmpty) {
+      try {
+        final lowestRate = rates[0]['naira']; 
+        if (lowestRate != null) {
+          priceTag = "From ${_currency.format(int.tryParse(lowestRate.replaceAll(',', '')) ?? 0)}";
+        }
+      } catch (e) {
+        priceTag = "Check Rates";
+      }
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => FacilityDetailScreen(facility: facility))),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isDark ? [] : [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 8))
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 🖼️ HERO IMAGE AREA
+            Stack(
+              children: [
+                Hero(
+                  tag: 'facility_img_${facility['_id'] ?? facility['name']}',
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    child: SizedBox(
+                      height: 200,
+                      width: double.infinity,
+                      child: imageUrl != null && imageUrl.isNotEmpty
+                          ? Image.network(
+                              imageUrl, 
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) => Container(color: Colors.grey[300], child: const Icon(Icons.image_not_supported)),
+                            )
+                          : Container(color: Colors.grey[300], child: Icon(Icons.business, size: 50, color: Colors.grey[400])),
+                    ),
+                  ),
+                ),
+                // ✨ GLASSMORPHISM STATUS BADGE
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isActive ? Colors.green.withOpacity(0.9) : Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(30),
+                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(isActive ? Icons.check_circle : Icons.lock, color: Colors.white, size: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          isActive ? "AVAILABLE" : "BOOKED",
+                          style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // 📝 CONTENT AREA
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          facility['name'] ?? "Facility Name",
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 18),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // 🏷️ PRICE BADGE
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          priceTag,
+                          style: GoogleFonts.inter(color: primaryColor, fontWeight: FontWeight.w700, fontSize: 12),
+                        ),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    facility['description'] ?? "No description available.",
+                    style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 14, height: 1.5),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // 🦶 FOOTER ACTIONS
+                  Row(
+                    children: [
+                      Icon(Icons.star, size: 16, color: Colors.orange[400]),
+                      const SizedBox(width: 4),
+                      Text("4.8 (Rating)", style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[600])),
+                      const Spacer(),
+                      Text(
+                        "View Details",
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: primaryColor, fontSize: 13),
+                      ),
+                      Icon(Icons.arrow_forward, size: 16, color: primaryColor),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- HELPERS ---
+  Widget _buildTag(String text, Color color, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String msg, IconData icon) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 60, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 16, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 }
