@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // ✅ NEW IMPORT
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart'; 
 import '../main.dart'; 
@@ -12,8 +12,14 @@ import 'notification_service.dart';
 class AuthService {
   final ApiClient _api = ApiClient();
   
-  // ✅ SECURE STORAGE INSTANCE (For Tokens)
-  final _storage = const FlutterSecureStorage(); 
+  // ✅ FIX 1: Use In-Memory Cache for instant access
+  static String? _tokenCache; 
+  
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
 
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -107,7 +113,6 @@ class AuthService {
     }
   }
 
-  // --- FETCH PROGRAMMES ---
   Future<List<dynamic>> getProgrammes() async {
     try {
       final result = await _api.get('/api/admin/programmes');
@@ -126,7 +131,6 @@ class AuthService {
     }
   }
 
-  // --- MARK WELCOME SEEN ---
   Future<void> markWelcomeSeen() async {
     try {
       await _api.put('/api/profile/welcome-seen', {});
@@ -136,65 +140,88 @@ class AuthService {
   }
 
   // =================================================
-  // 🔐 SESSION MANAGEMENT (SECURE)
+  // 🔐 SESSION MANAGEMENT (FIXED)
   // =================================================
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
-    // ✅ 1. STORE SENSITIVE TOKENS IN SECURE STORAGE
-    await _storage.write(key: 'auth_token', value: token);
-    if (refreshToken != null) {
-      await _storage.write(key: 'refresh_token', value: refreshToken);
-    }
+    try {
+      // ✅ FIX 2: Set In-Memory Token FIRST (Instant)
+      _tokenCache = token;
+      _api.setAuthToken(token);
 
-    // ✅ 2. STORE UI DATA IN SHARED PREFS (For Speed)
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('cached_user', jsonEncode(user));
-    
-    if (user['fullName'] != null) {
-      await prefs.setString('user_name', user['fullName']);
+      // Save to disk asynchronously
+      await _storage.write(key: 'auth_token', value: token);
+      if (refreshToken != null) {
+        await _storage.write(key: 'refresh_token', value: refreshToken);
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_user', jsonEncode(user));
+      
+      if (user['fullName'] != null) {
+        await prefs.setString('user_name', user['fullName']);
+      }
+      if (user['alumniId'] != null) {
+        await prefs.setString('alumni_id', user['alumniId']);
+      }
+      
+    } catch (e) {
+      print("⚠️ Session Save Error: $e");
     }
-    if (user['alumniId'] != null) {
-      await prefs.setString('alumni_id', user['alumniId']);
-    }
-    
-    _api.setAuthToken(token);
   }
 
   Future<String?> getToken() async {
-    // ✅ READ FROM SECURE STORAGE
-    String? token = await _storage.read(key: 'auth_token');
-    String? refreshToken = await _storage.read(key: 'refresh_token');
-
-    if (token == null) return null;
-
-    // ✅ AUTO-REFRESH LOGIC
-    if (JwtDecoder.isExpired(token)) {
-      print("⚠️ Token Expired. Attempting Refresh...");
-      
-      if (refreshToken != null) {
-        try {
-          final result = await _api.post('/api/auth/refresh', {'refreshToken': refreshToken});
-          if (result['success']) {
-            final newToken = result['data']['token'];
-            
-            // Update Secure Storage
-            await _storage.write(key: 'auth_token', value: newToken);
-            
-            _api.setAuthToken(newToken);
-            return newToken;
-          }
-        } catch (e) {
-          print("❌ Refresh Failed: $e");
-        }
+    try {
+      // ✅ FIX 3: Check Memory First
+      if (_tokenCache != null && _tokenCache!.isNotEmpty) {
+        // Optional: Only check expiry if we are worried about clock skew
+        // For now, we trust the in-memory token to avoid the instant logout loop
+        return _tokenCache;
       }
 
-      print("🚨 Session invalid. Logging out.");
-      await logout();
+      String? token = await _storage.read(key: 'auth_token');
+      String? refreshToken = await _storage.read(key: 'refresh_token');
+
+      if (token == null) return null;
+
+      // ✅ FIX 4: Add a 60-second buffer to Expiry Check
+      // This prevents "Access Denied" if server time is slightly ahead of phone time
+      bool isExpired = JwtDecoder.isExpired(token) || 
+                       JwtDecoder.getRemainingTime(token).inSeconds < 60;
+
+      if (isExpired) {
+        print("⚠️ Token Expired or close to expiry. Attempting Refresh...");
+        
+        if (refreshToken != null) {
+          try {
+            final result = await _api.post('/api/auth/refresh', {'refreshToken': refreshToken});
+            if (result['success']) {
+              final newToken = result['data']['token'];
+              
+              // Update Cache & Storage
+              _tokenCache = newToken;
+              await _storage.write(key: 'auth_token', value: newToken);
+              _api.setAuthToken(newToken);
+              
+              return newToken;
+            }
+          } catch (e) {
+            print("❌ Refresh Failed: $e");
+          }
+        }
+        
+        // Only return null here, let the UI decide if it wants to logout
+        // Don't force logout() here to avoid loops
+        return null;
+      }
+      
+      _tokenCache = token; // Populate cache
+      _api.setAuthToken(token);
+      return token;
+    } catch (e) {
+      print("⚠️ Critical Storage Error (getToken): $e");
       return null;
     }
-    
-    _api.setAuthToken(token);
-    return token;
   }
 
   Future<bool> isSessionValid() async {
@@ -212,10 +239,13 @@ class AuthService {
   }
 
   Future<void> logout() async {
-    // ✅ WIPE SECURE DATA
-    await _storage.deleteAll();
+    try {
+      _tokenCache = null; // Clear cache
+      await _storage.deleteAll();
+    } catch (e) {
+      print("Storage clear error: $e");
+    }
     
-    // Wipe UI Data
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
     

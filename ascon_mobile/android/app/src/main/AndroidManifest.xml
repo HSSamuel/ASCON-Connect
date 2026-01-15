@@ -17,10 +17,14 @@
             <data android:scheme="mailto" />
         </intent>
     </queries>
+
     <application
         android:label="ASCON Alumni"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        
+        android:allowBackup="false"
+        android:fullBackupContent="false">
         
         <activity
             android:name=".MainActivity"

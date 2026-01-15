@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../widgets/full_screen_image.dart';
+// import '../widgets/full_screen_image.dart'; // ✅ Removed external dependency for simplicity
 
 class FacilityDetailScreen extends StatefulWidget {
   final Map<String, dynamic> facility;
@@ -23,7 +23,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
     super.dispose();
   }
 
-  // ✅ ACTION 1: Launch Payment URL
+  // ✅ ACTION: Launch Payment URL
   Future<void> _launchPaymentUrl() async {
     final String? paymentUrl = widget.facility['paymentUrl'];
     if (paymentUrl != null && paymentUrl.isNotEmpty) {
@@ -38,7 +38,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
     }
   }
 
-  // ✅ ACTION 2: Send Email Request
+  // ✅ ACTION: Send Email Request
   Future<void> _sendEmailRequest() async {
     final String facilityName = widget.facility['name'];
     final String dateStr = _selectedDate != null
@@ -68,6 +68,30 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
     }
   }
 
+  // ✅ NEW: View Photo Full Screen
+  void _openFullScreenImage(BuildContext context, String? imageUrl) {
+    if (imageUrl == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4,
+              child: Image.network(imageUrl),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showErrorSnackBar(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -86,7 +110,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF1B5E3A), // Brand Green
+              primary: Color(0xFF1B5E3A),
               onPrimary: Colors.white,
               onSurface: Colors.black,
             ),
@@ -113,16 +137,11 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
     final String description = widget.facility['description'] ??
         "No detailed description available.";
     
-    // Check if Payment URL exists
     final bool hasPaymentLink = widget.facility['paymentUrl'] != null &&
         widget.facility['paymentUrl'].toString().isNotEmpty;
 
     final List<String> amenities = [
-      "Air Conditioning",
-      "Security",
-      "Parking",
-      "Sound System",
-      "Generator"
+      "Air Conditioning", "Security", "Parking", "Sound System", "Generator", "24Hour Solar Power"
     ];
 
     return Scaffold(
@@ -146,12 +165,17 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Hero(
-                    tag: 'facility_img_${widget.facility['_id']}',
-                    child: imageUrl != null
-                        ? Image.network(imageUrl, fit: BoxFit.cover)
-                        : Container(color: Colors.grey),
+                  // 1. The Image (Clickable)
+                  GestureDetector(
+                    onTap: () => _openFullScreenImage(context, imageUrl),
+                    child: Hero(
+                      tag: 'facility_img_${widget.facility['_id']}',
+                      child: imageUrl != null
+                          ? Image.network(imageUrl, fit: BoxFit.cover)
+                          : Container(color: Colors.grey),
+                    ),
                   ),
+                  // 2. Gradient Overlay
                   const DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -159,6 +183,21 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                         end: Alignment.bottomCenter,
                         colors: [Colors.transparent, Colors.black54],
                         stops: [0.6, 1.0],
+                      ),
+                    ),
+                  ),
+                  // 3. ✅ NEW: "View Photo" Button
+                  Positioned(
+                    bottom: 16,
+                    right: 16,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openFullScreenImage(context, imageUrl),
+                      icon: const Icon(Icons.fullscreen, size: 18, color: Colors.white),
+                      label: const Text("View Photo", style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
                     ),
                   ),
@@ -308,7 +347,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
         ],
       ),
 
-      // ✅ UPDATED BOTTOM BAR: Shows "Pay Now" button if URL exists
+      // Bottom Bar
       bottomSheet: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -322,7 +361,6 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
         ),
         child: SafeArea(
           child: hasPaymentLink
-              // CASE 1: Payment Link Exists -> Show Two Buttons
               ? Row(
                   children: [
                     Expanded(
@@ -374,7 +412,6 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                     ),
                   ],
                 )
-              // CASE 2: No Payment Link -> Show Single "Request" Button
               : Row(
                   children: [
                     Expanded(
