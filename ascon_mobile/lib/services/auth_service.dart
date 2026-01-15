@@ -12,7 +12,6 @@ import 'notification_service.dart';
 class AuthService {
   final ApiClient _api = ApiClient();
   
-  // ✅ FIX 1: Use In-Memory Cache for instant access
   static String? _tokenCache; 
   
   final _storage = const FlutterSecureStorage(
@@ -37,7 +36,7 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
-        if (!kIsWeb) NotificationService().init();
+        if (!kIsWeb) await NotificationService().init(); // ✅ Await this to ensure sync starts
       }
       return result;
     } catch (e) {
@@ -73,7 +72,7 @@ class AuthService {
           data['user'] ?? {}, 
           refreshToken: data['refreshToken']
         );
-        if (!kIsWeb) NotificationService().init();
+        if (!kIsWeb) await NotificationService().init();
       }
 
       return result;
@@ -96,7 +95,7 @@ class AuthService {
           data['user'], 
           refreshToken: data['refreshToken']
         );
-        if (!kIsWeb) NotificationService().init();
+        if (!kIsWeb) await NotificationService().init();
       }
       return result;
     } catch (e) {
@@ -145,17 +144,19 @@ class AuthService {
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
     try {
-      // ✅ FIX 2: Set In-Memory Token FIRST (Instant)
+      // 1. In-Memory (Instant)
       _tokenCache = token;
       _api.setAuthToken(token);
 
-      // Save to disk asynchronously
+      // 2. Secure Storage (Primary)
       await _storage.write(key: 'auth_token', value: token);
       if (refreshToken != null) {
         await _storage.write(key: 'refresh_token', value: refreshToken);
       }
 
+      // 3. Shared Preferences (Backup for NotificationService & User Data)
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('auth_token', token); // ✅ ADDED THIS LINE
       await prefs.setString('cached_user', jsonEncode(user));
       
       if (user['fullName'] != null) {
@@ -172,25 +173,26 @@ class AuthService {
 
   Future<String?> getToken() async {
     try {
-      // ✅ FIX 3: Check Memory First
       if (_tokenCache != null && _tokenCache!.isNotEmpty) {
-        // Optional: Only check expiry if we are worried about clock skew
-        // For now, we trust the in-memory token to avoid the instant logout loop
         return _tokenCache;
       }
 
       String? token = await _storage.read(key: 'auth_token');
       String? refreshToken = await _storage.read(key: 'refresh_token');
 
+      // ✅ Fallback: Try SharedPreferences if SecureStorage fails
+      if (token == null) {
+        final prefs = await SharedPreferences.getInstance();
+        token = prefs.getString('auth_token');
+      }
+
       if (token == null) return null;
 
-      // ✅ FIX 4: Add a 60-second buffer to Expiry Check
-      // This prevents "Access Denied" if server time is slightly ahead of phone time
       bool isExpired = JwtDecoder.isExpired(token) || 
                        JwtDecoder.getRemainingTime(token).inSeconds < 60;
 
       if (isExpired) {
-        print("⚠️ Token Expired or close to expiry. Attempting Refresh...");
+        print("⚠️ Token Expired. Attempting Refresh...");
         
         if (refreshToken != null) {
           try {
@@ -198,24 +200,24 @@ class AuthService {
             if (result['success']) {
               final newToken = result['data']['token'];
               
-              // Update Cache & Storage
               _tokenCache = newToken;
               await _storage.write(key: 'auth_token', value: newToken);
-              _api.setAuthToken(newToken);
               
+              // Update Backup
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('auth_token', newToken);
+
+              _api.setAuthToken(newToken);
               return newToken;
             }
           } catch (e) {
             print("❌ Refresh Failed: $e");
           }
         }
-        
-        // Only return null here, let the UI decide if it wants to logout
-        // Don't force logout() here to avoid loops
         return null;
       }
       
-      _tokenCache = token; // Populate cache
+      _tokenCache = token; 
       _api.setAuthToken(token);
       return token;
     } catch (e) {
@@ -240,14 +242,14 @@ class AuthService {
 
   Future<void> logout() async {
     try {
-      _tokenCache = null; // Clear cache
+      _tokenCache = null; 
       await _storage.deleteAll();
     } catch (e) {
       print("Storage clear error: $e");
     }
     
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.clear(); // This now correctly clears the backup 'auth_token' too
     
     _api.clearAuthToken();
     

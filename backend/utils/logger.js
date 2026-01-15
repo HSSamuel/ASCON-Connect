@@ -22,7 +22,7 @@ const logger = winston.createLogger({
     winston.format.errors({ stack: true }),
     winston.format.json()
   ),
-  // ✅ NEW: Catch global crashes
+  // Catch global crashes
   exceptionHandlers: [
     new winston.transports.File({
       filename: path.join(logDir, "exceptions.log"),
@@ -34,6 +34,7 @@ const logger = winston.createLogger({
     }),
   ],
   transports: [
+    // 1. Write to file (Good for backups)
     new winston.transports.File({
       filename: path.join(logDir, "error.log"),
       level: "error",
@@ -41,19 +42,16 @@ const logger = winston.createLogger({
     new winston.transports.File({
       filename: path.join(logDir, "combined.log"),
     }),
-  ],
-});
 
-if (process.env.NODE_ENV !== "production") {
-  logger.add(
+    // 2. ✅ WRITE TO CONSOLE ALWAYS (Required for Render/Netlify/Heroku)
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple(),
         logFormat
       ),
-    })
-  );
-}
+    }),
+  ],
+});
 
 module.exports = logger;

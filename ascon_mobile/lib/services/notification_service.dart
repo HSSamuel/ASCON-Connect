@@ -1,18 +1,19 @@
 import 'dart:convert'; 
 import 'dart:io';
-import 'dart:typed_data'; // Required for vibration patterns
+import 'dart:typed_data'; 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
-// ✅ CHANGED: Removed SharedPreferences, Added Secure Storage
 import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../main.dart'; 
 
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
+import '../screens/facility_detail_screen.dart'; // ✅ ADDED THIS IMPORT
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -27,18 +28,17 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   
-  // ✅ NEW: Initialize Secure Storage with the same options as AuthService
+  // Secure Storage
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
     ),
   );
 
-  // ✅ FIX 1: Prevent multiple listeners if init() is called twice
   bool _isInitialized = false;
 
   Future<void> init() async {
-    if (_isInitialized) return; // Stop if already running
+    if (_isInitialized) return; 
     _isInitialized = true;
 
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
@@ -50,8 +50,6 @@ class NotificationService {
       return;
     }
 
-    // ✅ FIX 2: Disable System Foreground Alert (We use Local Notifications instead)
-    // This prevents seeing "Two" banners (One from System, One from Plugin)
     await _firebaseMessaging.setForegroundNotificationPresentationOptions(
       alert: false, 
       badge: true,
@@ -71,7 +69,6 @@ class NotificationService {
       },
     );
 
-    // Create the High Importance Channel
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'ascon_high_importance', 
       'ASCON Notifications',
@@ -88,10 +85,7 @@ class NotificationService {
 
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-    // ✅ FOREGROUND LISTENER
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      // We manually show the notification. Since we disabled system alert above, 
-      // this will be the ONLY banner the user sees.
       if (message.notification != null || message.data.isNotEmpty) {
         _showLocalNotification(message);
       }
@@ -108,6 +102,12 @@ class NotificationService {
         _handleNavigation(initialMessage.data);
       });
     }
+
+    // Token Rotation Listener
+    _firebaseMessaging.onTokenRefresh.listen((newToken) {
+      debugPrint("🔄 Token Rotated: $newToken");
+      syncToken(); 
+    });
 
     await syncToken();
   }
@@ -139,6 +139,16 @@ class NotificationService {
             ),
           ),
         );
+      } 
+      // ✅ ADDED FACILITY NAVIGATION
+      else if (route == 'facility_detail') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (_) => FacilityDetailScreen(
+              facility: {'_id': id.toString(), 'title': 'Loading details...'},
+            ),
+          ),
+        );
       }
     });
   }
@@ -147,8 +157,6 @@ class NotificationService {
     String type = message.data['type'] ?? 'Update';
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
-
-    // Bold Title Formatting
     String formattedTitle = '<b>New $type:</b> $originalTitle';
 
     final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
@@ -200,12 +208,22 @@ class NotificationService {
 
       if (fcmToken == null) return;
 
-      // ✅ FIX: Read from Secure Storage instead of SharedPreferences
+      // ✅ FIX: "Two-Box" Strategy
       String? authToken = await _storage.read(key: 'auth_token');
 
       if (authToken == null) {
-        await Future.delayed(const Duration(milliseconds: 1000));
+        final prefs = await SharedPreferences.getInstance();
+        authToken = prefs.getString('auth_token');
+      }
+
+      // Retry logic
+      if (authToken == null) {
+        await Future.delayed(const Duration(milliseconds: 1500));
         authToken = await _storage.read(key: 'auth_token');
+        if (authToken == null) {
+           final prefs = await SharedPreferences.getInstance();
+           authToken = prefs.getString('auth_token');
+        }
       }
 
       if (authToken != null) {
@@ -215,7 +233,7 @@ class NotificationService {
           headers: {'Content-Type': 'application/json', 'auth-token': authToken},
           body: jsonEncode({"fcmToken": fcmToken}),
         );
-        debugPrint("✅ Token synced");
+        debugPrint("✅ Token synced successfully");
       } else {
         debugPrint("⚠️ Token sync skipped: No Auth Token found.");
       }
