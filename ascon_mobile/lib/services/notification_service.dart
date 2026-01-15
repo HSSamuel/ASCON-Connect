@@ -13,7 +13,7 @@ import '../main.dart';
 
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
-import '../screens/facility_detail_screen.dart'; // ✅ ADDED THIS IMPORT
+import '../screens/facility_detail_screen.dart'; 
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -140,7 +140,6 @@ class NotificationService {
           ),
         );
       } 
-      // ✅ ADDED FACILITY NAVIGATION
       else if (route == 'facility_detail') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(
@@ -197,6 +196,8 @@ class NotificationService {
 
   Future<void> syncToken() async {
     try {
+      debugPrint("🔄 NotificationService: Starting Token Sync...");
+
       String? fcmToken;
       if (kIsWeb) {
         fcmToken = await _firebaseMessaging.getToken(
@@ -206,9 +207,12 @@ class NotificationService {
         fcmToken = await _firebaseMessaging.getToken();
       }
 
-      if (fcmToken == null) return;
+      if (fcmToken == null) {
+        debugPrint("❌ FCM Token is null. Sync aborted.");
+        return;
+      }
 
-      // ✅ FIX: "Two-Box" Strategy
+      // ✅ Robust Auth Token Retrieval
       String? authToken = await _storage.read(key: 'auth_token');
 
       if (authToken == null) {
@@ -216,10 +220,12 @@ class NotificationService {
         authToken = prefs.getString('auth_token');
       }
 
-      // Retry logic
+      // Retry logic (Wait for write to finish if called immediately after login)
       if (authToken == null) {
+        debugPrint("⏳ Auth Token not found yet. Retrying in 1.5s...");
         await Future.delayed(const Duration(milliseconds: 1500));
         authToken = await _storage.read(key: 'auth_token');
+        
         if (authToken == null) {
            final prefs = await SharedPreferences.getInstance();
            authToken = prefs.getString('auth_token');
@@ -228,14 +234,20 @@ class NotificationService {
 
       if (authToken != null) {
         final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token');
-        await http.post(
+        
+        final response = await http.post(
           url,
           headers: {'Content-Type': 'application/json', 'auth-token': authToken},
           body: jsonEncode({"fcmToken": fcmToken}),
         );
-        debugPrint("✅ Token synced successfully");
+
+        if (response.statusCode == 200) {
+           debugPrint("✅ Token synced successfully to Backend!");
+        } else {
+           debugPrint("⚠️ Backend rejected token: ${response.statusCode} - ${response.body}");
+        }
       } else {
-        debugPrint("⚠️ Token sync skipped: No Auth Token found.");
+        debugPrint("⚠️ Token sync skipped: No Auth Token found (User likely logged out).");
       }
     } catch (e) {
       debugPrint("❌ Error syncing token: $e");

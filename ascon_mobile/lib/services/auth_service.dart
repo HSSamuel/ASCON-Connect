@@ -36,7 +36,11 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
-        if (!kIsWeb) await NotificationService().init(); // ✅ Await this to ensure sync starts
+        if (!kIsWeb) {
+          // ✅ FIX: Force sync immediately after saving session
+          await NotificationService().init();
+          await NotificationService().syncToken(); 
+        }
       }
       return result;
     } catch (e) {
@@ -72,7 +76,12 @@ class AuthService {
           data['user'] ?? {}, 
           refreshToken: data['refreshToken']
         );
-        if (!kIsWeb) await NotificationService().init();
+        
+        if (!kIsWeb) {
+          // ✅ FIX: Force sync immediately
+          await NotificationService().init();
+          await NotificationService().syncToken();
+        }
       }
 
       return result;
@@ -95,7 +104,12 @@ class AuthService {
           data['user'], 
           refreshToken: data['refreshToken']
         );
-        if (!kIsWeb) await NotificationService().init();
+        
+        if (!kIsWeb) {
+          // ✅ FIX: Force sync immediately
+          await NotificationService().init();
+          await NotificationService().syncToken();
+        }
       }
       return result;
     } catch (e) {
@@ -156,7 +170,7 @@ class AuthService {
 
       // 3. Shared Preferences (Backup for NotificationService & User Data)
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', token); // ✅ ADDED THIS LINE
+      await prefs.setString('auth_token', token); // ✅ Backup Token
       await prefs.setString('cached_user', jsonEncode(user));
       
       if (user['fullName'] != null) {

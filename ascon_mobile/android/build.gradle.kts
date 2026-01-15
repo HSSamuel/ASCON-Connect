@@ -1,12 +1,12 @@
-// ✅ 1. Add this block at the very top to define the Google Services dependency
+//
 buildscript {
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        // Correct Kotlin syntax for Firebase
-        classpath("com.google.gms:google-services:4.4.0")
+        // ✅ CRITICAL: This allows the app to recognize google-services.json
+        classpath("com.google.gms:google-services:4.4.1")
     }
 }
 
