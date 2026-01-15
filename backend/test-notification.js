@@ -10,14 +10,9 @@ const runTest = async () => {
   try {
     console.log("⏳ Connecting to MongoDB...");
 
-    // ✅ FIX: Await the connection BEFORE doing anything else
-    await mongoose.connect(
-      process.env.DB_CONNECT || process.env.DB_CONNECTION,
-      {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      }
-    );
+    // ✅ FIX: Removed deprecated options (useNewUrlParser, etc.)
+    // Modern Mongoose does not need them and will crash if they are present.
+    await mongoose.connect(process.env.DB_CONNECT || process.env.DB_CONNECTION);
 
     console.log("📦 Connected to MongoDB Successfully!");
 
@@ -27,7 +22,6 @@ const runTest = async () => {
     console.log(`🔍 Looking for ${testEmails.length} test users...`);
 
     for (const email of testEmails) {
-      // Now safe to query because we awaited the connection above
       const user = await User.findOne({ email: email });
 
       if (!user) {
@@ -74,5 +68,4 @@ const runTest = async () => {
   }
 };
 
-// Run the script
 runTest();

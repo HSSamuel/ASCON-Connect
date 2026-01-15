@@ -224,3 +224,7 @@
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-15 08:52:17"}
 {"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-15 08:52:17"}
 {"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-15 13:04:54"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-15 13:08:30"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-15 13:08:36"}
+{"level":"info","message":"📣 Preparing broadcast for 1 users...","timestamp":"2026-01-15 13:08:36"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-15 13:08:37"}
