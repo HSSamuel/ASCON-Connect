@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, required: true, min: 6, max: 255 },
     email: { type: String, required: true, max: 255, min: 6 },
     password: { type: String, required: true, max: 1024, min: 6 },
-    phoneNumber: { type: String, required: true },
+    phoneNumber: { type: String, default: "" },
 
     programmeTitle: { type: String, required: false },
     customProgramme: { type: String, default: "" },
@@ -16,10 +16,9 @@ const userSchema = new mongoose.Schema(
     bio: { type: String, default: "" },
     linkedin: { type: String, default: "" },
 
-    // Store the Phone's Notification Tokens for multi-device support
+    // Store the Phone's Notification Tokens
     fcmTokens: { type: [String], default: [] },
 
-    // alumniId already creates a unique index due to 'unique: true'
     alumniId: { type: String, unique: true, sparse: true },
     hasSeenWelcome: { type: Boolean, default: false },
 
@@ -28,26 +27,25 @@ const userSchema = new mongoose.Schema(
     canEdit: { type: Boolean, default: false },
     profilePicture: { type: String, default: "" },
 
-    // Fields for Password Reset logic (Security Improvement)
+    // ✅ NEW: Tracks origin ("local" or "google"), but we allow cross-login
+    provider: {
+      type: String,
+      default: "local",
+      enum: ["local", "google"],
+    },
+
+    // Password Reset
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
 
     date: { type: Date, default: Date.now },
   },
   {
-    timestamps: true, // Automatically creates createdAt and updatedAt fields
+    timestamps: true,
   }
 );
 
-// ==========================================
-// 🚀 PERFORMANCE INDEXING
-// ==========================================
-
-// 1. Single Field Index for high-speed lookups during Login
-// (alumniId index is handled by the 'unique' property in the schema above)
 userSchema.index({ email: 1 });
-
-// 2. Text Index for the Directory Search functionality
 userSchema.index({
   fullName: "text",
   jobTitle: "text",

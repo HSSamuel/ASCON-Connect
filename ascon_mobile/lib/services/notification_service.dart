@@ -5,7 +5,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
-import 'package:shared_preferences/shared_preferences.dart';
+// ✅ CHANGED: Removed SharedPreferences, Added Secure Storage
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
 import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../main.dart'; 
@@ -26,6 +27,13 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   
+  // ✅ NEW: Initialize Secure Storage with the same options as AuthService
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
+
   // ✅ FIX 1: Prevent multiple listeners if init() is called twice
   bool _isInitialized = false;
 
@@ -192,12 +200,12 @@ class NotificationService {
 
       if (fcmToken == null) return;
 
-      final prefs = await SharedPreferences.getInstance();
-      String? authToken = prefs.getString('auth_token');
+      // ✅ FIX: Read from Secure Storage instead of SharedPreferences
+      String? authToken = await _storage.read(key: 'auth_token');
 
       if (authToken == null) {
         await Future.delayed(const Duration(milliseconds: 1000));
-        authToken = prefs.getString('auth_token');
+        authToken = await _storage.read(key: 'auth_token');
       }
 
       if (authToken != null) {
@@ -208,6 +216,8 @@ class NotificationService {
           body: jsonEncode({"fcmToken": fcmToken}),
         );
         debugPrint("✅ Token synced");
+      } else {
+        debugPrint("⚠️ Token sync skipped: No Auth Token found.");
       }
     } catch (e) {
       debugPrint("❌ Error syncing token: $e");

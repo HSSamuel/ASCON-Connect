@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/data_service.dart'; 
 import '../services/auth_service.dart';
-import '../main.dart'; // ✅ IMPORTED MAIN.DART FOR THEME ACCESS
+import '../main.dart'; 
 import 'directory_screen.dart';
 import 'profile_screen.dart';
 import 'events_screen.dart';
@@ -39,15 +39,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _resolveUserName() async {
     if (widget.userName != null) {
-      setState(() => _loadedName = widget.userName!);
+      if (mounted) setState(() => _loadedName = widget.userName!);
     } else {
       final prefs = await SharedPreferences.getInstance();
+      
+      // ✅ SAFETY FIX: Check mounted after await
+      if (!mounted) return;
+
       final savedName = prefs.getString('user_name');
-      if (savedName != null && mounted) {
+      if (savedName != null) {
         setState(() => _loadedName = savedName);
       }
     }
     
+    // ✅ SAFETY FIX: Ensure widget is still active before building screens
+    if (!mounted) return;
+
     setState(() {
       _screens = [
         _DashboardView(userName: _loadedName),
@@ -69,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Prevent crash if screens aren't ready
     if (_screens.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -87,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         body: _screens[_currentIndex],
         
-        // 1. JOBS ICON (Floating Button)
         floatingActionButton: SizedBox(
           width: 58, 
           height: 58, 
@@ -101,9 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked, 
 
-        // 2. BOTTOM APP BAR (White Box)
         bottomNavigationBar: SizedBox(
-          height: 60, // ✅ Fixed height
+          height: 60, 
           child: BottomAppBar(
             shape: const CircularNotchedRectangle(), 
             notchMargin: 6.0, 
@@ -113,14 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: EdgeInsets.zero, 
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround, 
-              // ✅ CHANGED: Center vertically instead of pushing to bottom
               crossAxisAlignment: CrossAxisAlignment.center, 
               children: <Widget>[
                 _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor),
                 _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor),
-
-                const SizedBox(width: 48), // Spacer
-
+                const SizedBox(width: 48), 
                 _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor),
                 _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor),
               ],
@@ -131,14 +134,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ✅ Helper to position icons
   Widget _buildNavItem({required IconData icon, required IconData activeIcon, required int index, required Color color}) {
     final isSelected = _currentIndex == index;
     return InkWell(
       onTap: () => _onTabTapped(index),
       borderRadius: BorderRadius.circular(30),
       child: Padding(
-        // ✅ CHANGED: Removed bottom padding to ensure true centering
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), 
         child: Icon(
           isSelected ? activeIcon : icon,
@@ -151,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (Updated with Dark Mode Toggle)
+// DASHBOARD VIEW
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
@@ -168,9 +169,6 @@ class _DashboardViewState extends State<_DashboardView> {
   late Future<List<dynamic>> _eventsFuture;
   late Future<List<dynamic>> _programmesFuture;
   
-  // ✅ REMOVED: Bell Animation Controller & Timer
-  // ✅ REMOVED: Unread Notification Count
-
   String? _profileImage;
   String _programme = "Member"; 
   String _year = "....";
@@ -183,16 +181,11 @@ class _DashboardViewState extends State<_DashboardView> {
     _refreshData();
   }
 
-  @override
-  void dispose() {
-    // ✅ No controllers to dispose anymore
-    super.dispose();
-  }
-
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return; // ✅ SAFETY FIX
     final localId = prefs.getString('alumni_id');
-    if (localId != null && mounted) {
+    if (localId != null) {
       setState(() {
         _alumniID = localId;
       });
@@ -231,6 +224,10 @@ class _DashboardViewState extends State<_DashboardView> {
     }
   }
 
+  // ... [The rest of the file (Color helpers, Build method, GridViews) remains the same] ...
+  // Since the rest of the file is purely UI rendering without logic changes, 
+  // you can keep the existing code below the _loadUserProfile method.
+
   Color _getTypeColor(String type) {
     switch (type) {
       case 'Reunion': return const Color(0xFF1B5E3A); 
@@ -249,6 +246,10 @@ class _DashboardViewState extends State<_DashboardView> {
 
   @override
   Widget build(BuildContext context) {
+    // ... Copy the original build method here ...
+    // (I am omitting it to keep this response concise, but pasting the full file from your previous version is fine,
+    // just ensure the _resolveUserName and _loadLocalData methods are updated as above.)
+    
     // ignore: unused_local_variable
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
@@ -272,15 +273,13 @@ class _DashboardViewState extends State<_DashboardView> {
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
           ),
           
-          // ✅ NEW DARK MODE TOGGLE (Replaces Bell)
           Padding(
             padding: const EdgeInsets.only(right: 12.0),
             child: IconButton(
               tooltip: 'Switch Theme',
               icon: ValueListenableBuilder<ThemeMode>(
-                valueListenable: themeNotifier, // Accessing global notifier from main.dart
+                valueListenable: themeNotifier, 
                 builder: (context, currentMode, _) {
-                  // If system, check brightness. If explicit, check mode.
                   bool isCurrentlyDark = currentMode == ThemeMode.dark || 
                       (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
                   
@@ -355,7 +354,6 @@ class _DashboardViewState extends State<_DashboardView> {
                                     maxCrossAxisExtent: 180,
                                     crossAxisSpacing: 12,
                                     mainAxisSpacing: 12,
-                                    // ✅ FIXED: Increased ratio from 0.70 to 0.80 -> Makes card shorter vertically
                                     childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85, 
                                   ),
                                   itemCount: programmes.length,
@@ -372,7 +370,6 @@ class _DashboardViewState extends State<_DashboardView> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // ✅ MODIFIED SECTION: Two-tone coloring using Text.rich
                             Text.rich(
                               TextSpan(
                                 style: TextStyle(
@@ -382,12 +379,10 @@ class _DashboardViewState extends State<_DashboardView> {
                                 children: [
                                   TextSpan(
                                     text: "Recent & Upcoming ",
-                                    // Uses textColor (Black in Light mode, White in Dark mode)
                                     style: TextStyle(color: textColor), 
                                   ),
                                   TextSpan(
                                     text: "Events",
-                                    // Uses primaryColor (Uniform Green)
                                     style: TextStyle(color: primaryColor), 
                                   ),
                                 ],
@@ -422,7 +417,6 @@ class _DashboardViewState extends State<_DashboardView> {
                                 maxCrossAxisExtent: 180,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                // ✅ FIXED: Increased ratio from 0.70 to 0.80 -> Makes card shorter vertically
                                 childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85, 
                               ),
                               itemCount: events.length,
@@ -489,7 +483,7 @@ class _DashboardViewState extends State<_DashboardView> {
                       ? Image.network(
                           programmeImage,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => Icon(Icons.image, color: Colors.grey[400], size: 40),
+                          errorBuilder: (c, e, s) => Icon(Icons.school, color: Colors.grey[400], size: 40),
                         )
                       : Icon(Icons.school, color: Colors.grey[400], size: 40),
                 ),
@@ -541,7 +535,6 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   Widget _buildEmptyState(String message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
     final borderColor = Theme.of(context).dividerColor;
     final textColor = Theme.of(context).textTheme.bodyMedium?.color;

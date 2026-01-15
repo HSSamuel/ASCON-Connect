@@ -28,8 +28,13 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     await newNotification.save();
     logger.info("💾 Broadcast saved to database.");
 
+    // ✅ FIX: Look for BOTH 'fcmTokens' (New) AND 'deviceToken' (Old)
+    // This ensures we catch users even if they haven't fully synced yet.
     const usersWithTokens = await User.find({
-      fcmTokens: { $exists: true, $not: { $size: 0 } },
+      $or: [
+        { fcmTokens: { $exists: true, $not: { $size: 0 } } },
+        { deviceToken: { $exists: true, $ne: null, $ne: "" } },
+      ],
     });
 
     if (usersWithTokens.length === 0) {
@@ -42,13 +47,31 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     );
 
     for (const user of usersWithTokens) {
-      // ✅ FIX: Remove Duplicate Tokens for this user
-      const uniqueTokens = [...new Set(user.fcmTokens)];
+      // ✅ FIX: Combine New and Old tokens into one unique list
+      let allTokens = [];
+      if (user.fcmTokens && user.fcmTokens.length > 0) {
+        allTokens = [...user.fcmTokens];
+      }
+      // Add legacy token if it exists and isn't already in the list
+      if (user.deviceToken && !allTokens.includes(user.deviceToken)) {
+        allTokens.push(user.deviceToken);
+      }
+
+      const uniqueTokens = [...new Set(allTokens)];
+
+      if (uniqueTokens.length === 0) continue;
 
       const message = {
         notification: { title, body },
+        // ✅ CRITICAL: Android Channel ID
+        android: {
+          notification: {
+            channelId: "ascon_high_importance",
+            priority: "high",
+          },
+        },
         data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
-        tokens: uniqueTokens, // Send to unique list
+        tokens: uniqueTokens,
       };
 
       try {
@@ -95,16 +118,32 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
     await newNotification.save();
 
     const user = await User.findById(userId);
-    if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
+
+    // ✅ FIX: Robust Token Check
+    let allTokens = [];
+    if (user.fcmTokens && user.fcmTokens.length > 0) {
+      allTokens = [...user.fcmTokens];
+    }
+    if (user.deviceToken && !allTokens.includes(user.deviceToken)) {
+      allTokens.push(user.deviceToken);
+    }
+
+    if (allTokens.length === 0) {
       logger.warn(`⚠️ User ${userId} has no tokens.`);
       return;
     }
 
-    // ✅ FIX: Remove Duplicate Tokens
-    const uniqueTokens = [...new Set(user.fcmTokens)];
+    const uniqueTokens = [...new Set(allTokens)];
 
     const message = {
       notification: { title, body },
+      // ✅ CRITICAL: Android Channel ID
+      android: {
+        notification: {
+          channelId: "ascon_high_importance",
+          priority: "high",
+        },
+      },
       data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
       tokens: uniqueTokens,
     };

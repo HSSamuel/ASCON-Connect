@@ -16,29 +16,29 @@ const runTest = async () => {
 
     console.log("📦 Connected to MongoDB Successfully!");
 
-    // 2. DEFINE TEST USERS
-    const testEmails = ["idarajoy199@gmail.com", "smkmayomisamuel@gmail.com"];
+    // ============================================================
+    // 2. FIND ALL USERS WITH TOKENS (DYNAMIC SCAN)
+    // ============================================================
+    console.log("🔍 Scanning database for users with active FCM tokens...");
 
-    console.log(`🔍 Looking for ${testEmails.length} test users...`);
+    // Find users who have 'fcmTokens' array with items OR a legacy 'deviceToken'
+    const usersWithTokens = await User.find({
+      $or: [
+        { fcmTokens: { $exists: true, $not: { $size: 0 } } },
+        { deviceToken: { $exists: true, $ne: null, $ne: "" } },
+      ],
+    });
 
-    for (const email of testEmails) {
-      const user = await User.findOne({ email: email });
+    console.log(`✅ Found ${usersWithTokens.length} users with tokens.`);
 
-      if (!user) {
-        console.log(`❌ Skipped: Could not find user with email: ${email}`);
-        continue;
-      }
+    if (usersWithTokens.length === 0) {
+      console.log("⚠️  No users found with tokens. Skipping personal tests.");
+    }
 
-      // Check for tokens (supports both single 'deviceToken' or array 'fcmTokens')
-      const tokens =
-        user.fcmTokens || (user.deviceToken ? [user.deviceToken] : []);
-
-      if (!tokens || tokens.length === 0) {
-        console.log(`⚠️  User ${user.fullName} found, but has NO FCM TOKENS.`);
-        continue;
-      }
-
-      console.log(`🚀 Sending personal test to: ${user.fullName}...`);
+    for (const user of usersWithTokens) {
+      console.log(
+        `🚀 Sending personal test to: ${user.fullName} (${user.email})...`
+      );
 
       // 3. TRIGGER PERSONAL NOTIFICATION
       await sendPersonalNotification(
