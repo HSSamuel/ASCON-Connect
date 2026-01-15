@@ -6,27 +6,28 @@ const {
 } = require("./utils/notificationHandler");
 const User = require("./models/User");
 
-// 1. CONNECT TO MONGODB
-mongoose
-  .connect(process.env.DB_CONNECT || process.env.DB_CONNECTION)
-  .then(() => console.log("📦 Connected to MongoDB for Testing..."))
-  .catch((err) => {
-    console.error("❌ MongoDB Connection Failed:", err);
-    process.exit(1);
-  });
-
 const runTest = async () => {
   try {
+    console.log("⏳ Connecting to MongoDB...");
+
+    // ✅ FIX: Await the connection BEFORE doing anything else
+    await mongoose.connect(
+      process.env.DB_CONNECT || process.env.DB_CONNECTION,
+      {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      }
+    );
+
+    console.log("📦 Connected to MongoDB Successfully!");
+
     // 2. DEFINE TEST USERS
-    // ✅ Add as many emails as you want to test here
-    const testEmails = [
-      "idarajoy199@gmail.com",
-      "smkmayomisamuel@gmail.com", // ✅ Added Samuel's email
-    ];
+    const testEmails = ["idarajoy199@gmail.com", "smkmayomisamuel@gmail.com"];
 
     console.log(`🔍 Looking for ${testEmails.length} test users...`);
 
     for (const email of testEmails) {
+      // Now safe to query because we awaited the connection above
       const user = await User.findOne({ email: email });
 
       if (!user) {
@@ -34,7 +35,11 @@ const runTest = async () => {
         continue;
       }
 
-      if (!user.fcmTokens || user.fcmTokens.length === 0) {
+      // Check for tokens (supports both single 'deviceToken' or array 'fcmTokens')
+      const tokens =
+        user.fcmTokens || (user.deviceToken ? [user.deviceToken] : []);
+
+      if (!tokens || tokens.length === 0) {
         console.log(`⚠️  User ${user.fullName} found, but has NO FCM TOKENS.`);
         continue;
       }
@@ -59,11 +64,15 @@ const runTest = async () => {
     );
 
     console.log("\n✅ Test sequence complete. Check your phones!");
-    setTimeout(() => process.exit(0), 2000);
+
+    // Close connection cleanly
+    await mongoose.connection.close();
+    process.exit(0);
   } catch (error) {
     console.error("💥 Test Script Crashed:", error);
     process.exit(1);
   }
 };
 
+// Run the script
 runTest();

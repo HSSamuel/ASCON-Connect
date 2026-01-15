@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // ✅ Required to check if running on Web
+import 'package:flutter/foundation.dart'; 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ ADDED THIS
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // ✅ Required for Channel Setup
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; 
 
 // ✅ Services & Config
 import 'services/notification_service.dart';
 import 'config/theme.dart';
 
-// ✅ Screens (REQUIRED FOR ROUTES)
+// ✅ Screens
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -16,23 +17,30 @@ import 'screens/home_screen.dart';
 // Global Key for Notification Navigation
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// ✅ DEFINE CHANNEL ID (Must match what you use in NotificationService)
+// ✅ DEFINE CHANNEL ID
 const String channelId = 'ascon_high_importance'; 
 const String channelName = 'ASCON Notifications';
 
 // ✅ GLOBAL THEME CONTROLLER
-// This allows the Home Screen to toggle Dark/Light mode dynamically.
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
+// ✅ CRITICAL ADDITION: BACKGROUND HANDLER
+// This must be a top-level function (outside any class)
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // We must initialize Firebase inside the background handler too
+  await Firebase.initializeApp();
+  debugPrint("🌙 Background Message Received: ${message.messageId}");
+}
+
 void main() async {
-  // ✅ MUST BE FIRST
   WidgetsFlutterBinding.ensureInitialized();
   
   // Load the .env file
   await dotenv.load(fileName: ".env");
 
+  // 1. INITIALIZE FIREBASE
   if (kIsWeb) {
-    // ✅ FIX: Ensure Firebase for Web is initialized only once
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
@@ -50,13 +58,17 @@ void main() async {
       debugPrint("⚠️ Firebase Web Init Error: $e");
     }
   } else {
+    // Android/iOS
     await Firebase.initializeApp();
+    
+    // ✅ CRITICAL: Register Background Handler immediately after Firebase Init
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   }
 
-  // ✅ Initialize Notifications (Robust Setup - strictly for mobile)
+  // 2. INITIALIZE NOTIFICATIONS (Mobile Only)
   if (!kIsWeb) {
     try {
-      // 1. SETUP CHANNEL EXPLICITLY
+      // Setup Channel Explicitly
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         channelId, 
         channelName, 
@@ -74,7 +86,7 @@ void main() async {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
 
-      // 2. Init Service
+      // Init Service
       await NotificationService().init();
       debugPrint("✅ Notifications Initialized Successfully");
     } catch (e) {
@@ -90,7 +102,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Wrap MaterialApp in a builder that listens to theme changes
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
@@ -103,7 +114,6 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           
-          // ✅ This connects to the Toggle Button on Home Screen
           themeMode: currentMode, 
 
           home: const SplashScreen(),

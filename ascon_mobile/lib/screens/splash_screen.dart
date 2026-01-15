@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'; // ✅ Added for kIsWeb check
 import '../services/auth_service.dart';
+import '../services/notification_service.dart'; // ✅ Added Notification Service
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -56,6 +58,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     // ✅ LOGIC UPDATED: Rely on the result from AuthService
     if (isValid) {
+      // ✅ NEW: Initialize Notification Service for returning users
+      if (!kIsWeb) {
+         try {
+           await NotificationService().init();
+           print("🔔 Notification Service Started from Splash");
+         } catch (e) {
+           print("Error starting notifications: $e");
+         }
+      }
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => HomeScreen(userName: userName ?? "Alumnus")),
