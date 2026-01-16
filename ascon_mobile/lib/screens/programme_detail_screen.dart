@@ -1,3 +1,4 @@
+import 'dart:convert'; // ✅ Import this
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,6 +55,37 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     setState(() {
        _localUserId = prefs.getString('mongo_id');
     });
+  }
+
+  // ✅ HELPER: Handles both HTTP URLs and Base64 Strings
+  Widget _buildSafeImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(color: Colors.grey[300]); // Default placeholder
+    }
+
+    // 1. If it's a web URL
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
+      );
+    }
+
+    // 2. If it's Base64
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) {
+        cleanBase64 = cleanBase64.split(',').last;
+      }
+      return Image.memory(
+        base64Decode(cleanBase64),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
+      );
+    } catch (e) {
+      return Container(color: Colors.grey[300]);
+    }
   }
 
   @override
@@ -201,7 +233,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
       }
 
       if (match.group(1) != null) {
-        // ✅ BOLD FIX: Use White for Dark Mode, Black for Light Mode
         spans.add(TextSpan(
           text: match.group(1),
           style: baseStyle.copyWith(
@@ -210,7 +241,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           ), 
         ));
       } else if (match.group(2) != null) {
-        // Italic
         spans.add(TextSpan(
           text: match.group(2),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
@@ -243,11 +273,8 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                image,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
-              ),
+              // ✅ USE SAFE IMAGE HERE
+              child: _buildSafeImage(image),
             ),
             Container(
               decoration: BoxDecoration(

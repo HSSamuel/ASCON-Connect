@@ -1,8 +1,8 @@
+import 'dart:convert'; // ✅ Import this
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-// import '../widgets/full_screen_image.dart'; // ✅ Removed external dependency for simplicity
 
 class FacilityDetailScreen extends StatefulWidget {
   final Map<String, dynamic> facility;
@@ -68,6 +68,35 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
     }
   }
 
+  // ✅ NEW: Safe Image Widget Helper
+  Widget _buildSafeImage(String? imageUrl, {BoxFit fit = BoxFit.cover}) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(color: Colors.grey);
+    }
+
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: fit,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey),
+      );
+    }
+
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) {
+        cleanBase64 = cleanBase64.split(',').last;
+      }
+      return Image.memory(
+        base64Decode(cleanBase64),
+        fit: fit,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey),
+      );
+    } catch (e) {
+      return Container(color: Colors.grey);
+    }
+  }
+
   // ✅ NEW: View Photo Full Screen
   void _openFullScreenImage(BuildContext context, String? imageUrl) {
     if (imageUrl == null) return;
@@ -84,7 +113,8 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
               panEnabled: true,
               minScale: 0.5,
               maxScale: 4,
-              child: Image.network(imageUrl),
+              // ✅ USE SAFE IMAGE HERE TOO
+              child: _buildSafeImage(imageUrl, fit: BoxFit.contain),
             ),
           ),
         ),
@@ -170,9 +200,8 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                     onTap: () => _openFullScreenImage(context, imageUrl),
                     child: Hero(
                       tag: 'facility_img_${widget.facility['_id']}',
-                      child: imageUrl != null
-                          ? Image.network(imageUrl, fit: BoxFit.cover)
-                          : Container(color: Colors.grey),
+                      // ✅ USE SAFE IMAGE HERE
+                      child: _buildSafeImage(imageUrl),
                     ),
                   ),
                   // 2. Gradient Overlay

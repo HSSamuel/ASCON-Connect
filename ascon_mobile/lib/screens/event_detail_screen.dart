@@ -1,3 +1,4 @@
+import 'dart:convert'; // ✅ Import this
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -26,7 +27,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _event = widget.eventData;
 
-    // Check if we need to fetch full details (e.g. if opened from a notification with incomplete data)
+    // Check if we need to fetch full details
     final String? idToFetch = _event['id'] ?? _event['_id'];
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
@@ -50,6 +51,37 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  // ✅ NEW HELPER: Handles both HTTP URLs and Base64 Strings
+  Widget _buildSafeImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(color: Colors.grey[800]);
+    }
+
+    // 1. If it's a web URL
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
+      );
+    }
+
+    // 2. If it's Base64 (Database string)
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) {
+        cleanBase64 = cleanBase64.split(',').last;
+      }
+      return Image.memory(
+        base64Decode(cleanBase64),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
+      );
+    } catch (e) {
+      return Container(color: Colors.grey[800]);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
@@ -60,10 +92,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // ✅ DATA EXTRACTION
-    final String image = _event['image'] ?? _event['imageUrl'] ?? 'https://via.placeholder.com/600';
+    final String image = _event['image'] ?? _event['imageUrl'] ?? '';
     final String title = _event['title'] ?? 'Event Details';
     
-    // ✅ LOCATION LOGIC: Uses backend data, or falls back to default
     final String location = (_event['location'] != null && _event['location'].toString().isNotEmpty)
         ? _event['location']
         : 'ASCON Complex, Topo-Badagry';
@@ -129,7 +160,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     "🏛️ *ASCON ALUMNI UPDATE* 🏛️\n\n"
                     "🔔 *${title.toUpperCase()}*\n\n"
                     "📅 *Date:* $formattedDate\n"
-                    "📍 *Location:* $location\n\n" // ✅ Sharable Location
+                    "📍 *Location:* $location\n\n"
                     "${description.length > 200 ? "${description.substring(0, 200)}..." : description}\n\n"
                     "📲 _Get the full details and register on the ASCON Alumni App._";
                   
@@ -142,7 +173,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(image, fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(color: Colors.grey[800])),
+                  // ✅ USE SAFE IMAGE HERE
+                  _buildSafeImage(image),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -203,7 +235,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     child: Divider(color: dividerColor.withOpacity(0.5), height: 1),
                   ),
                   
-                  // ✅ DYNAMIC LOCATION ROW
                   _buildInfoRow(context, Icons.location_on_outlined, "Location", location),
                   
                   const SizedBox(height: 30),
@@ -307,7 +338,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   TextSpan _parseRichText(String text, TextStyle baseStyle, Color linkColor, bool isDark) {
     List<TextSpan> spans = [];
     
-    // ✅ IMPROVED REGEX: Now captures ?, =, &, %, _, -, + (essential for Drive/Zoom links)
     final regex = RegExp(
       r'\*\*(.*?)\*\*|\*(.*?)\*|((https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([-a-zA-Z0-9@:%_\+.~#?&//=]*))',
       caseSensitive: false,
@@ -321,7 +351,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
 
       if (match.group(1) != null) {
-        // **Bold**
         spans.add(TextSpan(
           text: match.group(1),
           style: baseStyle.copyWith(
@@ -330,16 +359,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ));
       } else if (match.group(2) != null) {
-        // *Italic*
         spans.add(TextSpan(
           text: match.group(2),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ));
       } else if (match.group(3) != null) {
-        // 🔗 URL Handling
         String url = match.group(3)!;
-        
-        // Fix: Clean up trailing punctuation if the regex caught a closing parenthesis or dot by mistake
         if (url.endsWith(')') || url.endsWith('.')) {
            url = url.substring(0, url.length - 1);
         }
@@ -353,10 +378,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
           recognizer: TapGestureRecognizer()
             ..onTap = () async {
-              // Ensure http/https prefix exists
               final Uri uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
               try {
-                // Try launching in external browser (best for Drive/Zoom)
                 if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
                    debugPrint("Could not launch $uri");
                 }

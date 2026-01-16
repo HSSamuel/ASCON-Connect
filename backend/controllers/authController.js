@@ -24,6 +24,8 @@ const registerSchema = Joi.object({
     .allow(null, ""),
   customProgramme: Joi.string().optional().allow(""),
   googleToken: Joi.string().optional().allow(null, ""),
+  // ✅ FIX: Allow fcmToken during registration
+  fcmToken: Joi.string().optional().allow(null, ""),
 });
 
 const loginSchema = Joi.object({
@@ -48,6 +50,8 @@ exports.register = async (req, res) => {
       yearOfAttendance,
       programmeTitle,
       customProgramme,
+      // ✅ FIX: Extract fcmToken from request
+      fcmToken,
     } = req.body;
 
     // Check if user exists (Google or Local)
@@ -74,6 +78,8 @@ exports.register = async (req, res) => {
       alumniId: newAlumniId,
       hasSeenWelcome: false,
       provider: "local", // ✅ Mark as Local
+      // ✅ FIX: Save token immediately if provided
+      fcmTokens: fcmToken ? [fcmToken] : [],
     });
 
     const savedUser = await newUser.save();
@@ -227,6 +233,8 @@ exports.googleLogin = async (req, res) => {
         alumniId: newAlumniId,
         hasSeenWelcome: false,
         provider: "google",
+        // ✅ FIX: Save token immediately if provided
+        fcmTokens: fcmToken ? [fcmToken] : [],
       });
 
       await user.save();

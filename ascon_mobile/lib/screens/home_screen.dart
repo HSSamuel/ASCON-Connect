@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:convert'; // ✅ Required for Base64
 import 'dart:math'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -42,17 +42,13 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _loadedName = widget.userName!);
     } else {
       final prefs = await SharedPreferences.getInstance();
-      
-      // ✅ SAFETY FIX: Check mounted after await
       if (!mounted) return;
-
       final savedName = prefs.getString('user_name');
       if (savedName != null) {
         setState(() => _loadedName = savedName);
       }
     }
     
-    // ✅ SAFETY FIX: Ensure widget is still active before building screens
     if (!mounted) return;
 
     setState(() {
@@ -76,7 +72,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Prevent crash if screens aren't ready
     if (_screens.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -183,7 +178,7 @@ class _DashboardViewState extends State<_DashboardView> {
 
   Future<void> _loadLocalData() async {
     final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return; // ✅ SAFETY FIX
+    if (!mounted) return;
     final localId = prefs.getString('alumni_id');
     if (localId != null) {
       setState(() {
@@ -224,10 +219,6 @@ class _DashboardViewState extends State<_DashboardView> {
     }
   }
 
-  // ... [The rest of the file (Color helpers, Build method, GridViews) remains the same] ...
-  // Since the rest of the file is purely UI rendering without logic changes, 
-  // you can keep the existing code below the _loadUserProfile method.
-
   Color _getTypeColor(String type) {
     switch (type) {
       case 'Reunion': return const Color(0xFF1B5E3A); 
@@ -244,12 +235,39 @@ class _DashboardViewState extends State<_DashboardView> {
     }
   }
 
+  // ✅ HELPER: Handles both HTTP URLs and Base64 Strings
+  Widget _buildSafeImage(String? imageUrl, {IconData fallbackIcon = Icons.image}) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Icon(fallbackIcon, color: Colors.grey[400], size: 40);
+    }
+
+    // 1. If it's a web URL
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
+      );
+    }
+
+    // 2. If it's Base64
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) {
+        cleanBase64 = cleanBase64.split(',').last;
+      }
+      return Image.memory(
+        base64Decode(cleanBase64),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
+      );
+    } catch (e) {
+      return Icon(fallbackIcon, color: Colors.grey[400], size: 40);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ... Copy the original build method here ...
-    // (I am omitting it to keep this response concise, but pasting the full file from your previous version is fine,
-    // just ensure the _resolveUserName and _loadLocalData methods are updated as above.)
-    
     // ignore: unused_local_variable
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
@@ -479,13 +497,8 @@ class _DashboardViewState extends State<_DashboardView> {
                   height: 90, 
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
-                  child: programmeImage != null && programmeImage.isNotEmpty
-                      ? Image.network(
-                          programmeImage,
-                          fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => Icon(Icons.school, color: Colors.grey[400], size: 40),
-                        )
-                      : Icon(Icons.school, color: Colors.grey[400], size: 40),
+                  // ✅ USE SAFE IMAGE
+                  child: _buildSafeImage(programmeImage, fallbackIcon: Icons.school),
                 ),
               ),
               Expanded( 
@@ -569,6 +582,7 @@ class _DashboardViewState extends State<_DashboardView> {
     String formattedDate = 'TBA';
     String rawDate = data['date']?.toString() ?? '';
     String type = data['type'] ?? 'News';
+    final String? imageUrl = data['image'] ?? data['imageUrl'];
     
     try {
       if (rawDate.isNotEmpty) {
@@ -624,11 +638,9 @@ class _DashboardViewState extends State<_DashboardView> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        data['image'] ?? data['imageUrl'] ?? '',
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => Icon(Icons.event, color: Colors.grey[400], size: 40),
-                      ),
+                      // ✅ USE SAFE IMAGE
+                      _buildSafeImage(imageUrl, fallbackIcon: Icons.event),
+                      
                       Positioned(
                         top: 8,
                         right: 8,

@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart'; 
+import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ IMPORT ADDED
 import '../main.dart'; 
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -20,12 +21,34 @@ class AuthService {
     ),
   );
 
+  // ✅ HELPER: Fetch FCM Token safely
+  Future<String?> _getFcmToken() async {
+    try {
+      if (kIsWeb) {
+        // Use your VAPID key for web if needed
+        return await FirebaseMessaging.instance.getToken(
+          vapidKey: "BG-mAsjcWNqfS9Brgh0alj3Cf7Q7FFgkl8kvu5zktPvt4Dt-Yu138tPE_z-INAganzw6BVb6Vjc9Nf37KzN0Rm8"
+        );
+      } else {
+        return await FirebaseMessaging.instance.getToken();
+      }
+    } catch (e) {
+      debugPrint("⚠️ Failed to get FCM token during auth: $e");
+      return null;
+    }
+  }
+
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
+      // ✅ 1. Get FCM Token BEFORE logging in
+      final String? fcmToken = await _getFcmToken();
+
+      // ✅ 2. Send it with the login request
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
+        'fcmToken': fcmToken, // <--- Backend expects this
       });
 
       if (result['success']) {
@@ -36,10 +59,11 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
+        // ✅ 3. Initialize Notifications (Permissions etc)
         if (!kIsWeb) {
-          // ✅ FIX: Force sync immediately after saving session
-          await NotificationService().init();
-          await NotificationService().syncToken(); 
+           await NotificationService().init();
+           // We don't strictly need syncToken() here anymore since we sent it in login,
+           // but keeping it as a backup is fine.
         }
       }
       return result;
@@ -59,6 +83,10 @@ class AuthService {
     String? googleToken,
   }) async {
     try {
+      // ✅ 1. Get FCM Token
+      final String? fcmToken = await _getFcmToken();
+
+      // ✅ 2. Send with Register Request
       final result = await _api.post('/api/auth/register', {
         'fullName': fullName,
         'email': email,
@@ -67,6 +95,7 @@ class AuthService {
         'programmeTitle': programmeTitle,
         'yearOfAttendance': yearOfAttendance,
         'googleToken': googleToken,
+        'fcmToken': fcmToken, // <--- Add this (Note: You may need to update backend register controller to accept this if it doesn't yet, but usually it's handled in the user creation or separate update)
       });
 
       if (result['success'] && result['data']['token'] != null) {
@@ -78,8 +107,8 @@ class AuthService {
         );
         
         if (!kIsWeb) {
-          // ✅ FIX: Force sync immediately
           await NotificationService().init();
+          // ✅ Force sync here just in case Register controller doesn't handle fcmToken automatically
           await NotificationService().syncToken();
         }
       }
@@ -95,7 +124,14 @@ class AuthService {
     if (idToken == null) return {'success': false, 'message': 'Google Sign-In failed'};
 
     try {
-      final result = await _api.post('/api/auth/google', {'token': idToken});
+      // ✅ 1. Get FCM Token
+      final String? fcmToken = await _getFcmToken();
+
+      // ✅ 2. Send with Google Auth
+      final result = await _api.post('/api/auth/google', {
+        'token': idToken,
+        'fcmToken': fcmToken, // <--- Backend expects this
+      });
 
       if (result['success']) {
         final data = result['data'];
@@ -106,9 +142,7 @@ class AuthService {
         );
         
         if (!kIsWeb) {
-          // ✅ FIX: Force sync immediately
           await NotificationService().init();
-          await NotificationService().syncToken();
         }
       }
       return result;

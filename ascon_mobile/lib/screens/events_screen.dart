@@ -1,3 +1,4 @@
+import 'dart:convert'; // ✅ Import this for Base64 decoding
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart'; 
@@ -51,6 +52,38 @@ class _EventsScreenState extends State<EventsScreen> {
       case 'Event':      return Colors.indigo[900]!;     // General Event
       
       default:           return Colors.grey[700]!;
+    }
+  }
+
+  // ✅ NEW HELPER: Handles both HTTP URLs and Base64 Strings
+  Widget _buildSafeImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Icon(Icons.event, color: Colors.grey[400], size: 30);
+    }
+
+    // 1. If it's a web URL
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400]),
+      );
+    }
+
+    // 2. If it's Base64 (Database string)
+    try {
+      // Remove header if present (e.g., "data:image/png;base64,")
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) {
+        cleanBase64 = cleanBase64.split(',').last;
+      }
+      return Image.memory(
+        base64Decode(cleanBase64),
+        fit: BoxFit.cover,
+        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400]),
+      );
+    } catch (e) {
+      return Icon(Icons.event, color: Colors.grey[400], size: 30);
     }
   }
 
@@ -132,7 +165,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
     final String title = event['title']?.toString() ?? 'No Title';
     final String type = event['type'] ?? 'News';
-    final String imageUrl = event['image'] ?? event['imageUrl'] ?? 'https://via.placeholder.com/600';
+    final String imageUrl = event['image'] ?? event['imageUrl'] ?? ''; // Pass empty string if null
 
     return Container(
       decoration: BoxDecoration(
@@ -175,11 +208,8 @@ class _EventsScreenState extends State<EventsScreen> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (c, e, s) => Icon(Icons.event, color: Colors.grey[400], size: 30),
-                      ),
+                      // ✅ USE SAFE IMAGE HERE
+                      _buildSafeImage(imageUrl),
                       Positioned(
                         top: 8,
                         right: 8,
