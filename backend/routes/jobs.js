@@ -1,7 +1,11 @@
 const router = require("express").Router();
 const Job = require("../models/Job");
+
+// ✅ FIX: Pointing to the same folder (./) based on your previous code
 const verifyToken = require("./verifyToken");
-const verifyAdmin = require("./verifyAdmin"); // Reuse your existing admin check
+const verifyAdmin = require("./verifyAdmin");
+
+// Ensure this path is correct too. If this file doesn't exist, it will also crash.
 const { sendBroadcastNotification } = require("../utils/notificationHandler");
 
 // @route   GET /api/jobs
@@ -9,13 +13,8 @@ const { sendBroadcastNotification } = require("../utils/notificationHandler");
 router.get("/", async (req, res) => {
   try {
     const jobs = await Job.find().sort({ createdAt: -1 });
-    
-    // ✅ WRAP RESPONSE: Ensures frontend hooks like usePaginatedFetch find the list easily
-    res.status(200).json({ 
-      success: true, 
-      count: jobs.length, 
-      data: jobs 
-    }); 
+    // Return array directly for Admin Panel compatibility
+    res.status(200).json(jobs);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -29,11 +28,17 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     const savedJob = await newJob.save();
 
     // 🔔 Notify all users
-    await sendBroadcastNotification(
-      `New Opportunity: ${savedJob.title}`,
-      `at ${savedJob.company}. Tap to view details.`,
-      { route: "job_detail", id: savedJob._id.toString() }
-    );
+    try {
+      if (sendBroadcastNotification) {
+        await sendBroadcastNotification(
+          `New Opportunity: ${savedJob.title}`,
+          `at ${savedJob.company}. Tap to view details.`,
+          { route: "job_detail", id: savedJob._id.toString() }
+        );
+      }
+    } catch (notifyErr) {
+      console.error("Notification failed:", notifyErr);
+    }
 
     res.status(201).json(savedJob);
   } catch (err) {

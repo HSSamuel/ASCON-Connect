@@ -299,3 +299,13 @@
 {"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-16 16:30:32"}
 {"level":"info","message":"📣 Preparing broadcast for 1 users...","timestamp":"2026-01-16 16:30:32"}
 {"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-16 16:30:34"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-16 17:58:16"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-16 18:01:51"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-16 18:01:52"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-16 18:01:57"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-16 18:01:57"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-16 18:01:57"}
+{"level":"info","message":"📖 API Docs available at https://ascon.onrender.com/api-docs","timestamp":"2026-01-16 18:01:57"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-16 18:02:34"}
+{"level":"info","message":"👤 Personal Notification sent to HUNSA S Samuel: 4 success.","timestamp":"2026-01-16 18:02:41"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-16 18:02:41"}
