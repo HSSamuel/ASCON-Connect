@@ -83,7 +83,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         controller: _tabController,
         children: [
           _buildJobsList(isDark, primaryColor),
-          // ✅ Facilities Tab with Video Header
+          // ✅ Facilities Tab (Video triggers as popup automatically)
           const FacilitiesTab(), 
         ],
       ),
@@ -253,7 +253,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 }
 
 // ==========================================
-// 🏢 FACILITIES TAB (Fixed Video Logic)
+// 🏢 FACILITIES TAB (Triggers Video Popup)
 // ==========================================
 class FacilitiesTab extends StatefulWidget {
   const FacilitiesTab({super.key});
@@ -265,45 +265,22 @@ class FacilitiesTab extends StatefulWidget {
 class _FacilitiesTabState extends State<FacilitiesTab> {
   final DataService _dataService = DataService();
   final NumberFormat _currency = NumberFormat.currency(symbol: "₦", decimalDigits: 0);
-  
-  VideoPlayerController? _videoController;
-  bool _isVideoInitialized = false;
-
-  // ✅ FIX: Use a direct MP4 link. YouTube links will NOT work.
-  // This is a sample video provided by Flutter that is guaranteed to play.
-  // For your own video, upload an .mp4 file to your server or cloud storage.
-  final String _videoUrl = "https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4";
 
   @override
   void initState() {
     super.initState();
-    _initVideo();
+    // ✅ AUTO-PLAY VIDEO POPUP
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showVideoPopup();
+    });
   }
 
-  Future<void> _initVideo() async {
-    try {
-      // ✅ Use networkUrl for online MP4s
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(_videoUrl));
-
-      await _videoController!.initialize();
-      _videoController!.setLooping(true);
-      _videoController!.setVolume(0.0); // Mute for autoplay
-      _videoController!.play();
-      
-      if (mounted) {
-        setState(() {
-          _isVideoInitialized = true;
-        });
-      }
-    } catch (e) {
-      debugPrint("❌ Video Initialization Error: $e");
-    }
-  }
-
-  @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
+  void _showVideoPopup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must click close button
+      builder: (context) => const VideoPopupDialog(),
+    );
   }
 
   @override
@@ -322,83 +299,13 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          itemCount: facilities.isEmpty ? 1 : facilities.length + 1,
+          // No header index shift needed anymore
+          itemCount: facilities.isEmpty ? 1 : facilities.length,
           itemBuilder: (context, index) {
-            // 🎬 1. VIDEO HEADER (Position 0)
-            if (index == 0) {
-              return Column(
-                children: [
-                  if (_isVideoInitialized && _videoController != null)
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (_videoController!.value.isPlaying) {
-                            _videoController!.pause();
-                          } else {
-                            _videoController!.play();
-                          }
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 24),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: AspectRatio(
-                            aspectRatio: _videoController!.value.aspectRatio,
-                            child: Stack(
-                              alignment: Alignment.bottomCenter,
-                              children: [
-                                VideoPlayer(_videoController!),
-                                // Gradient Overlay
-                                Container(
-                                  width: double.infinity,
-                                  decoration: const BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [Colors.transparent, Colors.black54],
-                                    ),
-                                  ),
-                                ),
-                                // Text Overlay
-                                Padding(
-                                  padding: const EdgeInsets.all(12.0),
-                                  child: Text(
-                                    "Experience ASCON Facilities",
-                                    style: GoogleFonts.inter(
-                                      color: Colors.white, 
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                // Play Icon when paused
-                                if (!_videoController!.value.isPlaying)
-                                  const Center(
-                                    child: Icon(Icons.play_circle_fill, color: Colors.white54, size: 50),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  
-                  if (facilities.isEmpty)
-                    _buildEmptyState("No facilities listed.", Icons.apartment),
-                ],
-              );
+            if (facilities.isEmpty) {
+               return _buildEmptyState("No facilities listed.", Icons.apartment);
             }
-
-            // 🏢 2. FACILITY CARDS
-            return _buildFacilityCard(facilities[index - 1], isDark, primaryColor);
+            return _buildFacilityCard(facilities[index], isDark, primaryColor);
           },
         );
       },
@@ -566,6 +473,83 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
           ),
           const SizedBox(height: 16),
           Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 🎬 VIDEO POPUP DIALOG (Asset Based)
+// ==========================================
+class VideoPopupDialog extends StatefulWidget {
+  const VideoPopupDialog({super.key});
+
+  @override
+  State<VideoPopupDialog> createState() => _VideoPopupDialogState();
+}
+
+class _VideoPopupDialogState extends State<VideoPopupDialog> {
+  late VideoPlayerController _controller;
+  bool _initialized = false;
+  
+  // ✅ ASSET VIDEO: Works on Mobile AND Web (Same Origin)
+  final String _assetVideoPath = 'assets/videos/facility_intro.mp4';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset(_assetVideoPath)
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _initialized = true;
+          });
+          _controller.play(); // Auto-play
+          _controller.setVolume(1.0); // Sound ON for popup
+        }
+      }).catchError((error) {
+        debugPrint("❌ Popup Video Error: $error");
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      contentPadding: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: _initialized
+                ? AspectRatio(
+                    aspectRatio: _controller.value.aspectRatio,
+                    child: VideoPlayer(_controller),
+                  )
+                : const SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+          ),
+          // Close button
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                "Close Video", 
+                style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)
+              ),
+            ),
+          ),
         ],
       ),
     );

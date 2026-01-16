@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert'; // ✅ Required for Base64
+import 'dart:convert';
 import 'dart:math'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -42,7 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _loadedName = widget.userName!);
     } else {
       final prefs = await SharedPreferences.getInstance();
+      
       if (!mounted) return;
+
       final savedName = prefs.getString('user_name');
       if (savedName != null) {
         setState(() => _loadedName = savedName);
@@ -268,7 +270,6 @@ class _DashboardViewState extends State<_DashboardView> {
 
   @override
   Widget build(BuildContext context) {
-    // ignore: unused_local_variable
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
@@ -280,14 +281,20 @@ class _DashboardViewState extends State<_DashboardView> {
       appBar: AppBar(
         title: Text(
           "Dashboard",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor),
+          style: TextStyle(
+            fontWeight: FontWeight.bold, 
+            fontSize: 18, 
+            // ✅ CHANGED: White in Dark Mode, Primary in Light Mode
+            color: isDark ? Colors.white : primaryColor
+          ),
         ),
         backgroundColor: cardColor,
         elevation: 0,
         automaticallyImplyLeading: false,
         actions: [
+          // ✅ CHANGED: About Icon Color
           IconButton(
-            icon: Icon(Icons.info_outline, color: primaryColor, size: 22),
+            icon: Icon(Icons.info_outline, color: isDark ? Colors.white : primaryColor, size: 22),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
           ),
           
@@ -303,7 +310,8 @@ class _DashboardViewState extends State<_DashboardView> {
                   
                   return Icon(
                     isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                    color: primaryColor,
+                    // ✅ CHANGED: Theme Icon Color
+                    color: isDark ? Colors.white : primaryColor,
                     size: 24,
                   );
                 },
@@ -497,7 +505,6 @@ class _DashboardViewState extends State<_DashboardView> {
                   height: 90, 
                   width: double.infinity,
                   color: isDark ? Colors.grey[850] : Colors.grey[100],
-                  // ✅ USE SAFE IMAGE
                   child: _buildSafeImage(programmeImage, fallbackIcon: Icons.school),
                 ),
               ),

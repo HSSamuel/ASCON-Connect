@@ -294,3 +294,8 @@
 {"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-16 07:00:12"}
 {"level":"info","message":"📣 Preparing broadcast for 1 users...","timestamp":"2026-01-16 07:00:12"}
 {"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-16 07:00:13"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-16 16:30:21"}
+{"level":"info","message":"👤 Personal Notification sent to HUNSA S Samuel: 4 success.","timestamp":"2026-01-16 16:30:31"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-16 16:30:32"}
+{"level":"info","message":"📣 Preparing broadcast for 1 users...","timestamp":"2026-01-16 16:30:32"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-16 16:30:34"}

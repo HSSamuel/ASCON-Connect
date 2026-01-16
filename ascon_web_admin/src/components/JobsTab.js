@@ -70,7 +70,7 @@ function JobsTab({
                 }
               />
               <input
-                placeholder="Apply Link: Google, Microsoft form etc. *"
+                placeholder="Apply Link: Google, Microsoft forms, Email etc. *"
                 value={jobForm.applicationLink}
                 onChange={(e) =>
                   setJobForm({ ...jobForm, applicationLink: e.target.value })

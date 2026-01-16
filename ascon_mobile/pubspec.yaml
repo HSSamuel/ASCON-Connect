@@ -46,7 +46,7 @@ flutter:
     - assets/
     - assets/images/
     - assets/images/logo.png
-    - assets/videos/facility_intro.mp4
+    - assets/videos/
 
 # ==========================================
 # 🌊 NATIVE SPLASH SCREEN CONFIG

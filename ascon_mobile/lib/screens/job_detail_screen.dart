@@ -1,21 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:share_plus/share_plus.dart'; // ✅ Added for Share functionality
+import 'package:share_plus/share_plus.dart';
 
 class JobDetailScreen extends StatelessWidget {
   final Map<String, dynamic> job;
   const JobDetailScreen({super.key, required this.job});
 
-  // ✅ RESTORED: Your original robust logic (In-App Browser -> Fallback to External)
-  Future<void> _launchApplyLink(BuildContext context, String? urlString) async {
-    if (urlString == null || urlString.isEmpty) {
+  // ✅ INTELLIGENT APPLICATION HANDLER
+  Future<void> _handleApplication(BuildContext context) async {
+    String link = job['applicationLink'] ?? "";
+    
+    if (link.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("No application link provided")),
       );
       return;
     }
 
+    // 1. Check if it's an email address (Contains @ and no http)
+    final bool isEmail = link.contains('@') && !link.startsWith('http');
+
+    if (isEmail) {
+      await _launchEmailApp(context, link);
+    } else {
+      await _launchBrowser(context, link);
+    }
+  }
+
+  // 📧 EMAIL LAUNCHER (Like Facility Inquiry)
+  Future<void> _launchEmailApp(BuildContext context, String email) async {
+    final String jobTitle = job['title'] ?? "Job Opportunity";
+    final String company = job['company'] ?? "ASCON";
+
+    final String subject = "Application for $jobTitle - $company";
+    final String body = 
+        "Dear Hiring Manager,\n\n"
+        "I am writing to express my interest in the $jobTitle position at $company.\n\n"
+        "Please find my application details attached.\n\n"
+        "Sincerely,\n"
+        "[Your Name]\n"
+        "[Your Phone Number]";
+
+    final Uri emailLaunchUri = Uri(
+      scheme: 'mailto',
+      path: email,
+      query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}',
+    );
+
+    try {
+      if (!await launchUrl(emailLaunchUri)) {
+        throw 'Could not launch email';
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not open email app. Please copy the email manually.")),
+        );
+      }
+    }
+  }
+
+  // 🌐 BROWSER LAUNCHER (Google Forms / Websites)
+  Future<void> _launchBrowser(BuildContext context, String urlString) async {
     if (!urlString.startsWith('http')) {
       urlString = 'https://$urlString';
     }
@@ -23,32 +70,25 @@ class JobDetailScreen extends StatelessWidget {
     final Uri url = Uri.parse(urlString);
 
     try {
-      // 1. Try launching inside the app (cleaner experience)
+      // Try launching inside the app first (WebView)
       final bool launched = await launchUrl(
         url,
-        mode: LaunchMode.inAppWebView,
-        webViewConfiguration: const WebViewConfiguration(enableJavaScript: true),
+        mode: LaunchMode.externalApplication, // Changed to external for better Google Form support
       );
 
       if (!launched) {
-        throw 'Could not launch in-app';
+        throw 'Could not launch URL';
       }
     } catch (e) {
-      // 2. Fallback to external browser (Chrome/Safari)
-      debugPrint("⚠️ In-App Launch failed, trying external: $e");
-      try {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } catch (err) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Could not launch URL")),
-          );
-        }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not launch application form.")),
+        );
       }
     }
   }
 
-  // ✅ NEW: Share the job with others
+  // Share functionality
   void _shareJob() {
     final String title = job['title'] ?? "Job Opportunity";
     final String company = job['company'] ?? "ASCON Network";
@@ -58,11 +98,10 @@ class JobDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Theme Awareness
+    // Theme Awareness
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     
-    // 2. Adaptive Colors
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
     final cardBg = isDark ? Colors.grey[850] : Colors.grey[100];
@@ -79,7 +118,6 @@ class JobDetailScreen extends StatelessWidget {
           ),
         ],
       ),
-      // ✅ IMPROVEMENT: Flex Layout puts the button at the bottom
       body: Column(
         children: [
           Expanded(
@@ -131,7 +169,7 @@ class JobDetailScreen extends StatelessWidget {
                   
                   const SizedBox(height: 24),
                   
-                  // --- TAGS ROW (Enhanced) ---
+                  // --- TAGS ROW ---
                   Wrap(
                     spacing: 10,
                     runSpacing: 10,
@@ -166,7 +204,7 @@ class JobDetailScreen extends StatelessWidget {
                       height: 1.6,
                       color: isDark ? Colors.grey[300] : Colors.grey[800]
                     ),
-                    textAlign: TextAlign.justify, // ✅ Kept justify alignment
+                    textAlign: TextAlign.justify,
                   ),
                   const SizedBox(height: 40),
                 ],
@@ -174,7 +212,7 @@ class JobDetailScreen extends StatelessWidget {
             ),
           ),
           
-          // --- FIXED BOTTOM BUTTON ---
+          // --- APPLY BUTTON ---
           Container(
             padding: const EdgeInsets.all(24.0),
             decoration: BoxDecoration(
@@ -189,7 +227,7 @@ class JobDetailScreen extends StatelessWidget {
             ),
             child: SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   padding: const EdgeInsets.symmetric(vertical: 18),
@@ -197,8 +235,10 @@ class JobDetailScreen extends StatelessWidget {
                   elevation: 4,
                   shadowColor: primaryColor.withOpacity(0.4),
                 ),
-                onPressed: () => _launchApplyLink(context, job['applicationLink']),
-                child: const Text(
+                // ✅ UPDATE: Uses new intelligent handler
+                onPressed: () => _handleApplication(context),
+                icon: const Icon(Icons.send, color: Colors.white),
+                label: const Text(
                   "Apply Now",
                   style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
@@ -210,7 +250,6 @@ class JobDetailScreen extends StatelessWidget {
     );
   }
 
-  // ✅ Helper for Tabs
   Widget _buildTag(String text, Color color, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
