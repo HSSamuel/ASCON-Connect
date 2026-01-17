@@ -13,7 +13,8 @@ class ApiClient {
     'Content-Type': 'application/json',
   };
 
-  static const Duration _timeoutDuration = Duration(seconds: 15);
+  // ✅ UPDATED: Increased timeout from 15s to 90s to handle "Cold Starts"
+  static const Duration _timeoutDuration = Duration(seconds: 20);
 
   void setAuthToken(String token) {
     _headers['auth-token'] = token;
@@ -24,6 +25,9 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
+    // ✅ ADDED: Debug print to see exactly where the app is trying to connect
+    print("🚀 CONNECTING TO: ${AppConfig.baseUrl}$endpoint");
+
     final response = await _request(() => http.post(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
       headers: _headers,

@@ -24,7 +24,6 @@ const registerSchema = Joi.object({
     .allow(null, ""),
   customProgramme: Joi.string().optional().allow(""),
   googleToken: Joi.string().optional().allow(null, ""),
-  // ✅ FIX: Allow fcmToken during registration
   fcmToken: Joi.string().optional().allow(null, ""),
 });
 
@@ -33,6 +32,27 @@ const loginSchema = Joi.object({
   password: Joi.string().min(6).required(),
   fcmToken: Joi.string().optional().allow(""),
 });
+
+// ✅ HELPER: Manage Tokens (Cap at 5)
+const manageFcmToken = async (userId, token) => {
+  if (!token) return;
+
+  // 1. Remove if exists (to prevent duplicates)
+  await User.findByIdAndUpdate(userId, {
+    $pull: { fcmTokens: token },
+  });
+
+  // 2. Add to top and slice to keep only 5
+  await User.findByIdAndUpdate(userId, {
+    $push: {
+      fcmTokens: {
+        $each: [token],
+        $position: 0,
+        $slice: 5,
+      },
+    },
+  });
+};
 
 // --------------------------------------------------------------------------
 // 1. REGISTER (Manual Creation)
@@ -50,7 +70,6 @@ exports.register = async (req, res) => {
       yearOfAttendance,
       programmeTitle,
       customProgramme,
-      // ✅ FIX: Extract fcmToken from request
       fcmToken,
     } = req.body;
 
@@ -77,8 +96,8 @@ exports.register = async (req, res) => {
       isVerified: true,
       alumniId: newAlumniId,
       hasSeenWelcome: false,
-      provider: "local", // ✅ Mark as Local
-      // ✅ FIX: Save token immediately if provided
+      provider: "local",
+      // ✅ Start with just this one token
       fcmTokens: fcmToken ? [fcmToken] : [],
     });
 
@@ -87,13 +106,13 @@ exports.register = async (req, res) => {
     const token = jwt.sign(
       { _id: savedUser._id, isAdmin: false, canEdit: false },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "2h" },
     );
 
     const refreshToken = jwt.sign(
       { _id: savedUser._id },
       process.env.REFRESH_SECRET,
-      { expiresIn: "30d" }
+      { expiresIn: "30d" },
     );
 
     res.status(201).json({
@@ -126,9 +145,6 @@ exports.login = async (req, res) => {
     let user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Email is not found." });
 
-    // ✅ HYBRID CHECK: We allow login even if they are a Google user,
-    // as long as they have a valid password.
-
     const validPass = await bcrypt.compare(password, user.password);
     if (!validPass)
       return res.status(400).json({ message: "Invalid Password." });
@@ -143,23 +159,21 @@ exports.login = async (req, res) => {
       await user.save();
     }
 
+    // ✅ FIX: Use Smart Token Management
     if (fcmToken) {
-      await User.updateOne(
-        { _id: user._id },
-        { $addToSet: { fcmTokens: fcmToken } }
-      );
+      await manageFcmToken(user._id, fcmToken);
     }
 
     const token = jwt.sign(
       { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "2h" },
     );
 
     const refreshToken = jwt.sign(
       { _id: user._id },
       process.env.REFRESH_SECRET,
-      { expiresIn: "30d" }
+      { expiresIn: "30d" },
     );
 
     res.json({
@@ -204,7 +218,7 @@ exports.googleLogin = async (req, res) => {
     } else {
       const response = await axios.get(
         "https://www.googleapis.com/oauth2/v3/userinfo",
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       name = response.data.name;
       email = response.data.email;
@@ -233,23 +247,19 @@ exports.googleLogin = async (req, res) => {
         alumniId: newAlumniId,
         hasSeenWelcome: false,
         provider: "google",
-        // ✅ FIX: Save token immediately if provided
         fcmTokens: fcmToken ? [fcmToken] : [],
       });
 
       await user.save();
     }
-    // ✅ SCENARIO B: User DOES exist (Manual or Google) -> Log them in!
-    // We do NOT block them if they registered manually. We just grant access.
 
+    // ✅ SCENARIO B: User DOES exist -> Log them in & Update Token
     if (!user.isVerified)
       return res.status(403).json({ message: "Account pending approval." });
 
+    // ✅ FIX: Use Smart Token Management
     if (fcmToken) {
-      await User.updateOne(
-        { _id: user._id },
-        { $addToSet: { fcmTokens: fcmToken } }
-      );
+      await manageFcmToken(user._id, fcmToken);
     }
 
     const authToken = jwt.sign(
@@ -259,13 +269,13 @@ exports.googleLogin = async (req, res) => {
         canEdit: user.canEdit || false,
       },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "2h" },
     );
 
     const refreshToken = jwt.sign(
       { _id: user._id },
       process.env.REFRESH_SECRET,
-      { expiresIn: "30d" }
+      { expiresIn: "30d" },
     );
 
     return res.json({
@@ -303,7 +313,7 @@ exports.refreshToken = async (req, res) => {
     const newAccessToken = jwt.sign(
       { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
       process.env.JWT_SECRET,
-      { expiresIn: "2h" }
+      { expiresIn: "2h" },
     );
 
     res.json({ token: newAccessToken });
@@ -348,7 +358,7 @@ exports.forgotPassword = async (req, res) => {
           "api-key": process.env.EMAIL_PASS,
           "Content-Type": "application/json",
         },
-      }
+      },
     );
 
     res.json({ message: "Reset link sent to your email!" });
