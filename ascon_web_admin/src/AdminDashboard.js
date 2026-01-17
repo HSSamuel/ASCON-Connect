@@ -14,7 +14,8 @@ import FacilitiesTab from "./components/FacilitiesTab";
 import { useAuth } from "./hooks/useAuth";
 import { useStats } from "./hooks/useStats";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
+const BASE_URL =
+  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function AdminDashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");

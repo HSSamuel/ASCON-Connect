@@ -14,7 +14,7 @@ import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
 import SkeletonTable from "../components/SkeletonTable";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
+const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function JobsManager({ token, canEdit }) {
   const [jobs, setJobs] = useState([]);
@@ -85,39 +85,42 @@ function JobsManager({ token, canEdit }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      if (editingId) {
-        await axios.put(`${BASE_URL}/api/admin/jobs/${editingId}`, jobForm, {
-          headers: { "auth-token": token },
-        });
-        showToast("Job updated successfully");
-      } else {
-        await axios.post(`${BASE_URL}/api/admin/jobs`, jobForm, {
-          headers: { "auth-token": token },
-        });
-        showToast("Job posted successfully");
-      }
-      resetForm();
-      fetchJobs();
-    } catch (err) {
-      showToast(err.response?.data?.message || "Error saving job", "error");
-    }
-  };
+ const handleSubmit = async (e) => {
+   e.preventDefault();
+   try {
+     if (editingId) {
+       // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
+       await axios.put(`${BASE_URL}/api/jobs/${editingId}`, jobForm, {
+         headers: { "auth-token": token },
+       });
+       showToast("Job updated successfully");
+     } else {
+       // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
+       await axios.post(`${BASE_URL}/api/jobs`, jobForm, {
+         headers: { "auth-token": token },
+       });
+       showToast("Job posted successfully");
+     }
+     resetForm();
+     fetchJobs();
+   } catch (err) {
+     showToast(err.response?.data?.message || "Error saving job", "error");
+   }
+ };
 
-  const handleDelete = async () => {
-    try {
-      await axios.delete(`${BASE_URL}/api/admin/jobs/${deleteModal.id}`, {
-        headers: { "auth-token": token },
-      });
-      showToast("Job deleted successfully");
-      fetchJobs();
-    } catch (err) {
-      showToast("Delete failed", "error");
-    }
-    setDeleteModal({ show: false, id: null });
-  };
+ const handleDelete = async () => {
+   try {
+     // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
+     await axios.delete(`${BASE_URL}/api/jobs/${deleteModal.id}`, {
+       headers: { "auth-token": token },
+     });
+     showToast("Job deleted successfully");
+     fetchJobs();
+   } catch (err) {
+     showToast("Delete failed", "error");
+   }
+   setDeleteModal({ show: false, id: null });
+ };
 
   const getLinkType = (link) => {
     if (!link) return null;

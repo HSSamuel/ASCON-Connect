@@ -5,7 +5,7 @@ import ConfirmModal from "../ConfirmModal";
 import Toast from "../Toast";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
+const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function UsersManager({ token, canEdit }) {
   const [toast, setToast] = useState(null);

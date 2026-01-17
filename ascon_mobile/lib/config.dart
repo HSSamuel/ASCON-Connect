@@ -13,7 +13,7 @@ class AppConfig {
     if (url == null || url.isEmpty) {
       // ⚠️ Safety Fallback if .env fails to load
       // You can keep this as your production URL just in case
-      return 'https://ascon.onrender.com';
+      return 'https://ascon-st50.onrender.com';
     }
     return url;
   }

@@ -69,7 +69,7 @@ const swaggerOptions = {
       {
         url:
           process.env.NODE_ENV === "production"
-            ? "https://ascon.onrender.com"
+            ? "https://ascon-st50.onrender.com"
             : `http://localhost:${process.env.PORT || 5000}`,
       },
     ],
@@ -89,7 +89,7 @@ const allowedOrigins =
   process.env.NODE_ENV === "production"
     ? [
         "https://asconadmin.netlify.app",
-        "https://ascon.onrender.com",
+        "https://ascon-st50.onrender.com",
         // Add your custom domain here if you have one
       ]
     : ["http://localhost:3000", "http://localhost:5000"];
@@ -161,7 +161,7 @@ mongoose
 
       const docsUrl =
         process.env.NODE_ENV === "production"
-          ? "https://ascon.onrender.com/api-docs"
+          ? "https://ascon-st50.onrender.com/api-docs"
           : `http://localhost:${PORT}/api-docs`;
 
       logger.info(`📖 API Docs available at ${docsUrl}`);
