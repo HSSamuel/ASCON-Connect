@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ IMPORT ADDED
+import 'package:http/http.dart' as http; // ✅ ADDED: Required for direct refresh call
+import '../config.dart'; // ✅ ADDED: Required for AppConfig.baseUrl
 import '../main.dart'; 
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +22,11 @@ class AuthService {
       encryptedSharedPreferences: true,
     ),
   );
+
+  // ✅ CONSTRUCTOR: Hooks up the refresh logic to ApiClient
+  AuthService() {
+    _api.onTokenRefresh = _performSilentRefresh;
+  }
 
   // ✅ HELPER: Fetch FCM Token safely
   Future<String?> _getFcmToken() async {
@@ -184,6 +191,52 @@ class AuthService {
     } catch (e) {
       print("Error marking welcome seen: $e");
     }
+  }
+
+  // =================================================
+  // 🔄 SILENT REFRESH LOGIC (NEW)
+  // =================================================
+  Future<String?> _performSilentRefresh() async {
+    try {
+      print("🔄 Attempting Silent Refresh...");
+      String? refreshToken = await _storage.read(key: 'refresh_token');
+      if (refreshToken == null) {
+        print("❌ No refresh token found.");
+        return null;
+      }
+
+      // We use direct http call to avoid infinite loop in ApiClient
+      final result = await http.post(
+        Uri.parse('${AppConfig.baseUrl}/api/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
+      );
+
+      if (result.statusCode == 200) {
+        final body = jsonDecode(result.body);
+        final newToken = body['token']; 
+        
+        if (newToken != null) {
+          // Update Session
+          _tokenCache = newToken;
+          await _storage.write(key: 'auth_token', value: newToken);
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('auth_token', newToken);
+
+          _api.setAuthToken(newToken);
+          print("✅ Silent Refresh Successful!");
+          return newToken;
+        }
+      } else {
+        print("❌ Refresh Failed (Status: ${result.statusCode}). Logging out.");
+        await logout(); 
+        return null;
+      }
+    } catch (e) {
+      print("❌ Silent Refresh Error: $e");
+      return null;
+    }
+    return null;
   }
 
   // =================================================

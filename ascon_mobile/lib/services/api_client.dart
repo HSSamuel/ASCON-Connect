@@ -13,8 +13,11 @@ class ApiClient {
     'Content-Type': 'application/json',
   };
 
-  // ✅ UPDATED: Increased timeout from 15s to 90s to handle "Cold Starts"
+  // ✅ UPDATED: Increased timeout
   static const Duration _timeoutDuration = Duration(seconds: 20);
+
+  // ✅ NEW: Callback to handle token refresh
+  Future<String?> Function()? onTokenRefresh;
 
   void setAuthToken(String token) {
     _headers['auth-token'] = token;
@@ -25,9 +28,6 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
-    // ✅ ADDED: Debug print to see exactly where the app is trying to connect
-    print("🚀 CONNECTING TO: ${AppConfig.baseUrl}$endpoint");
-
     final response = await _request(() => http.post(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
       headers: _headers,
@@ -54,7 +54,21 @@ class ApiClient {
 
   Future<dynamic> _request(Future<http.Response> Function() req) async {
     try {
-      final response = await req().timeout(_timeoutDuration);
+      var response = await req().timeout(_timeoutDuration);
+
+      // ✅ CRITICAL FIX: Intercept 401 (Unauthorized)
+      // If the token is dead, we try to refresh it ONCE and retry the request.
+      if (response.statusCode == 401 && onTokenRefresh != null) {
+        print("🔄 401 Detected. Attempting Silent Refresh...");
+        
+        final newToken = await onTokenRefresh!();
+        if (newToken != null) {
+          print("✅ Token Refreshed. Retrying Request...");
+          setAuthToken(newToken); // Update header
+          response = await req().timeout(_timeoutDuration); // Retry original request
+        }
+      }
+
       return _processResponse(response);
     } on TimeoutException {
       throw Exception('Server is taking too long to respond. Please check your connection.');
@@ -66,7 +80,6 @@ class ApiClient {
   }
 
   dynamic _processResponse(http.Response response) {
-    // 1. Decode body safely (Handle empty or non-JSON responses)
     dynamic body;
     try {
       body = jsonDecode(response.body);
@@ -74,16 +87,14 @@ class ApiClient {
       body = {}; 
     }
     
-    // 2. ✅ CRITICAL FIX: Allow 404 to pass through as "Success"
-    // This allows the Login Screen to detect "User Not Found" and redirect to Register
+    // Allow 404 to pass through (for Login "User Not Found")
     if ((response.statusCode >= 200 && response.statusCode < 300) || response.statusCode == 404) {
       return {
         'success': true,
-        'statusCode': response.statusCode, // ✅ We now return the code explicitly
+        'statusCode': response.statusCode,
         'data': body
       };
     } else {
-      // For actual errors (500, 401, 403), we still throw
       throw Exception(body['message'] ?? 'Request failed with status ${response.statusCode}');
     }
   }

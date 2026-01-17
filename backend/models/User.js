@@ -50,6 +50,8 @@ userSchema.index({
   fullName: "text",
   jobTitle: "text",
   organization: "text",
+  email: "text",     
+  alumniId: "text"
 });
 
 module.exports = mongoose.model("User", userSchema);

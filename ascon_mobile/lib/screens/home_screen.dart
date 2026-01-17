@@ -189,10 +189,32 @@ class _DashboardViewState extends State<_DashboardView> {
     }
   }
 
+  // ✅ UPDATED: SORTS DATA SO NEWEST IS ALWAYS AT TOP
   void _refreshData() {
     setState(() {
-      _eventsFuture = _dataService.fetchEvents();
-      _programmesFuture = _authService.getProgrammes();
+      // 1. Fetch Events & Sort Newest First (by ID or Date)
+      _eventsFuture = _dataService.fetchEvents().then((list) {
+        var sorted = List.from(list);
+        sorted.sort((a, b) {
+          // Compare IDs to guess creation time (Higher ID = Newer)
+          final idA = a['_id'] ?? a['id'] ?? '';
+          final idB = b['_id'] ?? b['id'] ?? '';
+          return idB.toString().compareTo(idA.toString());
+        });
+        return sorted;
+      });
+
+      // 2. Fetch Programmes & Sort Newest First
+      _programmesFuture = _authService.getProgrammes().then((list) {
+        var sorted = List.from(list);
+        sorted.sort((a, b) {
+           final idA = a['_id'] ?? a['id'] ?? '';
+           final idB = b['_id'] ?? b['id'] ?? '';
+           return idB.toString().compareTo(idA.toString());
+        });
+        return sorted;
+      });
+
       _loadUserProfile(); 
     });
   }
