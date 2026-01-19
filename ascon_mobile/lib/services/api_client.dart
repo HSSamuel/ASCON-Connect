@@ -14,7 +14,7 @@ class ApiClient {
   };
 
   // ✅ UPDATED: Increased timeout
-  static const Duration _timeoutDuration = Duration(seconds: 20);
+  static const Duration _timeoutDuration = Duration(seconds: 90);
 
   // ✅ NEW: Callback to handle token refresh
   Future<String?> Function()? onTokenRefresh;

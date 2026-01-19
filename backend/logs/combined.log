@@ -34,3 +34,20 @@
 {"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-17 08:36:45"}
 {"level":"info","message":"📣 Preparing broadcast for 1 users...","timestamp":"2026-01-17 08:36:45"}
 {"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-17 08:36:46"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-19 15:47:40"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-19 15:47:40"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-19 15:47:46"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-19 15:47:46"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-19 15:47:46"}
+{"level":"info","message":"📖 API Docs available at https://ascon-st50.onrender.com/api-docs","timestamp":"2026-01-19 15:47:46"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-19 15:48:50"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-19 15:48:50"}
+{"code":"ECONNREFUSED","hostname":"_mongodb._tcp.cluster0.mrowpyh.mongodb.net","level":"error","message":"❌ Database Connection Failed: querySrv ECONNREFUSED _mongodb._tcp.cluster0.mrowpyh.mongodb.net","stack":"Error: querySrv ECONNREFUSED _mongodb._tcp.cluster0.mrowpyh.mongodb.net\n    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17)","syscall":"querySrv","timestamp":"2026-01-19 15:48:56"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-19 15:51:32"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-19 15:51:33"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-19 15:51:37"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-19 15:51:38"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-19 15:51:47"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-19 15:51:47"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-19 15:51:47"}
+{"level":"info","message":"📖 API Docs available at https://ascon-st50.onrender.com/api-docs","timestamp":"2026-01-19 15:51:47"}

@@ -83,7 +83,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         controller: _tabController,
         children: [
           _buildJobsList(isDark, primaryColor),
-          // ✅ Facilities Tab (Video triggers as popup automatically)
           const FacilitiesTab(), 
         ],
       ),
@@ -480,7 +479,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
 }
 
 // ==========================================
-// 🎬 VIDEO POPUP DIALOG (Asset Based)
+// 🎬 VIDEO POPUP DIALOG (FIXED)
 // ==========================================
 class VideoPopupDialog extends StatefulWidget {
   const VideoPopupDialog({super.key});
@@ -493,7 +492,7 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
   late VideoPlayerController _controller;
   bool _initialized = false;
   
-  // ✅ ASSET VIDEO: Works on Mobile AND Web (Same Origin)
+  // ✅ ASSET VIDEO
   final String _assetVideoPath = 'assets/videos/facility_intro.mp4';
 
   @override
@@ -521,36 +520,55 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      contentPadding: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: _initialized
-                ? AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: VideoPlayer(_controller),
-                  )
-                : const SizedBox(
-                    height: 200,
-                    child: Center(child: CircularProgressIndicator()),
+    // ✅ 1. ADDED Clip.hardEdge to clip scrolling content correctly
+    return Dialog(
+      backgroundColor: Colors.transparent, 
+      insetPadding: const EdgeInsets.symmetric(horizontal: 10), 
+      child: Container(
+        clipBehavior: Clip.hardEdge, 
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        // ✅ 2. WRAPPED IN SingleChildScrollView TO PREVENT OVERFLOW
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Video Section
+              _initialized
+                  ? AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    )
+                  : const SizedBox(
+                      height: 200,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+              
+              // Close Button
+              InkWell(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12), 
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor, 
                   ),
-          ),
-          // Close button
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                "Close Video", 
-                style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)
+                  child: Text(
+                    "Close Video", 
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      color: Theme.of(context).primaryColor,
+                      fontSize: 15
+                    )
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

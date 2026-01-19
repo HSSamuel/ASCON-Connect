@@ -145,19 +145,25 @@ app.use(errorHandler);
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
-logger.info("⏳ Attempting to connect to MongoDB..."); // ✅ Logger
+logger.info("⏳ Attempting to connect to MongoDB..."); 
 
 mongoose
   .connect(process.env.DB_CONNECT)
   .then(() => {
-    logger.info("✅ Connected to MongoDB Successfully!"); // ✅ Logger
+    logger.info("✅ Connected to MongoDB Successfully!"); 
 
     if (process.env.NODE_ENV === "production") {
       logger.info("🛡️  Production Security Hardening Active");
     }
 
+    // ✅ HEALTH CHECK ROUTE (Keeps the server awake)
+    // This defines the homepage route so UptimeRobot has something to ping.
+    app.get("/", (req, res) => {
+      res.status(200).send("ASCON Server is Awake! 🚀");
+    });
+
     app.listen(PORT, () => {
-      logger.info(`🚀 Server is running on port ${PORT}`); // ✅ Logger
+      logger.info(`🚀 Server is running on port ${PORT}`); 
 
       const docsUrl =
         process.env.NODE_ENV === "production"
@@ -166,7 +172,7 @@ mongoose
 
       logger.info(`📖 API Docs available at ${docsUrl}`);
     });
-  })
+  }) // 👈 FIXED: Removed the extra semicolon ";" here
   .catch((err) => {
-    logger.error("❌ Database Connection Failed:", err); // ✅ Logger
+    logger.error("❌ Database Connection Failed:", err); 
   });

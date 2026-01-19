@@ -29,17 +29,16 @@ class _LoginScreenState extends State<LoginScreen> {
       : '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com',
   );
   
-  bool _isLoading = false;
+  // ✅ UPDATED: Separate loading states
+  bool _isEmailLoading = false;
+  bool _isGoogleLoading = false;
   bool _obscurePassword = true; 
 
   // --- HELPER METHODS ---
 
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
-    // 1. Sync Notification Token (Fail-safe: won't block nav if it fails)
     _syncNotificationToken();
 
-    // 2. Safe Data Extraction
-    // We use fallback values so navigation never fails even if data is missing
     bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
     String safeName = user['fullName'] ?? "Alumni"; 
 
@@ -92,14 +91,15 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     FocusScope.of(context).unfocus();
-    setState(() => _isLoading = true);
+    
+    // ✅ USE EMAIL LOADING STATE
+    setState(() => _isEmailLoading = true);
     
     try {
       final result = await _authService.login(_emailController.text.trim(), _passwordController.text);
       if (!mounted) return;
 
-      // ✅ FIX: Stop loading immediately after response
-      setState(() => _isLoading = false);
+      setState(() => _isEmailLoading = false);
 
       if (result['success']) {
         _handleLoginSuccess(result['data']['user']);
@@ -107,14 +107,15 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isEmailLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Error: ${e.toString()}"), backgroundColor: Colors.red));
     }
   }
 
   Future<void> signInWithGoogle() async {
     try {
-      setState(() => _isLoading = true);
+      // ✅ USE GOOGLE LOADING STATE
+      setState(() => _isGoogleLoading = true);
       
       // 1. Sign In with Google
       GoogleSignInAccount? googleUser;
@@ -122,25 +123,22 @@ class _LoginScreenState extends State<LoginScreen> {
         googleUser = await _googleSignIn.signIn();
       } catch (error) {
         debugPrint("⚠️ Google Sign In Popup closed: $error");
-        setState(() => _isLoading = false);
+        setState(() => _isGoogleLoading = false);
         return; 
       }
 
       if (googleUser == null) {
-        // User cancelled
-        setState(() => _isLoading = false);
+        setState(() => _isGoogleLoading = false);
         return;
       }
       
       // 2. Get Token
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      
-      // ✅ FIX: Use Access Token if ID Token is null (Common on Web)
       final String? tokenToSend = googleAuth.idToken ?? googleAuth.accessToken;
 
       if (tokenToSend == null) {
         debugPrint("❌ No valid token found from Google");
-        setState(() => _isLoading = false);
+        setState(() => _isGoogleLoading = false);
         return;
       }
       
@@ -149,15 +147,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // ✅ FIX: Force loading to stop here, regardless of what happens next
-      setState(() => _isLoading = false);
+      setState(() => _isGoogleLoading = false);
 
       if (result['success']) {
         if (result['statusCode'] == 200) {
-          // ✅ Success: Navigate
           _handleLoginSuccess(result['data']['user']);
         } else if (result['statusCode'] == 404) {
-          // ✅ New User: Go to Register
           final googleData = result['data']['googleData'];
           Navigator.push(context, MaterialPageRoute(builder: (_) => RegisterScreen(
             prefilledName: googleData['fullName'], 
@@ -171,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       debugPrint("❌ CRITICAL GOOGLE LOGIN ERROR: $e");
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isGoogleLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("An error occurred during Google Login."), backgroundColor: Colors.red));
       }
     }
@@ -184,6 +179,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final cardColor = Theme.of(context).cardColor;
+
+    // Check if ANY loading is happening to disable inputs
+    final bool isAnyLoading = _isEmailLoading || _isGoogleLoading;
 
     return Scaffold(
       body: SafeArea(
@@ -238,6 +236,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // EMAIL INPUT
                 TextFormField(
                   controller: _emailController,
+                  enabled: !isAnyLoading,
                   style: TextStyle(fontSize: 14, color: textColor),
                   decoration: InputDecoration(
                     labelText: 'Email Address',
@@ -250,6 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // PASSWORD INPUT
                 TextFormField(
                   controller: _passwordController,
+                  enabled: !isAnyLoading,
                   obscureText: _obscurePassword,
                   style: TextStyle(fontSize: 14, color: textColor),
                   decoration: InputDecoration(
@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+                    onPressed: isAnyLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
                     style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
                     child: Text("Forgot Password?", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13)),
                   ),
@@ -274,19 +274,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // LOGIN BUTTON
+                // ✅ EMAIL LOGIN BUTTON
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : loginUser,
+                    onPressed: isAnyLoading ? null : loginUser,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
                       elevation: 1,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: _isLoading
+                    child: _isEmailLoading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : const Text('LOGIN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   ),
@@ -294,19 +294,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // GOOGLE BUTTON
+                // ✅ GOOGLE LOGIN BUTTON (Independent Loading)
                 SizedBox(
                   width: double.infinity,
                   height: 45, 
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : signInWithGoogle,
-                    icon: Icon(Icons.login, color: primaryColor, size: 20),
-                    label: Text("Continue with Google", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                  child: OutlinedButton(
+                    onPressed: isAnyLoading ? null : signInWithGoogle,
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: primaryColor),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       backgroundColor: cardColor, 
                     ),
+                    child: _isGoogleLoading
+                        ? SizedBox(
+                            height: 20, 
+                            width: 20, 
+                            child: CircularProgressIndicator(color: primaryColor, strokeWidth: 2)
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.login, color: primaryColor, size: 20),
+                              const SizedBox(width: 8),
+                              Text("Continue with Google", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                            ],
+                          ),
                   ),
                 ),
 
@@ -318,7 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text("New here? ", style: TextStyle(fontSize: 13, color: subTextColor)),
                     GestureDetector(
                       onTap: () {
-                        if (!_isLoading) Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+                        if (!isAnyLoading) Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
                       },
                       child: Text("Create Account", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13)),
                     ),
