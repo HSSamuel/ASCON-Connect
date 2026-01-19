@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
+import '../config.dart'; // ✅ Import AppConfig
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'welcome_dialog.dart'; 
@@ -20,16 +21,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
 
+  // ✅ Use AppConfig for dynamic Client ID (Clean & Secure)
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: kIsWeb 
-      ? '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com' 
-      : null,
-    serverClientId: kIsWeb 
-      ? null 
-      : '641176201184-3q7t2hp3kej2vvei41tpkivn7j206bf7.apps.googleusercontent.com',
+    clientId: kIsWeb ? AppConfig.googleWebClientId : null,
+    serverClientId: kIsWeb ? null : AppConfig.googleWebClientId,
   );
   
-  // ✅ UPDATED: Separate loading states
   bool _isEmailLoading = false;
   bool _isGoogleLoading = false;
   bool _obscurePassword = true; 
@@ -92,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     FocusScope.of(context).unfocus();
     
-    // ✅ USE EMAIL LOADING STATE
     setState(() => _isEmailLoading = true);
     
     try {
@@ -114,17 +110,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> signInWithGoogle() async {
     try {
-      // ✅ USE GOOGLE LOADING STATE
       setState(() => _isGoogleLoading = true);
       
-      // 1. Sign In with Google
       GoogleSignInAccount? googleUser;
-      try {
-        googleUser = await _googleSignIn.signIn();
-      } catch (error) {
-        debugPrint("⚠️ Google Sign In Popup closed: $error");
-        setState(() => _isGoogleLoading = false);
-        return; 
+
+      // 1. Attempt Silent Login first (Web Best Practice)
+      if (kIsWeb) {
+        try {
+          googleUser = await _googleSignIn.signInSilently();
+        } catch (e) {
+          debugPrint("Silent Sign-In failed or not available: $e");
+        }
+      }
+
+      // 2. If Silent failed, use Popup (Standard Mobile/Web Fallback)
+      if (googleUser == null) {
+        try {
+          googleUser = await _googleSignIn.signIn();
+        } catch (error) {
+          debugPrint("⚠️ Google Sign In Popup closed: $error");
+          setState(() => _isGoogleLoading = false);
+          return; 
+        }
       }
 
       if (googleUser == null) {
@@ -132,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       
-      // 2. Get Token
+      // 3. Get Token
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final String? tokenToSend = googleAuth.idToken ?? googleAuth.accessToken;
 
@@ -142,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       
-      // 3. Send to Backend
+      // 4. Send to Backend
       final result = await _authService.googleLogin(tokenToSend);
 
       if (!mounted) return;
@@ -180,7 +187,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final cardColor = Theme.of(context).cardColor;
 
-    // Check if ANY loading is happening to disable inputs
     final bool isAnyLoading = _isEmailLoading || _isGoogleLoading;
 
     return Scaffold(
@@ -294,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // ✅ GOOGLE LOGIN BUTTON (Independent Loading)
+                // ✅ GOOGLE LOGIN BUTTON (Restored Working Custom Button)
                 SizedBox(
                   width: double.infinity,
                   height: 45, 

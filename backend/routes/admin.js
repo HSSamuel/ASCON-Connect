@@ -4,7 +4,7 @@ const Event = require("../models/Event");
 const Programme = require("../models/Programme");
 const ProgrammeInterest = require("../models/ProgrammeInterest");
 const EventRegistration = require("../models/EventRegistration");
-const Facility = require("../models/Facility"); // ✅ Added Facility Model
+const Facility = require("../models/Facility");
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
 
@@ -73,7 +73,7 @@ const eventSchema = Joi.object({
       "Workshop",
       "Symposium",
       "AGM",
-      "Induction"
+      "Induction",
     )
     .default("News"),
   image: Joi.string().optional().allow(""),
@@ -94,7 +94,6 @@ const programmeSchema = Joi.object({
 // ==========================================
 router.get("/stats", verifyAdmin, async (req, res) => {
   try {
-    // ✅ Added facilityCount to the Promise.all
     const [
       userCount,
       eventCount,
@@ -108,7 +107,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       Programme.countDocuments(),
       ProgrammeInterest.countDocuments(),
       EventRegistration.countDocuments(),
-      Facility.countDocuments(), // ✅ Fetch Facility Count
+      Facility.countDocuments(),
     ]);
 
     res.json({
@@ -116,7 +115,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       events: eventCount,
       programmes: progCount,
       totalRegistrations: progInterestCount + eventRegCount,
-      facilities: facilityCount, // ✅ Return it in response
+      facilities: facilityCount,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -124,7 +123,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
 });
 
 // ==========================================
-// 1. USER MANAGEMENT
+// 1. USER MANAGEMENT (OPTIMIZED)
 // ==========================================
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
@@ -134,13 +133,9 @@ router.get("/users", verifyAdmin, async (req, res) => {
 
     let query = {};
     if (search) {
-      query = {
-        $or: [
-          { fullName: { $regex: search, $options: "i" } },
-          { email: { $regex: search, $options: "i" } },
-          { alumniId: { $regex: search, $options: "i" } },
-        ],
-      };
+      // ✅ FIX: Use MongoDB Text Search (Fast) instead of Regex
+      // This uses the index you created in User.js
+      query = { $text: { $search: search } };
     }
 
     const skip = (page - 1) * limit;
@@ -210,7 +205,7 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
         : new Date().getFullYear().toString();
       const regex = new RegExp(`ASC/${targetYear}/`);
       const lastUser = await User.findOne({ alumniId: { $regex: regex } }).sort(
-        { _id: -1 }
+        { _id: -1 },
       );
       let nextNum = 1;
       if (lastUser && lastUser.alumniId) {
@@ -229,7 +224,7 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
     await sendPersonalNotification(
       user._id,
       "Account Verified! 🎉",
-      "Your ASCON Alumni account has been approved. You can now access your Digital ID."
+      "Your ASCON Alumni account has been approved. You can now access your Digital ID.",
     );
 
     res.json({ message: "User Verified & Notified!", user });
@@ -265,7 +260,7 @@ router.post("/events", verifyEditor, async (req, res) => {
       {
         route: "event_detail",
         id: newEvent._id.toString(),
-      }
+      },
     );
 
     res
@@ -284,7 +279,7 @@ router.put("/events/:id", verifyEditor, async (req, res) => {
     const updatedEvent = await Event.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true }
+      { new: true },
     );
     res.json({ message: "Event updated!", event: updatedEvent });
   } catch (err) {
@@ -364,7 +359,7 @@ router.post("/programmes", verifyEditor, async (req, res) => {
       {
         route: "programme_detail",
         id: newProg._id.toString(),
-      }
+      },
     );
 
     res
@@ -386,7 +381,7 @@ router.put("/programmes/:id", verifyEditor, async (req, res) => {
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
       { title, code, description, location, duration, fee, image },
-      { new: true }
+      { new: true },
     );
     res.json({ message: "Programme updated!", programme: updatedProg });
   } catch (err) {

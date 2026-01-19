@@ -21,7 +21,7 @@ android {
     ndkVersion = "27.0.12077973"
 
     compileOptions {
-        // ✅ FIX 1: Enable Desugaring here
+        // ✅ Enable Desugaring
         isCoreLibraryDesugaringEnabled = true
         
         sourceCompatibility = JavaVersion.VERSION_17
@@ -39,11 +39,13 @@ android {
         
         versionCode = flutter.versionCode.toInt()
         versionName = flutter.versionName
+        
+        // ✅ CRITICAL FIX: Enable MultiDex for Video + Firebase
+        multiDexEnabled = true
     }
 
     signingConfigs {
-        // ✅ CRITICAL FIX: Only create release config if keys exist
-        // This prevents build crashes if key.properties is missing
+        // Only create release config if keys exist
         if (keystorePropertiesFile.exists()) {
             create("release") {
                 keyAlias = keystoreProperties["keyAlias"] as String
@@ -56,7 +58,6 @@ android {
 
     buildTypes {
         release {
-            // Only apply signing config if it was successfully created above
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -72,8 +73,11 @@ flutter {
 }
 
 dependencies {
-    // ✅ FIX 2: Add the Desugaring Library dependency
+    // ✅ Add the Desugaring Library
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    
+    // ✅ Add MultiDex Support
+    implementation("androidx.multidex:multidex:2.0.1")
     
     implementation("androidx.core:core-splashscreen:1.0.1")
 }

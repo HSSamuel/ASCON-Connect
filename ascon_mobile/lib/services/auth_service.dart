@@ -3,9 +3,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart'; 
-import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ IMPORT ADDED
-import 'package:http/http.dart' as http; // ✅ ADDED: Required for direct refresh call
-import '../config.dart'; // ✅ ADDED: Required for AppConfig.baseUrl
+import 'package:firebase_messaging/firebase_messaging.dart'; 
+import 'package:http/http.dart' as http; 
+import 'package:google_sign_in/google_sign_in.dart'; // ✅ NEW IMPORT
+import '../config.dart'; 
 import '../main.dart'; 
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,6 @@ class AuthService {
     ),
   );
 
-  // ✅ CONSTRUCTOR: Hooks up the refresh logic to ApiClient
   AuthService() {
     _api.onTokenRefresh = _performSilentRefresh;
   }
@@ -32,7 +32,6 @@ class AuthService {
   Future<String?> _getFcmToken() async {
     try {
       if (kIsWeb) {
-        // Use your VAPID key for web if needed
         return await FirebaseMessaging.instance.getToken(
           vapidKey: "BG-mAsjcWNqfS9Brgh0alj3Cf7Q7FFgkl8kvu5zktPvt4Dt-Yu138tPE_z-INAganzw6BVb6Vjc9Nf37KzN0Rm8"
         );
@@ -48,14 +47,12 @@ class AuthService {
   // --- LOGIN ---
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      // ✅ 1. Get FCM Token BEFORE logging in
       final String? fcmToken = await _getFcmToken();
 
-      // ✅ 2. Send it with the login request
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
-        'fcmToken': fcmToken, // <--- Backend expects this
+        'fcmToken': fcmToken, 
       });
 
       if (result['success']) {
@@ -66,11 +63,8 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
-        // ✅ 3. Initialize Notifications (Permissions etc)
         if (!kIsWeb) {
            await NotificationService().init();
-           // We don't strictly need syncToken() here anymore since we sent it in login,
-           // but keeping it as a backup is fine.
         }
       }
       return result;
@@ -90,10 +84,8 @@ class AuthService {
     String? googleToken,
   }) async {
     try {
-      // ✅ 1. Get FCM Token
       final String? fcmToken = await _getFcmToken();
 
-      // ✅ 2. Send with Register Request
       final result = await _api.post('/api/auth/register', {
         'fullName': fullName,
         'email': email,
@@ -102,7 +94,7 @@ class AuthService {
         'programmeTitle': programmeTitle,
         'yearOfAttendance': yearOfAttendance,
         'googleToken': googleToken,
-        'fcmToken': fcmToken, // <--- Add this (Note: You may need to update backend register controller to accept this if it doesn't yet, but usually it's handled in the user creation or separate update)
+        'fcmToken': fcmToken, 
       });
 
       if (result['success'] && result['data']['token'] != null) {
@@ -115,7 +107,6 @@ class AuthService {
         
         if (!kIsWeb) {
           await NotificationService().init();
-          // ✅ Force sync here just in case Register controller doesn't handle fcmToken automatically
           await NotificationService().syncToken();
         }
       }
@@ -131,13 +122,11 @@ class AuthService {
     if (idToken == null) return {'success': false, 'message': 'Google Sign-In failed'};
 
     try {
-      // ✅ 1. Get FCM Token
       final String? fcmToken = await _getFcmToken();
 
-      // ✅ 2. Send with Google Auth
       final result = await _api.post('/api/auth/google', {
         'token': idToken,
-        'fcmToken': fcmToken, // <--- Backend expects this
+        'fcmToken': fcmToken, 
       });
 
       if (result['success']) {
@@ -194,7 +183,7 @@ class AuthService {
   }
 
   // =================================================
-  // 🔄 SILENT REFRESH LOGIC (NEW)
+  // 🔄 SILENT REFRESH LOGIC
   // =================================================
   Future<String?> _performSilentRefresh() async {
     try {
@@ -205,7 +194,6 @@ class AuthService {
         return null;
       }
 
-      // We use direct http call to avoid infinite loop in ApiClient
       final result = await http.post(
         Uri.parse('${AppConfig.baseUrl}/api/auth/refresh'),
         headers: {'Content-Type': 'application/json'},
@@ -217,7 +205,6 @@ class AuthService {
         final newToken = body['token']; 
         
         if (newToken != null) {
-          // Update Session
           _tokenCache = newToken;
           await _storage.write(key: 'auth_token', value: newToken);
           final prefs = await SharedPreferences.getInstance();
@@ -240,24 +227,21 @@ class AuthService {
   }
 
   // =================================================
-  // 🔐 SESSION MANAGEMENT (FIXED)
+  // 🔐 SESSION MANAGEMENT
   // =================================================
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
     try {
-      // 1. In-Memory (Instant)
       _tokenCache = token;
       _api.setAuthToken(token);
 
-      // 2. Secure Storage (Primary)
       await _storage.write(key: 'auth_token', value: token);
       if (refreshToken != null) {
         await _storage.write(key: 'refresh_token', value: refreshToken);
       }
 
-      // 3. Shared Preferences (Backup for NotificationService & User Data)
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', token); // ✅ Backup Token
+      await prefs.setString('auth_token', token); 
       await prefs.setString('cached_user', jsonEncode(user));
       
       if (user['fullName'] != null) {
@@ -281,7 +265,6 @@ class AuthService {
       String? token = await _storage.read(key: 'auth_token');
       String? refreshToken = await _storage.read(key: 'refresh_token');
 
-      // ✅ Fallback: Try SharedPreferences if SecureStorage fails
       if (token == null) {
         final prefs = await SharedPreferences.getInstance();
         token = prefs.getString('auth_token');
@@ -304,7 +287,6 @@ class AuthService {
               _tokenCache = newToken;
               await _storage.write(key: 'auth_token', value: newToken);
               
-              // Update Backup
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString('auth_token', newToken);
 
@@ -341,19 +323,52 @@ class AuthService {
     return null;
   }
 
+  // =================================================
+  // 🚪 LOGOUT (FIXED FOR WEB RACE CONDITION)
+  // =================================================
   Future<void> logout() async {
+    // 1. Google Sign Out (Safely)
+    try {
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        clientId: kIsWeb ? AppConfig.googleWebClientId : null,
+        serverClientId: kIsWeb ? null : AppConfig.googleWebClientId,
+      );
+      
+      if (await googleSignIn.isSignedIn()) {
+        // Force disconnect first to clear internal state
+        try {
+          await googleSignIn.disconnect(); 
+        } catch (_) {} 
+        
+        await googleSignIn.signOut();
+        debugPrint("✅ Google Sign Out Successful");
+      }
+    } catch (e) {
+      // ✅ FIX: Ignore "Future already completed" error on Web
+      if (!e.toString().contains("Bad state")) {
+         debugPrint("⚠️ Google Sign Out Warning: $e");
+      }
+    }
+
+    // 2. Clear Local Storage
     try {
       _tokenCache = null; 
       await _storage.deleteAll();
     } catch (e) {
-      print("Storage clear error: $e");
+      debugPrint("Storage clear error: $e");
     }
     
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // This now correctly clears the backup 'auth_token' too
+    await prefs.clear(); 
     
     _api.clearAuthToken();
     
+    // ✅ 3. Small Delay for Web Stability
+    if (kIsWeb) {
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    // 4. Navigate to Login
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false, 
