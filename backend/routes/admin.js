@@ -123,7 +123,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
 });
 
 // ==========================================
-// 1. USER MANAGEMENT (OPTIMIZED)
+// 1. USER MANAGEMENT
 // ==========================================
 router.get("/users", verifyAdmin, async (req, res) => {
   try {
@@ -133,9 +133,16 @@ router.get("/users", verifyAdmin, async (req, res) => {
 
     let query = {};
     if (search) {
-      // ✅ FIX: Use MongoDB Text Search (Fast) instead of Regex
-      // This uses the index you created in User.js
-      query = { $text: { $search: search } };
+      const isNumber = !isNaN(search) && search.trim() !== "";
+      query = {
+        $or: [
+          { fullName: { $regex: search, $options: "i" } },
+          { email: { $regex: search, $options: "i" } },
+          { alumniId: { $regex: search, $options: "i" } },
+          { programmeTitle: { $regex: search, $options: "i" } },
+          ...(isNumber ? [{ yearOfAttendance: Number(search) }] : []),
+        ],
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -297,21 +304,33 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 });
 
 // ==========================================
-// 3. PROGRAMME MANAGEMENT
+// 3. PROGRAMME MANAGEMENT (UPDATED)
 // ==========================================
 
 router.get("/programmes", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
+    const search = req.query.search || ""; // ✅ Added Search Logic
+
+    let query = {};
+    if (search) {
+      query = {
+        $or: [
+          { title: { $regex: search, $options: "i" } },
+          { code: { $regex: search, $options: "i" } },
+        ],
+      };
+    }
+
     const skip = (page - 1) * limit;
 
-    const programmes = await Programme.find()
-      .sort({ title: 1 })
+    const programmes = await Programme.find(query)
+      .sort({ createdAt: -1 }) // ✅ CHANGED: Newest First (was title: 1)
       .skip(skip)
       .limit(limit);
 
-    const total = await Programme.countDocuments();
+    const total = await Programme.countDocuments(query);
 
     res.json({ programmes, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {

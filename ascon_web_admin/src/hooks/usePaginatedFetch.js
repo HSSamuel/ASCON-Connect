@@ -1,46 +1,52 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-export function usePaginatedFetch(url, token, triggerRefresh) {
+export function usePaginatedFetch(url, token) {
   const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(""); // ✅ Manages Search State
 
   const fetchData = useCallback(async () => {
-    if (!url || !token) return;
-
     setLoading(true);
     try {
+      // ✅ FIX: Ensure search is attached to URL
       const res = await axios.get(url, {
         headers: { "auth-token": token },
-        params: { page, limit: 20, search },
+        params: {
+          page,
+          limit: 20,
+          search: search || "", // <--- CRITICAL
+        },
       });
 
-      // Handle different response structures gracefully
-      const result = res.data;
-
-      // If backend returns { users: [...], totalPages: 5 }
-      // We dynamically find the array in the response
-      const arrayKey = Object.keys(result).find((key) =>
-        Array.isArray(result[key])
-      );
-
-      setData(result[arrayKey] || []);
-      setTotalPages(result.pages || 1);
-      setTotalItems(result.total || 0);
+      // Handle different response structures
+      if (res.data.users) {
+        setData(res.data.users);
+        setTotalPages(res.data.pages);
+      } else if (res.data.data) {
+        setData(res.data.data);
+        setTotalPages(res.data.pages || 1);
+      } else {
+        setData([]);
+      }
     } catch (err) {
-      console.error(`Error fetching ${url}:`, err);
+      console.error("Fetch Error:", err);
     } finally {
       setLoading(false);
     }
-  }, [url, token, page, search]); // ✅ FIXED: Removed triggerRefresh from here
+  }, [url, token, page, search]); // ✅ Depend on 'search'
 
+  // ✅ Auto-Fetch when page or search changes
   useEffect(() => {
-    fetchData();
-  }, [fetchData, triggerRefresh]); // ✅ FIXED: Added triggerRefresh here
+    // Optional: Add debounce for search to prevent too many requests
+    const timeoutId = setTimeout(() => {
+      fetchData();
+    }, 500); // 500ms delay while typing
+
+    return () => clearTimeout(timeoutId);
+  }, [fetchData]);
 
   return {
     data,
@@ -48,9 +54,8 @@ export function usePaginatedFetch(url, token, triggerRefresh) {
     page,
     setPage,
     totalPages,
-    totalItems,
     search,
-    setSearch,
+    setSearch, // ✅ Pass this back so UI can update it
     refresh: fetchData,
   };
 }

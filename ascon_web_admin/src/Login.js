@@ -143,14 +143,17 @@ function Login({ onLogin }) {
           ></div>
         </div>
 
-        {/* ✅ FIXED: Use class name instead of inline style so CSS can target it */}
-        <div className="google-login-container">
+        {/* ✅ FIXED: Centered the button and gave it a standard width */}
+        <div
+          className="google-login-container"
+          style={{ display: "flex", justifyContent: "center", width: "100%" }}
+        >
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
             onError={() => setError("Google Login Failed")}
             theme="outline"
             size="large"
-            // width="320"  <-- REMOVED: Let CSS control width to avoid overflow
+            width="300" // Sets it to a nice wide size without overflowing mobile screens
           />
         </div>
       </div>

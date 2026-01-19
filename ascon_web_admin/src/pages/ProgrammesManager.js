@@ -5,33 +5,37 @@ import ConfirmModal from "../ConfirmModal";
 import Toast from "../Toast";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+const BASE_URL =
+  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function ProgrammesManager({ token, canEdit }) {
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
+  // ✅ 1. Add a refresh trigger state
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const [editingId, setEditingId] = useState(null);
   const [progForm, setProgForm] = useState({
     title: "",
     code: "",
     description: "",
-    location: "ASCON Complex, Badagry", // ✅ ADDED: Default location
+    location: "ASCON Complex, Badagry",
     duration: "",
     fee: "",
     image: "",
   });
 
+  // ✅ 2. Pass the trigger to the hook
   const programmes = usePaginatedFetch(
     `${BASE_URL}/api/admin/programmes`,
-    token
+    token,
+    refreshTrigger,
   );
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
   const resetForm = () => {
     setEditingId(null);
-    // ✅ ADDED: location reset
     setProgForm({
       title: "",
       code: "",
@@ -43,9 +47,7 @@ function ProgrammesManager({ token, canEdit }) {
     });
   };
 
-  // 🧹 HELPER: Sanitizes data to remove system fields that cause API errors
   const sanitizePayload = (data) => {
-    // Destructure to separate system fields from the rest
     const { _id, id, createdAt, updatedAt, __v, ...cleanData } = data;
     return cleanData;
   };
@@ -53,16 +55,13 @@ function ProgrammesManager({ token, canEdit }) {
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
     try {
-      // ✅ SANITIZE: Remove _id and system fields before sending
       const cleanData = sanitizePayload(progForm);
 
       if (editingId) {
         await axios.put(
           `${BASE_URL}/api/admin/programmes/${editingId}`,
-          cleanData, // Send cleaned data
-          {
-            headers: { "auth-token": token },
-          }
+          cleanData,
+          { headers: { "auth-token": token } },
         );
         showToast("Programme updated");
       } else {
@@ -72,9 +71,10 @@ function ProgrammesManager({ token, canEdit }) {
         showToast("Programme created");
       }
       resetForm();
-      programmes.refresh();
+      // ✅ 3. Trigger the refresh
+      setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
-      console.error(err); // Log error for debugging
+      console.error(err);
       showToast("Error saving programme", "error");
     }
   };
@@ -85,7 +85,8 @@ function ProgrammesManager({ token, canEdit }) {
         headers: { "auth-token": token },
       });
       showToast("Programme deleted");
-      programmes.refresh();
+      // ✅ 3. Trigger the refresh
+      setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       showToast("Delete failed", "error");
     }
@@ -119,7 +120,6 @@ function ProgrammesManager({ token, canEdit }) {
         handleProgrammeSubmit={handleProgrammeSubmit}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
-          // Copy existing data. Any extra fields (like _id) will be removed by sanitizePayload on submit.
           setProgForm({ ...prog, image: prog.image || "" });
           window.scrollTo(0, 0);
         }}
