@@ -11,8 +11,10 @@ const BASE_URL =
 function ProgrammesManager({ token, canEdit }) {
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
-  // ✅ 1. Add a refresh trigger state
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // ✅ 1. NEW STATE: Controls form visibility
+  const [showForm, setShowForm] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
   const [progForm, setProgForm] = useState({
@@ -25,7 +27,6 @@ function ProgrammesManager({ token, canEdit }) {
     image: "",
   });
 
-  // ✅ 2. Pass the trigger to the hook
   const programmes = usePaginatedFetch(
     `${BASE_URL}/api/admin/programmes`,
     token,
@@ -45,6 +46,8 @@ function ProgrammesManager({ token, canEdit }) {
       fee: "",
       image: "",
     });
+    // ✅ 2. Close form when resetting/canceling
+    setShowForm(false);
   };
 
   const sanitizePayload = (data) => {
@@ -70,8 +73,7 @@ function ProgrammesManager({ token, canEdit }) {
         });
         showToast("Programme created");
       }
-      resetForm();
-      // ✅ 3. Trigger the refresh
+      resetForm(); // This will now also close the form
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error(err);
@@ -85,7 +87,6 @@ function ProgrammesManager({ token, canEdit }) {
         headers: { "auth-token": token },
       });
       showToast("Programme deleted");
-      // ✅ 3. Trigger the refresh
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       showToast("Delete failed", "error");
@@ -118,9 +119,13 @@ function ProgrammesManager({ token, canEdit }) {
         progForm={progForm}
         setProgForm={setProgForm}
         handleProgrammeSubmit={handleProgrammeSubmit}
+        // ✅ 3. Pass visibility controls
+        showForm={showForm}
+        setShowForm={setShowForm}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
           setProgForm({ ...prog, image: prog.image || "" });
+          setShowForm(true); // Open form when editing
           window.scrollTo(0, 0);
         }}
         cancelEditProgramme={resetForm}

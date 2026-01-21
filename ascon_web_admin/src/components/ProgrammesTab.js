@@ -10,6 +10,8 @@ function ProgrammesTab({
   cancelEditProgramme,
   startEditProgramme,
   deleteProgrammeClick,
+  showForm, // ✅ Received from Parent
+  setShowForm, // ✅ Received from Parent
 }) {
   // ✅ SMART RESIZE HELPER
   const handleAutoResize = (e) => {
@@ -19,210 +21,288 @@ function ProgrammesTab({
 
   return (
     <div>
-      {canEdit ? (
-        <div
-          className="form-card fade-in" // Reused your nice card class
-          style={{ marginBottom: "30px" }}
-        >
-          <h2
-            style={{ color: editingId ? "#d4af37" : "#1B5E3A", marginTop: 0 }}
+      {/* ✅ 1. HEADER & ADD BUTTON */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "20px",
+        }}
+      >
+        <h3 style={{ margin: 0, color: "#1B5E3A" }}>Programmes Directory</h3>
+
+        {/* Show 'Add' button only if we have permission AND form is closed */}
+        {canEdit && !showForm && (
+          <button
+            onClick={() => {
+              setShowForm(true);
+              window.scrollTo(0, 0);
+            }}
+            className="approve-btn"
+            style={{
+              padding: "10px 20px",
+              backgroundColor: "#28a745",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
           >
-            {editingId ? "✏️ Edit Programme" : "🎓 Add New Programme"}
-          </h2>
+            + Add New Programme
+          </button>
+        )}
+      </div>
 
-          <form onSubmit={handleProgrammeSubmit}>
-            {/* ROW 1: Title & Code */}
-            <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-              <div style={{ flex: 3 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "5px",
-                  }}
-                >
-                  Programme Title *
-                </label>
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="e.g. Regular Course"
-                  value={progForm.title}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, title: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "5px",
-                  }}
-                >
-                  Code
-                </label>
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="e.g. RC"
-                  value={progForm.code}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, code: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* ROW 2: Image URL */}
-            <div style={{ marginBottom: "15px" }}>
-              <label
+      {/* ✅ 2. CONDITIONAL FORM RENDERING */}
+      {canEdit ? (
+        <>
+          {showForm && (
+            <div
+              className="form-card fade-in" // Reused your nice card class
+              style={{ marginBottom: "30px" }}
+            >
+              <div
                 style={{
-                  display: "block",
-                  fontSize: "12px",
-                  color: "#666",
-                  marginBottom: "5px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
-                Image URL (Optional)
-              </label>
-              <input
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  boxSizing: "border-box",
-                }}
-                placeholder="Paste image link here"
-                value={progForm.image}
-                onChange={(e) =>
-                  setProgForm({ ...progForm, image: e.target.value })
-                }
-              />
-            </div>
-
-            {/* ROW 3: Duration & Fee */}
-            <div style={{ display: "flex", gap: "10px", marginBottom: "15px" }}>
-              <div style={{ flex: 1 }}>
-                <label
+                <h2
                   style={{
-                    display: "block",
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "5px",
+                    color: editingId ? "#d4af37" : "#1B5E3A",
+                    marginTop: 0,
                   }}
                 >
-                  Duration
-                </label>
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="e.g. 6 Weeks"
-                  value={progForm.duration}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, duration: e.target.value })
-                  }
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    color: "#666",
-                    marginBottom: "5px",
-                  }}
-                >
-                  Fee
-                </label>
-                <input
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    boxSizing: "border-box",
-                  }}
-                  placeholder="e.g. ₦50,000"
-                  value={progForm.fee}
-                  onChange={(e) =>
-                    setProgForm({ ...progForm, fee: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* ROW 4: Description */}
-            <div style={{ marginBottom: "15px" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "12px",
-                  color: "#666",
-                  marginBottom: "5px",
-                }}
-              >
-                Description
-              </label>
-
-              {/* ✅ UPDATED TEXTAREA */}
-              <textarea
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  minHeight: "80px", // Use minHeight instead of fixed height
-                  boxSizing: "border-box",
-                  fontFamily: "inherit",
-                  resize: "vertical", // Enable dragging for desktop
-                  overflow: "hidden",
-                }}
-                placeholder="Brief details (Type to expand)..."
-                value={progForm.description}
-                onInput={handleAutoResize} // Auto-grow trigger
-                onChange={(e) => {
-                  handleAutoResize(e);
-                  setProgForm({ ...progForm, description: e.target.value });
-                }}
-              />
-            </div>
-
-            {/* BUTTONS */}
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="submit"
-                className="approve-btn"
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
-                }}
-              >
-                {editingId ? "UPDATE PROGRAMME" : "ADD PROGRAMME"}
-              </button>
-
-              {editingId && (
+                  {editingId ? "✏️ Edit Programme" : "🎓 Add New Programme"}
+                </h2>
+                {/* Close Button (X) */}
                 <button
-                  type="button"
                   onClick={cancelEditProgramme}
-                  className="delete-btn"
-                  style={{ flex: 0.3, backgroundColor: "#666" }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "24px",
+                    cursor: "pointer",
+                    color: "#666",
+                  }}
                 >
-                  CANCEL
+                  &times;
                 </button>
-              )}
+              </div>
+
+              <form onSubmit={handleProgrammeSubmit}>
+                {/* ROW 1: Title & Code */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    marginBottom: "15px",
+                  }}
+                >
+                  <div style={{ flex: 3 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      Programme Title *
+                    </label>
+                    <input
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        boxSizing: "border-box",
+                      }}
+                      placeholder="e.g. Regular Course"
+                      value={progForm.title}
+                      onChange={(e) =>
+                        setProgForm({ ...progForm, title: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      Code
+                    </label>
+                    <input
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        boxSizing: "border-box",
+                      }}
+                      placeholder="e.g. RC"
+                      value={progForm.code}
+                      onChange={(e) =>
+                        setProgForm({ ...progForm, code: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* ROW 2: Image URL */}
+                <div style={{ marginBottom: "15px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      color: "#666",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    Image URL (Optional)
+                  </label>
+                  <input
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      boxSizing: "border-box",
+                    }}
+                    placeholder="Paste image link here"
+                    value={progForm.image}
+                    onChange={(e) =>
+                      setProgForm({ ...progForm, image: e.target.value })
+                    }
+                  />
+                </div>
+
+                {/* ROW 3: Duration & Fee */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    marginBottom: "15px",
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      Duration
+                    </label>
+                    <input
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        boxSizing: "border-box",
+                      }}
+                      placeholder="e.g. 6 Weeks"
+                      value={progForm.duration}
+                      onChange={(e) =>
+                        setProgForm({
+                          ...progForm,
+                          duration: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        color: "#666",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      Fee
+                    </label>
+                    <input
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        boxSizing: "border-box",
+                      }}
+                      placeholder="e.g. ₦50,000"
+                      value={progForm.fee}
+                      onChange={(e) =>
+                        setProgForm({ ...progForm, fee: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {/* ROW 4: Description */}
+                <div style={{ marginBottom: "15px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      color: "#666",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    Description
+                  </label>
+
+                  <textarea
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      minHeight: "80px",
+                      boxSizing: "border-box",
+                      fontFamily: "inherit",
+                      resize: "vertical",
+                      overflow: "hidden",
+                    }}
+                    placeholder="Brief details (Type to expand)..."
+                    value={progForm.description}
+                    onInput={handleAutoResize}
+                    onChange={(e) => {
+                      handleAutoResize(e);
+                      setProgForm({
+                        ...progForm,
+                        description: e.target.value,
+                      });
+                    }}
+                  />
+                </div>
+
+                {/* BUTTONS */}
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="submit"
+                    className="approve-btn"
+                    style={{
+                      flex: 1,
+                      padding: "12px",
+                      backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
+                    }}
+                  >
+                    {editingId ? "UPDATE PROGRAMME" : "SAVE PROGRAMME"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={cancelEditProgramme}
+                    className="delete-btn"
+                    style={{ flex: 0.3, backgroundColor: "#666" }}
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
-        </div>
+          )}
+        </>
       ) : (
         <div className="empty-state">🔒 View-Only Mode enabled.</div>
       )}
@@ -291,7 +371,10 @@ function ProgrammesTab({
                 <td data-label="Code">
                   <span
                     className="tag"
-                    style={{ backgroundColor: "#eef2ff", color: "#4f46e5" }}
+                    style={{
+                      backgroundColor: "#eef2ff",
+                      color: "#4f46e5",
+                    }}
                   >
                     {prog.code || "-"}
                   </span>
