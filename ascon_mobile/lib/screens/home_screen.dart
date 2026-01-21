@@ -11,8 +11,8 @@ import 'jobs_screen.dart';
 import 'about_screen.dart';
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
+import 'alumni_detail_screen.dart';
 import '../widgets/digital_id_card.dart';
-// ✅ Import the ViewModel
 import '../viewmodels/dashboard_view_model.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -53,7 +53,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _screens = [
-        _DashboardView(userName: _loadedName),
+        _DashboardView(
+          userName: _loadedName,
+          onTabChange: _onTabTapped, 
+        ),
         const EventsScreen(),
         const JobsScreen(),
         const DirectoryScreen(),
@@ -165,56 +168,32 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ---------------------------------------------------------
-// DASHBOARD VIEW (REFACTORED WITH VIEWMODEL & MODERN UI)
+// DASHBOARD VIEW
 // ---------------------------------------------------------
 class _DashboardView extends StatefulWidget {
   final String userName;
-  const _DashboardView({required this.userName});
+  final Function(int) onTabChange;
+
+  const _DashboardView({
+    required this.userName, 
+    required this.onTabChange
+  });
 
   @override
   State<_DashboardView> createState() => _DashboardViewState();
 }
 
 class _DashboardViewState extends State<_DashboardView> {
-  // ✅ Use the ViewModel
   final DashboardViewModel _viewModel = DashboardViewModel();
 
   @override
   void initState() {
     super.initState();
-    // ✅ Fetch data through ViewModel
     _viewModel.loadData();
   }
 
-  Color _getTypeColor(String type) {
-    switch (type) {
-      case 'Reunion':
-        return const Color(0xFF1B5E3A);
-      case 'Webinar':
-        return Colors.blue[700]!;
-      case 'Seminar':
-        return Colors.purple[700]!;
-      case 'News':
-        return Colors.orange[800]!;
-      case 'Conference':
-        return const Color(0xFF0D47A1);
-      case 'Workshop':
-        return const Color(0xFF00695C);
-      case 'Symposium':
-        return const Color(0xFFAD1457);
-      case 'AGM':
-        return const Color(0xFFFF8F00);
-      case 'Induction':
-        return const Color(0xFF2E7D32);
-      case 'Event':
-        return Colors.indigo[900]!;
-      default:
-        return Colors.grey[700]!;
-    }
-  }
-
   Widget _buildSafeImage(String? imageUrl,
-      {IconData fallbackIcon = Icons.image}) {
+      {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Icon(fallbackIcon, color: Colors.grey[400], size: 40);
     }
@@ -222,7 +201,7 @@ class _DashboardViewState extends State<_DashboardView> {
     if (imageUrl.startsWith('http')) {
       return Image.network(
         imageUrl,
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) =>
             Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
       );
@@ -235,7 +214,7 @@ class _DashboardViewState extends State<_DashboardView> {
       }
       return Image.memory(
         base64Decode(cleanBase64),
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) =>
             Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
       );
@@ -316,7 +295,9 @@ class _DashboardViewState extends State<_DashboardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ Digital ID Card
+                    // ------------------------------------------------
+                    // 0️⃣ MAIN HEADER (ID CARD)
+                    // ------------------------------------------------
                     DigitalIDCard(
                       userName: widget.userName,
                       programme: _viewModel.programme,
@@ -325,117 +306,164 @@ class _DashboardViewState extends State<_DashboardView> {
                       imageUrl: _viewModel.profileImage,
                     ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 20),
 
+                    // ------------------------------------------------
+                    // 1️⃣ ALUMNI NETWORK (Top 5 Avatars)
+                    // ------------------------------------------------
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ------------------------------------------------
-                          // 🎓 FEATURED PROGRAMMES (Updated UI)
-                          // ------------------------------------------------
-                          if (_viewModel.isLoading)
-                            const Center(
-                                child: Padding(
-                                    padding: EdgeInsets.all(20.0),
-                                    child: CircularProgressIndicator()))
-                          else if (_viewModel.programmes.isNotEmpty)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Featured Programmes",
-                                  style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: textColor),
-                                ),
-                                const SizedBox(height: 15),
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  gridDelegate:
-                                      SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: 180,
-                                    crossAxisSpacing: 12,
-                                    mainAxisSpacing: 12,
-                                    // 🎨 Adjusted Aspect Ratio for Taller Cards
-                                    childAspectRatio: 0.8,
-                                  ),
-                                  itemCount: _viewModel.programmes.length,
-                                  itemBuilder: (context, index) {
-                                    return _buildProgrammeCard(
-                                        _viewModel.programmes[index]);
-                                  },
-                                ),
-                                const SizedBox(height: 30),
-                              ],
-                            ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text("Alumni Network",
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: textColor)),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    if (_viewModel.isLoading)
+                      const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+                    else if (_viewModel.topAlumni.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text("No recently active alumni found.", style: TextStyle(color: Colors.grey)),
+                      )
+                    else
+                      SizedBox(
+                        height: 90, 
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _viewModel.topAlumni.length,
+                          itemBuilder: (context, index) {
+                            final alumni = _viewModel.topAlumni[index];
+                            final String name = alumni['fullName'] ?? "User";
+                            final String img = alumni['profilePicture'] ?? "";
+                            final String firstName = name.split(" ")[0];
 
-                          // ------------------------------------------------
-                          // 📅 EVENTS HEADER
-                          // ------------------------------------------------
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text.rich(
-                                TextSpan(
-                                  style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold),
+                            return GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AlumniDetailScreen(alumniData: alumni),
+                                  ),
+                                );
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 20.0),
+                                child: Column(
                                   children: [
-                                    TextSpan(
-                                      text: "Recent & Upcoming ",
-                                      style: TextStyle(color: textColor),
+                                    Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: primaryColor.withOpacity(0.5), width: 2),
+                                      ),
+                                      child: CircleAvatar(
+                                        radius: 28,
+                                        backgroundColor: Colors.grey[200],
+                                        child: ClipOval(
+                                          child: SizedBox(
+                                            width: 56, height: 56,
+                                            child: _buildSafeImage(img, fallbackIcon: Icons.person),
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    TextSpan(
-                                      text: "Events",
-                                      style: TextStyle(color: primaryColor),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      firstName,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: textColor,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              GestureDetector(
-                                onTap: _viewModel.loadData,
-                                child: Icon(Icons.refresh,
-                                    size: 18, color: primaryColor),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 15),
+                            );
+                          },
+                        ),
+                      ),
+                    
+                    const SizedBox(height: 25),
 
-                          // ------------------------------------------------
-                          // 📅 EVENTS GRID (Updated UI)
-                          // ------------------------------------------------
-                          if (_viewModel.isLoading)
-                            Center(
-                                child: CircularProgressIndicator(
-                                    color: primaryColor))
-                          else if (_viewModel.events.isEmpty)
-                            _buildEmptyState("No Upcoming Events")
-                          else
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 180,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                // 🎨 Adjusted Aspect Ratio for Taller Cards
-                                childAspectRatio: 0.75,
-                              ),
-                              itemCount: _viewModel.events.length,
-                              itemBuilder: (context, index) {
-                                return _buildEventCard(
-                                    context, _viewModel.events[index]);
-                              },
-                            ),
-                          const SizedBox(height: 20),
+                    // ------------------------------------------------
+                    // 2️⃣ UPCOMING EVENTS (Matches Flyer Image: WHITE CARD)
+                    // ------------------------------------------------
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("Upcoming Events",
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: textColor)),
+                          GestureDetector(
+                            onTap: () => widget.onTabChange(1), 
+                            child: Icon(Icons.arrow_forward, size: 20, color: primaryColor),
+                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 12),
+
+                    if (_viewModel.isLoading)
+                      const SizedBox.shrink()
+                    else if (_viewModel.events.isEmpty)
+                      _buildEmptyState("No upcoming events")
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _viewModel.events.length,
+                        separatorBuilder: (c, i) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          // ✅ EVENTS = WHITE CARD (Leadership Summit Style)
+                          return _buildWhiteCard(
+                            context, _viewModel.events[index], isEvent: true);
+                        },
+                      ),
+
+                    const SizedBox(height: 25),
+
+                    // ------------------------------------------------
+                    // 3️⃣ FEATURED PROGRAMMES (Matches Flyer Image: IMAGE BACKGROUND)
+                    // ------------------------------------------------
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text("Featured Programmes",
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: textColor)),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    if (_viewModel.isLoading)
+                      const SizedBox.shrink()
+                    else if (_viewModel.programmes.isEmpty)
+                      _buildEmptyState("No active programmes")
+                    else
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _viewModel.programmes.length > 3 ? 3 : _viewModel.programmes.length, 
+                        separatorBuilder: (c, i) => const SizedBox(height: 16),
+                        itemBuilder: (context, index) {
+                          // ✅ PROGRAMMES = IMAGE CARD (News/Highlights Style)
+                          return _buildImageCard(
+                            context, _viewModel.programmes[index], isProgramme: true);
+                        },
+                      ),
+
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -447,136 +475,41 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   // ------------------------------------------------
-  // 🎨 MODERN PROGRAMME CARD
+  // 🎨 STYLE A: WHITE CARD (Used for Events)
   // ------------------------------------------------
-  Widget _buildProgrammeCard(Map<String, dynamic> prog) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = Theme.of(context).cardColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final String? programmeImage = prog['image'] ?? prog['imageUrl'];
-    final String title = prog['title'] ?? "Programme";
-    final String code = prog['code']?.toUpperCase() ?? "PIC";
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          if (!isDark)
-            BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 4)),
-        ],
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProgrammeDetailScreen(programme: prog),
-                ),
-              );
-            },
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    // Image Section
-                    SizedBox(
-                      height: 100,
-                      width: double.infinity,
-                      child: _buildSafeImage(programmeImage,
-                          fallbackIcon: Icons.school),
-                    ),
-                    // Text Section
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 14, 8, 4),
-                        child: Text(
-                          title,
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12.0,
-                            color: textColor,
-                            height: 1.2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                // Floating Badge (Centered on the line)
-                Positioned(
-                  top: 88, 
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 2,
-                              offset: Offset(0, 1))
-                        ],
-                      ),
-                      child: Text(
-                        code,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ------------------------------------------------
-  // 🎨 MODERN EVENT CARD (With Floating Date)
-  // ------------------------------------------------
-  Widget _buildEventCard(BuildContext context, Map<String, dynamic> data) {
+  Widget _buildWhiteCard(BuildContext context, Map<String, dynamic> data, {bool isEvent = false}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final badgeColor = const Color(0xFFE65100); // Deep Orange for Badge
+    
+    // Data Parsing
+    String title = data['title'] ?? "Untitled";
+    String subtitle = "";
+    String badgeTop = "";
+    String badgeBottom = "";
 
-    String day = 'TBA';
-    String month = '';
-    String rawDate = data['date']?.toString() ?? '';
-    String type = data['type'] ?? 'News';
-    final String? imageUrl = data['image'] ?? data['imageUrl'];
-    final String title = data['title'] ?? "Untitled Event";
-
-    // 📅 Parse Date for Badge
-    if (rawDate.isNotEmpty) {
-      try {
-        final dateObj = DateTime.parse(rawDate);
-        day = DateFormat("d").format(dateObj);
-        month = DateFormat("MMM").format(dateObj).toUpperCase();
-      } catch (e) {
-        // keep fallback
+    if (isEvent) {
+      // Event Specifics
+      String location = data['location'] ?? "ASCON Complex";
+      String time = "TBA";
+      String rawDate = data['date']?.toString() ?? '';
+      
+      if (rawDate.isNotEmpty) {
+        try {
+          final dateObj = DateTime.parse(rawDate);
+          badgeTop = DateFormat("d").format(dateObj); // "25"
+          badgeBottom = DateFormat("MMM").format(dateObj).toUpperCase(); // "OCT"
+          time = DateFormat("h:mm a").format(dateObj); // "11:10 AM"
+        } catch (e) {}
       }
+      subtitle = "$time • $location";
+    } else {
+      // Programme Specifics (Fallback)
+      badgeTop = data['code']?.toUpperCase() ?? "PG";
+      badgeBottom = "CODE";
+      subtitle = "Tap to view details";
     }
 
     return Container(
@@ -586,127 +519,112 @@ class _DashboardViewState extends State<_DashboardView> {
         boxShadow: [
           if (!isDark)
             BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 8,
-                offset: const Offset(0, 4)),
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              final String resolvedId =
-                  (data['_id'] ?? data['id'] ?? '').toString();
-
-              final safeData = {
-                ...data.map((key, value) => MapEntry(key, value.toString())),
-                'rawDate': rawDate,
-                'date': rawDate, 
-                '_id': resolvedId,
-              };
-
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) =>
-                        EventDetailScreen(eventData: safeData)),
-              );
-            },
-            child: Stack(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+             if (isEvent) {
+               final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
+               final safeData = {...data.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
+               Navigator.push(context, MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData)));
+             } else {
+               Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data)));
+             }
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Image
-                    SizedBox(
-                      height: 110,
-                      width: double.infinity,
-                      child:
-                          _buildSafeImage(imageUrl, fallbackIcon: Icons.event),
-                    ),
-                    // Content
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(10.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Type Tag
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: _getTypeColor(type).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                type.toUpperCase(),
-                                style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: _getTypeColor(type)),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            // Title
-                            Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13.0,
-                                color: textColor,
-                                height: 1.2,
-                              ),
-                            ),
-                          ],
+                // 1️⃣ Left Icon Box (Dark Blue)
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A237E), // Dark Blue
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    isEvent ? Icons.location_on : Icons.school, 
+                    color: Colors.white, size: 28
+                  ),
+                ),
+                
+                const SizedBox(width: 16),
+                
+                // 2️⃣ Middle Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-
-                // 📅 Floating Date Badge
-                if (month.isNotEmpty)
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: const [
-                          BoxShadow(
-                              color: Colors.black12,
-                              blurRadius: 4,
-                              offset: Offset(0, 2))
-                        ],
-                      ),
-                      child: Column(
+                      const SizedBox(height: 4),
+                      
+                      // Subtitle (Time/Location or Generic)
+                      Row(
                         children: [
-                          Text(
-                            day,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: isDark ? Colors.white : Colors.black87),
-                          ),
-                          Text(
-                            month,
-                            style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                                color: primaryColor),
+                          if (isEvent) Icon(Icons.access_time, size: 14, color: Colors.grey),
+                          if (isEvent) const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
+                ),
+                
+                const SizedBox(width: 12),
+                
+                // 3️⃣ Right Badge (Orange)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        badgeTop,
+                        style: TextStyle(
+                          fontSize: isEvent ? 18 : 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (badgeBottom.isNotEmpty)
+                      Text(
+                        badgeBottom,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -715,30 +633,123 @@ class _DashboardViewState extends State<_DashboardView> {
     );
   }
 
-  Widget _buildEmptyState(String message) {
-    final cardColor = Theme.of(context).cardColor;
-    final borderColor = Theme.of(context).dividerColor;
-    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+  // ------------------------------------------------
+  // 🎨 STYLE B: IMAGE BACKGROUND (Used for Programmes)
+  // ------------------------------------------------
+  Widget _buildImageCard(BuildContext context, Map<String, dynamic> data, {bool isProgramme = false}) {
+    final String title = data['title'] ?? "Untitled";
+    final String? imageUrl = data['image'] ?? data['imageUrl'];
+    String tagText = isProgramme ? "PROGRAMME" : "NEWS";
+    String subtitle = "";
+
+    if (isProgramme) {
+      String code = data['code']?.toUpperCase() ?? "";
+      if (code.isNotEmpty) tagText += " • $code";
+      subtitle = "Tap to view details & apply";
+    } else {
+      subtitle = "Tap to read more";
+    }
 
     return Container(
+      height: 180,
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
       decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.event_busy, size: 40, color: Colors.grey[400]),
-          const SizedBox(height: 10),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
-          ),
+        borderRadius: BorderRadius.circular(16),
+        color: Colors.grey[300], // Fallback color
+        boxShadow: const [
+          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: () {
+            if (isProgramme) {
+               Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data)));
+            }
+          },
+          child: Stack(
+            children: [
+              // 1. Background Image
+              Positioned.fill(
+                child: _buildSafeImage(imageUrl, fallbackIcon: isProgramme ? Icons.school : Icons.article, fit: BoxFit.cover),
+              ),
+              
+              // 2. Gradient Overlay (Bottom)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // 3. Text Content
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        tagText,
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    final textColor = Theme.of(context).textTheme.bodyMedium?.color;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Text(message, style: TextStyle(color: textColor)),
       ),
     );
   }
