@@ -13,11 +13,15 @@ class ApiClient {
     'Content-Type': 'application/json',
   };
 
-  // ✅ UPDATED: Increased timeout
+  // Increased timeout for slower networks
   static const Duration _timeoutDuration = Duration(seconds: 90);
 
-  // ✅ NEW: Callback to handle token refresh
+  // Callback to handle token refresh
   Future<String?> Function()? onTokenRefresh;
+
+  // ✅ LOCKING MECHANISM VARIABLES
+  bool _isRefreshing = false;
+  Completer<String?>? _refreshCompleter;
 
   void setAuthToken(String token) {
     _headers['auth-token'] = token;
@@ -56,16 +60,38 @@ class ApiClient {
     try {
       var response = await req().timeout(_timeoutDuration);
 
-      // ✅ CRITICAL FIX: Intercept 401 (Unauthorized)
-      // If the token is dead, we try to refresh it ONCE and retry the request.
+      // ✅ CRITICAL FIX: Handle Race Condition for 401
       if (response.statusCode == 401 && onTokenRefresh != null) {
-        print("🔄 401 Detected. Attempting Silent Refresh...");
-        
-        final newToken = await onTokenRefresh!();
+        print("🔄 401 Detected.");
+
+        String? newToken;
+
+        if (_isRefreshing) {
+          // If already refreshing, wait for the pending refresh to complete
+          print("⏳ Waiting for pending refresh...");
+          newToken = await _refreshCompleter?.future;
+        } else {
+          // Start a new refresh process
+          _isRefreshing = true;
+          _refreshCompleter = Completer<String?>();
+          print("🔄 Initiating Silent Refresh...");
+
+          try {
+            newToken = await onTokenRefresh!();
+            _refreshCompleter?.complete(newToken);
+          } catch (e) {
+            _refreshCompleter?.complete(null);
+          } finally {
+            _isRefreshing = false;
+            _refreshCompleter = null;
+          }
+        }
+
+        // If we got a valid token (either from our refresh or the waiting one), retry
         if (newToken != null) {
           print("✅ Token Refreshed. Retrying Request...");
-          setAuthToken(newToken); // Update header
-          response = await req().timeout(_timeoutDuration); // Retry original request
+          setAuthToken(newToken); 
+          response = await req().timeout(_timeoutDuration); 
         }
       }
 

@@ -5,7 +5,8 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_messaging/firebase_messaging.dart'; 
 import 'package:http/http.dart' as http; 
-import 'package:google_sign_in/google_sign_in.dart'; // ✅ NEW IMPORT
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config.dart'; 
 import '../main.dart'; 
 import '../screens/login_screen.dart';
@@ -28,12 +29,19 @@ class AuthService {
     _api.onTokenRefresh = _performSilentRefresh;
   }
 
-  // ✅ HELPER: Fetch FCM Token safely
+  // ✅ HELPER: Fetch FCM Token safely with Environment Variable
   Future<String?> _getFcmToken() async {
     try {
       if (kIsWeb) {
+        // ✅ FIX: Load key from .env
+        String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
+        if (vapidKey == null || vapidKey.isEmpty) {
+          debugPrint("⚠️ Warning: FIREBASE_VAPID_KEY not found in .env");
+          return null;
+        }
+
         return await FirebaseMessaging.instance.getToken(
-          vapidKey: "BG-mAsjcWNqfS9Brgh0alj3Cf7Q7FFgkl8kvu5zktPvt4Dt-Yu138tPE_z-INAganzw6BVb6Vjc9Nf37KzN0Rm8"
+          vapidKey: vapidKey
         );
       } else {
         return await FirebaseMessaging.instance.getToken();
