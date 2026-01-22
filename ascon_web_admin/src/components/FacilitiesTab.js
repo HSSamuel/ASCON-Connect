@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
-import { FaTrash, FaEdit, FaTimes, FaLink } from "react-icons/fa"; // ✅ Added FaLink icon
+import { FaTrash, FaEdit, FaTimes, FaLink } from "react-icons/fa";
 import "./FacilitiesTab.css";
 import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
@@ -12,6 +12,9 @@ function FacilitiesTab({ onRefreshStats }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+  // ✅ 1. NEW STATE: Loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // UI STATE
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
@@ -20,7 +23,7 @@ function FacilitiesTab({ onRefreshStats }) {
     name: "",
     image: "",
     description: "",
-    paymentUrl: "", // ✅ 1. ADDED STATE FIELD
+    paymentUrl: "",
   });
 
   const [rates, setRates] = useState([{ type: "", naira: "", dollar: "" }]);
@@ -77,7 +80,7 @@ function FacilitiesTab({ onRefreshStats }) {
       name: facility.name,
       image: facility.image,
       description: facility.description || "",
-      paymentUrl: facility.paymentUrl || "", // ✅ 2. LOAD EXISTING URL
+      paymentUrl: facility.paymentUrl || "",
     });
     setRates(facility.rates || []);
     setShowForm(true);
@@ -91,7 +94,7 @@ function FacilitiesTab({ onRefreshStats }) {
       await axios.put(
         `${API_URL}/api/facilities/${facility._id}`,
         { isActive: newStatus },
-        { headers: { "auth-token": token } }
+        { headers: { "auth-token": token } },
       );
 
       showToast(`Facility ${newStatus ? "Enabled" : "Disabled"}`, "success");
@@ -108,7 +111,8 @@ function FacilitiesTab({ onRefreshStats }) {
 
   const handleDelete = async () => {
     const id = deleteModal.id;
-    setDeleteModal({ show: false, id: null });
+    // ✅ Start Loading
+    setIsSubmitting(true);
 
     try {
       await axios.delete(`${API_URL}/api/facilities/${id}`, {
@@ -120,6 +124,10 @@ function FacilitiesTab({ onRefreshStats }) {
       if (onRefreshStats) onRefreshStats();
     } catch (err) {
       showToast("Failed to delete facility", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
+      setDeleteModal({ show: false, id: null });
     }
   };
 
@@ -127,7 +135,7 @@ function FacilitiesTab({ onRefreshStats }) {
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
-    setFormData({ name: "", image: "", description: "", paymentUrl: "" }); // ✅ 3. RESET FIELD
+    setFormData({ name: "", image: "", description: "", paymentUrl: "" });
     setRates([{ type: "", naira: "", dollar: "" }]);
   };
 
@@ -146,19 +154,22 @@ function FacilitiesTab({ onRefreshStats }) {
       return;
     }
 
+    // ✅ Start Loading
+    setIsSubmitting(true);
+
     try {
       if (editingId) {
         await axios.put(
           `${API_URL}/api/facilities/${editingId}`,
           { ...formData, rates },
-          { headers: { "auth-token": token } }
+          { headers: { "auth-token": token } },
         );
         showToast("Facility Updated Successfully!", "success");
       } else {
         await axios.post(
           `${API_URL}/api/facilities`,
           { ...formData, rates },
-          { headers: { "auth-token": token } }
+          { headers: { "auth-token": token } },
         );
         showToast("Facility Added Successfully!", "success");
       }
@@ -169,6 +180,9 @@ function FacilitiesTab({ onRefreshStats }) {
       if (onRefreshStats) onRefreshStats();
     } catch (err) {
       showToast(err.response?.data?.message || "Operation failed", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
     }
   };
 
@@ -192,6 +206,8 @@ function FacilitiesTab({ onRefreshStats }) {
         isDanger={true}
         onConfirm={handleDelete}
         onCancel={() => setDeleteModal({ show: false, id: null })}
+        // ✅ Pass loading
+        isLoading={isSubmitting}
       />
 
       <div className="tab-header">
@@ -223,14 +239,13 @@ function FacilitiesTab({ onRefreshStats }) {
                 required
               />
 
-              {/* ✅ 4. NEW INPUT FIELD FOR PAYMENT URL */}
               <input
                 type="text"
                 name="paymentUrl"
                 placeholder="Payment/Booking URL (Optional)"
                 value={formData.paymentUrl}
                 onChange={handleInputChange}
-                style={{ gridColumn: "1 / -1" }} // Make it span full width
+                style={{ gridColumn: "1 / -1" }}
               />
 
               <textarea
@@ -296,10 +311,28 @@ function FacilitiesTab({ onRefreshStats }) {
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="approve-btn">
-                {editingId ? "Update Facility" : "Save Facility"}
+              {/* ✅ SPINNER BUTTON */}
+              <button
+                type="submit"
+                className="approve-btn"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="loading-spinner"></span> Saving...
+                  </>
+                ) : editingId ? (
+                  "Update Facility"
+                ) : (
+                  "Save Facility"
+                )}
               </button>
-              <button type="button" onClick={resetForm} className="delete-btn">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="delete-btn"
+                disabled={isSubmitting}
+              >
                 Cancel
               </button>
             </div>
@@ -307,6 +340,7 @@ function FacilitiesTab({ onRefreshStats }) {
         </div>
       )}
 
+      {/* Table (Unchanged) */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
@@ -331,7 +365,6 @@ function FacilitiesTab({ onRefreshStats }) {
                   </td>
                   <td className="font-bold">
                     {fac.name}
-                    {/* ✅ 5. VISUAL INDICATOR IF PAYMENT LINK EXISTS */}
                     {fac.paymentUrl && (
                       <FaLink
                         style={{

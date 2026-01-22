@@ -9,18 +9,21 @@ import {
   FaEnvelope,
 } from "react-icons/fa";
 import "./JobsManager.css";
-// ✅ FIXED IMPORTS (Pointing to src/ instead of src/components/)
 import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
 import SkeletonTable from "../components/SkeletonTable";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+const BASE_URL =
+  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function JobsManager({ token, canEdit }) {
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  // ✅ 1. NEW STATE: Loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
@@ -85,42 +88,50 @@ function JobsManager({ token, canEdit }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
- const handleSubmit = async (e) => {
-   e.preventDefault();
-   try {
-     if (editingId) {
-       // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
-       await axios.put(`${BASE_URL}/api/jobs/${editingId}`, jobForm, {
-         headers: { "auth-token": token },
-       });
-       showToast("Job updated successfully");
-     } else {
-       // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
-       await axios.post(`${BASE_URL}/api/jobs`, jobForm, {
-         headers: { "auth-token": token },
-       });
-       showToast("Job posted successfully");
-     }
-     resetForm();
-     fetchJobs();
-   } catch (err) {
-     showToast(err.response?.data?.message || "Error saving job", "error");
-   }
- };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    // ✅ Start Loading
+    setIsSubmitting(true);
 
- const handleDelete = async () => {
-   try {
-     // ✅ FIX: Changed from /api/admin/jobs to /api/jobs
-     await axios.delete(`${BASE_URL}/api/jobs/${deleteModal.id}`, {
-       headers: { "auth-token": token },
-     });
-     showToast("Job deleted successfully");
-     fetchJobs();
-   } catch (err) {
-     showToast("Delete failed", "error");
-   }
-   setDeleteModal({ show: false, id: null });
- };
+    try {
+      if (editingId) {
+        await axios.put(`${BASE_URL}/api/jobs/${editingId}`, jobForm, {
+          headers: { "auth-token": token },
+        });
+        showToast("Job updated successfully");
+      } else {
+        await axios.post(`${BASE_URL}/api/jobs`, jobForm, {
+          headers: { "auth-token": token },
+        });
+        showToast("Job posted successfully");
+      }
+      resetForm();
+      fetchJobs();
+    } catch (err) {
+      showToast(err.response?.data?.message || "Error saving job", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    // ✅ Start Loading
+    setIsSubmitting(true);
+    try {
+      await axios.delete(`${BASE_URL}/api/jobs/${deleteModal.id}`, {
+        headers: { "auth-token": token },
+      });
+      showToast("Job deleted successfully");
+      fetchJobs();
+    } catch (err) {
+      showToast("Delete failed", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
+      setDeleteModal({ show: false, id: null });
+    }
+  };
 
   const getLinkType = (link) => {
     if (!link) return null;
@@ -146,6 +157,8 @@ function JobsManager({ token, canEdit }) {
         message="Are you sure you want to delete this job posting?"
         onClose={() => setDeleteModal({ show: false, id: null })}
         onConfirm={handleDelete}
+        // ✅ Pass loading
+        isLoading={isSubmitting}
       />
 
       <div className="table-header">
@@ -229,10 +242,29 @@ function JobsManager({ token, canEdit }) {
               />
             </div>
             <div className="form-actions">
-              <button type="submit" className="save-btn">
-                {editingId ? "Update Job" : "Post Job"}
+              {/* ✅ SPINNER BUTTON */}
+              <button
+                type="submit"
+                className="save-btn"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="loading-spinner"></span> Saving...
+                  </>
+                ) : editingId ? (
+                  "Update Job"
+                ) : (
+                  "Post Job"
+                )}
               </button>
-              <button type="button" onClick={resetForm} className="cancel-btn">
+
+              <button
+                type="button"
+                onClick={resetForm}
+                className="cancel-btn"
+                disabled={isSubmitting}
+              >
                 Cancel
               </button>
             </div>
@@ -240,6 +272,7 @@ function JobsManager({ token, canEdit }) {
         </div>
       )}
 
+      {/* Table (Unchanged) */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>

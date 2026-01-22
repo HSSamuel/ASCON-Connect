@@ -13,8 +13,9 @@ function ProgrammesManager({ token, canEdit }) {
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // ✅ 1. NEW STATE: Controls form visibility
+  // ✅ 1. NEW STATE: Controls form visibility & Loading
   const [showForm, setShowForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
 
@@ -38,7 +39,6 @@ function ProgrammesManager({ token, canEdit }) {
 
   const resetForm = () => {
     setEditingId(null);
-    // ✅ REMOVED 'code' from reset
     setProgForm({
       title: "",
       description: "",
@@ -47,7 +47,6 @@ function ProgrammesManager({ token, canEdit }) {
       fee: "",
       image: "",
     });
-    // ✅ 2. Close form when resetting/canceling
     setShowForm(false);
   };
 
@@ -59,6 +58,9 @@ function ProgrammesManager({ token, canEdit }) {
 
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
+    // ✅ Start Loading
+    setIsSubmitting(true);
+
     try {
       const cleanData = sanitizePayload(progForm);
 
@@ -83,10 +85,15 @@ function ProgrammesManager({ token, canEdit }) {
         err.response?.data?.message || "Error saving programme",
         "error",
       );
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
+    // ✅ Start Loading
+    setIsSubmitting(true);
     try {
       await axios.delete(`${BASE_URL}/api/admin/programmes/${deleteModal.id}`, {
         headers: { "auth-token": token },
@@ -95,8 +102,11 @@ function ProgrammesManager({ token, canEdit }) {
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       showToast("Delete failed", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
+      setDeleteModal({ show: false, id: null });
     }
-    setDeleteModal({ show: false, id: null });
   };
 
   return (
@@ -115,6 +125,8 @@ function ProgrammesManager({ token, canEdit }) {
         message="Are you sure?"
         onClose={() => setDeleteModal({ show: false, id: null })}
         onConfirm={handleDelete}
+        // ✅ Pass loading state
+        isLoading={isSubmitting}
       />
 
       <ProgrammesTab
@@ -124,12 +136,13 @@ function ProgrammesManager({ token, canEdit }) {
         progForm={progForm}
         setProgForm={setProgForm}
         handleProgrammeSubmit={handleProgrammeSubmit}
-        // ✅ 3. Pass visibility controls
         showForm={showForm}
         setShowForm={setShowForm}
+        // ✅ 2. Pass loading state to Tab
+        isSubmitting={isSubmitting}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
-          // ✅ Explicitly set fields to avoid bringing back 'code' from old DB records
+          // ✅ Explicitly set fields
           setProgForm({
             title: prog.title || "",
             description: prog.description || "",

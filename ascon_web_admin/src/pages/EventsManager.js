@@ -29,11 +29,14 @@ function EventsManager({ token, canEdit }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+  // ✅ NEW: Track form submission loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // UI Feedback
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
-  // Form State (✅ Added 'time' field)
+  // Form State
   const [eventForm, setEventForm] = useState({
     title: "",
     description: "",
@@ -84,7 +87,7 @@ function EventsManager({ token, canEdit }) {
       image: "",
       location: "",
       date: "",
-      time: "", // ✅ Reset Time
+      time: "",
     });
   };
 
@@ -97,7 +100,7 @@ function EventsManager({ token, canEdit }) {
       image: event.image || "",
       location: event.location || "",
       date: event.date ? new Date(event.date).toISOString().split("T")[0] : "",
-      time: event.time || "", // ✅ Load existing time
+      time: event.time || "",
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -107,6 +110,9 @@ function EventsManager({ token, canEdit }) {
     e.preventDefault();
     if (eventForm.title.length < 5)
       return showToast("Title must be at least 5 chars", "error");
+
+    // ✅ Start Loading
+    setIsSubmitting(true);
 
     try {
       const payload = { ...eventForm };
@@ -128,6 +134,9 @@ function EventsManager({ token, canEdit }) {
     } catch (err) {
       console.error(err);
       showToast(err.response?.data?.message || "Error saving event", "error");
+    } finally {
+      // ✅ Stop Loading
+      setIsSubmitting(false);
     }
   };
 
@@ -135,6 +144,8 @@ function EventsManager({ token, canEdit }) {
   // 4. DELETE LOGIC
   // ==========================
   const handleDelete = async () => {
+    // ✅ Start Loading
+    setIsSubmitting(true);
     try {
       await axios.delete(`${BASE_URL}/api/admin/events/${deleteModal.id}`, {
         headers: { "auth-token": token },
@@ -143,8 +154,11 @@ function EventsManager({ token, canEdit }) {
       fetchEvents();
     } catch (err) {
       showToast("Delete failed", "error");
+    } finally {
+      // ✅ Stop Loading & Close Modal
+      setIsSubmitting(false);
+      setDeleteModal({ show: false, id: null });
     }
-    setDeleteModal({ show: false, id: null });
   };
 
   const exportToExcel = () => {
@@ -184,6 +198,8 @@ function EventsManager({ token, canEdit }) {
         message="Are you sure? This cannot be undone."
         onClose={() => setDeleteModal({ show: false, id: null })}
         onConfirm={handleDelete}
+        // ✅ Pass loading state to ConfirmModal (if supported)
+        isLoading={isSubmitting} 
       />
 
       <div className="table-header">
@@ -228,14 +244,12 @@ function EventsManager({ token, canEdit }) {
                 <option value="Event">Event</option>
                 <option value="Webinar">Webinar</option>
                 <option value="Reunion">Reunion</option>
-                <option value="Seminar">Seminar</option> {/* Added Seminar */}
+                <option value="Seminar">Seminar</option>
                 <option value="Conference">Conference</option>
                 <option value="Workshop">Workshop</option>
-                <option value="Symposium">Symposium</option>{" "}
-                {/* Added Symposium */}
-                <option value="AGM">AGM</option> {/* Added AGM */}
-                <option value="Induction">Induction</option>{" "}
-                {/* Added Induction */}
+                <option value="Symposium">Symposium</option>
+                <option value="AGM">AGM</option>
+                <option value="Induction">Induction</option>
               </select>
 
               {/* ✅ DATE & TIME ROW */}
@@ -249,7 +263,7 @@ function EventsManager({ token, canEdit }) {
                   style={{ flex: 1 }}
                 />
                 <input
-                  type="text" // Using text to allow "10:00 AM" or "All Day" freely
+                  type="text"
                   name="time"
                   placeholder="Time (e.g. 10:00 AM)"
                   value={eventForm.time}
@@ -284,10 +298,23 @@ function EventsManager({ token, canEdit }) {
               />
             </div>
             <div className="form-actions">
-              <button type="submit" className="save-btn">
-                {editingId ? "Update Event" : "Save Event"}
+              {/* ✅ UPDATED BUTTON with Spinner */}
+              <button type="submit" className="save-btn" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="loading-spinner"></span> Saving...
+                  </>
+                ) : (
+                  editingId ? "Update Event" : "Save Event"
+                )}
               </button>
-              <button type="button" onClick={resetForm} className="cancel-btn">
+              
+              <button 
+                type="button" 
+                onClick={resetForm} 
+                className="cancel-btn"
+                disabled={isSubmitting} // Disable cancel while saving
+              >
                 Cancel
               </button>
             </div>
@@ -302,7 +329,7 @@ function EventsManager({ token, canEdit }) {
               <th>Image</th>
               <th>Title</th>
               <th>Type</th>
-              <th>Date & Time</th> {/* ✅ Merged Header */}
+              <th>Date & Time</th>
               <th>Location</th>
               <th>Status</th>
               <th>Actions</th>
@@ -377,7 +404,6 @@ function EventsManager({ token, canEdit }) {
                             year: "numeric",
                           })}
                         </span>
-                        {/* ✅ Display Time */}
                         <span
                           style={{
                             color: "#666",

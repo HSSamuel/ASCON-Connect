@@ -10,10 +10,10 @@ function ProgrammesTab({
   cancelEditProgramme,
   startEditProgramme,
   deleteProgrammeClick,
-  showForm, // ✅ Received from Parent
-  setShowForm, // ✅ Received from Parent
+  showForm,
+  setShowForm,
+  isSubmitting, // ✅ Receive the prop
 }) {
-  // ✅ SMART RESIZE HELPER
   const handleAutoResize = (e) => {
     e.target.style.height = "auto";
     e.target.style.height = `${e.target.scrollHeight}px`;
@@ -21,7 +21,6 @@ function ProgrammesTab({
 
   return (
     <div>
-      {/* ✅ 1. HEADER & ADD BUTTON */}
       <div
         style={{
           display: "flex",
@@ -32,7 +31,6 @@ function ProgrammesTab({
       >
         <h3 style={{ margin: 0, color: "#1B5E3A" }}>Programmes Directory</h3>
 
-        {/* Show 'Add' button only if we have permission AND form is closed */}
         {canEdit && !showForm && (
           <button
             onClick={() => {
@@ -55,14 +53,10 @@ function ProgrammesTab({
         )}
       </div>
 
-      {/* ✅ 2. CONDITIONAL FORM RENDERING */}
       {canEdit ? (
         <>
           {showForm && (
-            <div
-              className="form-card fade-in" // Reused your nice card class
-              style={{ marginBottom: "30px" }}
-            >
+            <div className="form-card fade-in" style={{ marginBottom: "30px" }}>
               <div
                 style={{
                   display: "flex",
@@ -78,7 +72,6 @@ function ProgrammesTab({
                 >
                   {editingId ? "✏️ Edit Programme" : "🎓 Add New Programme"}
                 </h2>
-                {/* Close Button (X) */}
                 <button
                   onClick={cancelEditProgramme}
                   style={{
@@ -94,7 +87,6 @@ function ProgrammesTab({
               </div>
 
               <form onSubmit={handleProgrammeSubmit}>
-                {/* ROW 1: Title Only (Code Removed) */}
                 <div style={{ marginBottom: "15px" }}>
                   <label
                     style={{
@@ -121,7 +113,6 @@ function ProgrammesTab({
                   />
                 </div>
 
-                {/* ROW 2: Image URL */}
                 <div style={{ marginBottom: "15px" }}>
                   <label
                     style={{
@@ -147,7 +138,6 @@ function ProgrammesTab({
                   />
                 </div>
 
-                {/* ROW 3: Duration & Fee */}
                 <div
                   style={{
                     display: "flex",
@@ -208,7 +198,6 @@ function ProgrammesTab({
                   </div>
                 </div>
 
-                {/* ROW 4: Description */}
                 <div style={{ marginBottom: "15px" }}>
                   <label
                     style={{
@@ -244,18 +233,29 @@ function ProgrammesTab({
                   />
                 </div>
 
-                {/* BUTTONS */}
                 <div style={{ display: "flex", gap: "10px" }}>
+                  {/* ✅ UPDATE BUTTON WITH SPINNER */}
                   <button
                     type="submit"
                     className="approve-btn"
+                    disabled={isSubmitting}
                     style={{
                       flex: 1,
                       padding: "12px",
                       backgroundColor: editingId ? "#d4af37" : "#1B5E3A",
+                      opacity: isSubmitting ? 0.7 : 1,
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    {editingId ? "UPDATE PROGRAMME" : "SAVE PROGRAMME"}
+                    {isSubmitting ? (
+                      <>
+                        <span className="loading-spinner"></span> Saving...
+                      </>
+                    ) : editingId ? (
+                      "UPDATE PROGRAMME"
+                    ) : (
+                      "SAVE PROGRAMME"
+                    )}
                   </button>
 
                   <button
@@ -263,6 +263,7 @@ function ProgrammesTab({
                     onClick={cancelEditProgramme}
                     className="delete-btn"
                     style={{ flex: 0.3, backgroundColor: "#666" }}
+                    disabled={isSubmitting}
                   >
                     CANCEL
                   </button>
@@ -275,7 +276,6 @@ function ProgrammesTab({
         <div className="empty-state">🔒 View-Only Mode enabled.</div>
       )}
 
-      {/* TABLE */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
@@ -335,7 +335,6 @@ function ProgrammesTab({
                     </div>
                   )}
                 </td>
-                {/* Code Column Removed */}
                 <td data-label="Info">
                   <div style={{ fontSize: "13px" }}>
                     {prog.duration && <div>⏳ {prog.duration}</div>}

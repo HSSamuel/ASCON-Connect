@@ -112,3 +112,12 @@
 {"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-19 18:33:16"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-19 18:33:16"}
 {"level":"info","message":"📖 API Docs available at https://ascon-st50.onrender.com/api-docs","timestamp":"2026-01-19 18:33:16"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-22 12:20:31"}
+{"level":"info","message":"🧹 Cleaned up 1 invalid tokens for user 696b438b0f47acec93708faf","timestamp":"2026-01-22 12:20:39"}
+{"level":"info","message":"👤 Personal Notification sent to HUNSA S. Samuel: 4 success.","timestamp":"2026-01-22 12:20:39"}
+{"level":"info","message":"👤 Personal Notification sent to Adegbola Malvins: 1 success.","timestamp":"2026-01-22 12:20:40"}
+{"level":"info","message":"🧹 Cleaned up 1 invalid tokens for user 696f4d7b6345c6d20ca92506","timestamp":"2026-01-22 12:20:41"}
+{"level":"info","message":"👤 Personal Notification sent to Sam Developer: 0 success.","timestamp":"2026-01-22 12:20:41"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-01-22 12:20:41"}
+{"level":"info","message":"📣 Preparing broadcast for 2 users...","timestamp":"2026-01-22 12:20:42"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-01-22 12:20:43"}
