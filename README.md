@@ -67,18 +67,7 @@ _Located in `/ascon_mobile`_
 3.  **Environment Configuration:**
     Create a `.env` file in the root of `ascon_mobile` to switch between Local and Production servers easily.
 
-    ```env
-    # 👉 UNCOMMENT THE ONE YOU WANT TO USE
-    
-    # Production (Render)
-    API_URL=[https://ascon-st50.onrender.com](https://ascon-st50.onrender.com)
 
-    # Local Testing (Android Emulator uses 10.0.2.2)
-    # API_URL=[http://10.0.2.2:5000](http://10.0.2.2:5000)
-    
-    # Firebase Keys (Web Support Only)
-    FIREBASE_API_KEY=...
-    FIREBASE_APP_ID=...
     ```
 
 4.  **Run the app:** * Development: `flutter run`
