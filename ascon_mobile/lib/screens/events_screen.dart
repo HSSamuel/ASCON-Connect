@@ -35,12 +35,23 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
+  // ✅ FIXED: Robust Title Casing
   String _toTitleCase(String text) {
     if (text.isEmpty) return text;
-    return text.split(' ').map((word) {
+    
+    // 1. Basic Title Case
+    String titleCased = text.split(' ').map((word) {
       if (word.isEmpty) return word;
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
     }).join(' ');
+
+    // 2. 🛡️ FORCE 'ASCON' TO UPPERCASE ALWAYS
+    titleCased = titleCased.replaceAllMapped(
+      RegExp(r'\bascon\b', caseSensitive: false), 
+      (match) => 'ASCON'
+    );
+
+    return titleCased;
   }
 
   Color _getTypeColor(String type) {
@@ -127,10 +138,9 @@ class _EventsScreenState extends State<EventsScreen> {
                 : GridView.builder( 
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 220, // Slightly wider cards
+                      maxCrossAxisExtent: 220, 
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
-                      // Taller aspect ratio for an "Editorial" look
                       childAspectRatio: 0.72, 
                     ),
                     itemCount: _events.length,
@@ -165,7 +175,7 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // ✅ 100% PRO: IMMERSIVE CARD DESIGN
+  // ✅ 100% PRO: IMMERSIVE CARD DESIGN (CENTERED)
   Widget _buildImmersiveEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -175,7 +185,7 @@ class _EventsScreenState extends State<EventsScreen> {
     try {
       if (rawDate.isNotEmpty) {
         final dateObj = DateTime.parse(rawDate);
-        formattedDate = DateFormat("d MMM").format(dateObj); // Shorter date format
+        formattedDate = DateFormat("d MMM").format(dateObj); 
       }
     } catch (e) {
       formattedDate = 'TBA';
@@ -187,7 +197,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20), // More rounded corners
+        borderRadius: BorderRadius.circular(20), 
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(isDark ? 0.3 : 0.15),
@@ -201,20 +211,20 @@ class _EventsScreenState extends State<EventsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. BACKGROUND IMAGE (Full Bleed)
+            // 1. BACKGROUND IMAGE
             _buildSafeImage(imageUrl),
 
-            // 2. GRADIENT OVERLAY (For Text Readability)
+            // 2. GRADIENT OVERLAY
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.black.withOpacity(0.0), // Transparent top
+                    Colors.black.withOpacity(0.0), 
                     Colors.black.withOpacity(0.2),
-                    Colors.black.withOpacity(0.8), // Dark bottom
-                    Colors.black.withOpacity(0.95), // Very dark bottom edge
+                    Colors.black.withOpacity(0.8), 
+                    Colors.black.withOpacity(0.95), 
                   ],
                   stops: const [0.4, 0.6, 0.85, 1.0],
                 ),
@@ -228,8 +238,8 @@ class _EventsScreenState extends State<EventsScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: _getTypeColor(type), // Solid brand color
-                  borderRadius: BorderRadius.circular(20), // Pill shape
+                  color: _getTypeColor(type), 
+                  borderRadius: BorderRadius.circular(20), 
                   boxShadow: [
                     BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))
                   ]
@@ -246,7 +256,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
             ),
 
-            // 4. CONTENT (Bottom)
+            // 4. CONTENT (Bottom - CENTERED)
             Positioned(
               bottom: 0,
               left: 0,
@@ -254,11 +264,13 @@ class _EventsScreenState extends State<EventsScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(14.0),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  // ✅ CENTER EVERYTHING
+                  crossAxisAlignment: CrossAxisAlignment.center, 
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Date (Subtle)
+                    // Date (Centered Row)
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.calendar_today, size: 10, color: Colors.white.withOpacity(0.8)),
                         const SizedBox(width: 4),
@@ -276,10 +288,11 @@ class _EventsScreenState extends State<EventsScreen> {
                     
                     const SizedBox(height: 6),
 
-                    // Title (White Text always, because it's on dark gradient)
+                    // Title (Centered & 3 Lines)
                     Text(
                       _toTitleCase(title),
-                      maxLines: 2,
+                      maxLines: 3, // ✅ Allow 3 lines
+                      textAlign: TextAlign.center, // ✅ Center text alignment
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.lato(
                         fontSize: 15, 
@@ -293,7 +306,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
             ),
 
-            // 5. RIPPLE EFFECT (For Interaction)
+            // 5. RIPPLE EFFECT
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,

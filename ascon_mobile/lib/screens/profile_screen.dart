@@ -207,6 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 8),
                             Text(
                               bio, 
+                              textAlign: TextAlign.justify, // ✅ JUSTIFIED TEXT ALIGNMENT
                               style: TextStyle(fontSize: 14, color: textColor, height: 1.4),
                             ),
                           ],
