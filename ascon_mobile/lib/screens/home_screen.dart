@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
@@ -195,7 +196,10 @@ class _DashboardViewState extends State<_DashboardView> {
   Widget _buildSafeImage(String? imageUrl,
       {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
-      return Icon(fallbackIcon, color: Colors.grey[400], size: 40);
+      return Container(
+        color: Colors.grey[200],
+        child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)),
+      );
     }
 
     if (imageUrl.startsWith('http')) {
@@ -203,7 +207,7 @@ class _DashboardViewState extends State<_DashboardView> {
         imageUrl,
         fit: fit,
         errorBuilder: (c, e, s) =>
-            Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
+            Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)),
       );
     }
 
@@ -216,10 +220,10 @@ class _DashboardViewState extends State<_DashboardView> {
         base64Decode(cleanBase64),
         fit: fit,
         errorBuilder: (c, e, s) =>
-            Icon(Icons.broken_image, color: Colors.grey[400], size: 40),
+            Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)),
       );
     } catch (e) {
-      return Icon(fallbackIcon, color: Colors.grey[400], size: 40);
+      return Container(color: Colors.grey[200], child: Icon(fallbackIcon, color: Colors.grey[400], size: 40));
     }
   }
 
@@ -239,7 +243,7 @@ class _DashboardViewState extends State<_DashboardView> {
           appBar: AppBar(
             title: Text(
               "Dashboard",
-              style: TextStyle(
+              style: GoogleFonts.lato(
                   fontWeight: FontWeight.bold,
                   fontSize: 18,
                   color: isDark ? Colors.white : primaryColor),
@@ -309,12 +313,12 @@ class _DashboardViewState extends State<_DashboardView> {
                     const SizedBox(height: 20),
 
                     // ------------------------------------------------
-                    // 1️⃣ ALUMNI NETWORK (Top 5 Avatars)
+                    // 1️⃣ ALUMNI NETWORK
                     // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text("Alumni Network",
-                          style: TextStyle(
+                          style: GoogleFonts.lato(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: textColor)),
@@ -326,7 +330,7 @@ class _DashboardViewState extends State<_DashboardView> {
                     else if (_viewModel.topAlumni.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text("No recently active alumni found.", style: TextStyle(color: Colors.grey)),
+                        child: Text("No recently active alumni found.", style: GoogleFonts.lato(color: Colors.grey)),
                       )
                     else
                       SizedBox(
@@ -374,7 +378,7 @@ class _DashboardViewState extends State<_DashboardView> {
                                     const SizedBox(height: 6),
                                     Text(
                                       firstName,
-                                      style: TextStyle(
+                                      style: GoogleFonts.lato(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w500,
                                         color: textColor,
@@ -391,22 +395,38 @@ class _DashboardViewState extends State<_DashboardView> {
                     const SizedBox(height: 25),
 
                     // ------------------------------------------------
-                    // 2️⃣ UPCOMING EVENTS (Matches Flyer Image: WHITE CARD)
+                    // 2️⃣ UPCOMING EVENTS
                     // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text("Upcoming Events",
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                          Text("Recent & Upcoming Events",
+                              style: GoogleFonts.lato(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
                                   color: textColor)),
-                          GestureDetector(
-                            onTap: () => widget.onTabChange(1), 
-                            child: Icon(Icons.arrow_forward, size: 20, color: primaryColor),
-                          ),
+                          // Green Dots Indicator
+                          Row(
+                            children: [
+                              Container(
+                                width: 6, height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF4CAF50), // Green
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                width: 6, height: 6,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4CAF50).withOpacity(0.5),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
+                          )
                         ],
                       ),
                     ),
@@ -424,31 +444,54 @@ class _DashboardViewState extends State<_DashboardView> {
                         itemCount: _viewModel.events.length,
                         separatorBuilder: (c, i) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
-                          // ✅ EVENTS = WHITE CARD (Leadership Summit Style)
-                          return _buildWhiteCard(
-                            context, _viewModel.events[index], isEvent: true);
+                          return _buildUpcomingEventCard(context, _viewModel.events[index]);
                         },
                       ),
 
                     const SizedBox(height: 25),
 
                     // ------------------------------------------------
-                    // 3️⃣ FEATURED PROGRAMMES (Matches Flyer Image: IMAGE BACKGROUND)
+                    // 3️⃣ NEWS & UPDATES (Refined Pro Design)
                     // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text("Featured Programmes",
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: textColor)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("Programme Updates",
+                              style: GoogleFonts.lato(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: textColor)),
+                          // Grey/Blue Dots Indicator
+                          Row(
+                            children: [
+                              Container(
+                                width: 6, height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF607D8B), // Blue Grey
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                width: 6, height: 6,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF607D8B).withOpacity(0.5),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     
                     if (_viewModel.isLoading)
                       const SizedBox.shrink()
                     else if (_viewModel.programmes.isEmpty)
-                      _buildEmptyState("No active programmes")
+                      _buildEmptyState("No updates available")
                     else
                       ListView.separated(
                         shrinkWrap: true,
@@ -457,9 +500,8 @@ class _DashboardViewState extends State<_DashboardView> {
                         itemCount: _viewModel.programmes.length > 3 ? 3 : _viewModel.programmes.length, 
                         separatorBuilder: (c, i) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
-                          // ✅ PROGRAMMES = IMAGE CARD (News/Highlights Style)
-                          return _buildImageCard(
-                            context, _viewModel.programmes[index], isProgramme: true);
+                          // ✅ NEW: Uses Pro Editorial Design
+                          return _buildNewsUpdateCard(context, _viewModel.programmes[index]);
                         },
                       ),
 
@@ -475,44 +517,44 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   // ------------------------------------------------
-  // 🎨 STYLE A: WHITE CARD (Used for Events)
+  // 🎨 WIDGET 1: UPCOMING EVENT CARD (PRO)
   // ------------------------------------------------
-  Widget _buildWhiteCard(BuildContext context, Map<String, dynamic> data, {bool isEvent = false}) {
+  Widget _buildUpcomingEventCard(BuildContext context, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final badgeColor = const Color(0xFFE65100); // Deep Orange for Badge
     
-    // Data Parsing
-    String title = data['title'] ?? "Untitled";
-    String subtitle = "";
-    String badgeTop = "";
-    String badgeBottom = "";
+    String title = data['title'] ?? "Untitled Event";
+    String location = data['location'] ?? "ASCON Complex";
+    String day = "25";
+    String month = "OCT";
+    String time = "TBA"; 
+    
+    String type = (data['type'] ?? "Event").toString().toUpperCase();
 
-    if (isEvent) {
-      // Event Specifics
-      String location = data['location'] ?? "ASCON Complex";
-      String time = "TBA";
-      String rawDate = data['date']?.toString() ?? '';
-      
-      if (rawDate.isNotEmpty) {
-        try {
-          final dateObj = DateTime.parse(rawDate);
-          badgeTop = DateFormat("d").format(dateObj); // "25"
-          badgeBottom = DateFormat("MMM").format(dateObj).toUpperCase(); // "OCT"
-          time = DateFormat("h:mm a").format(dateObj); // "11:10 AM"
-        } catch (e) {}
+    String rawDate = data['date']?.toString() ?? '';
+    if (rawDate.isNotEmpty) {
+      try {
+        final dateObj = DateTime.parse(rawDate);
+        day = DateFormat("d").format(dateObj);
+        month = DateFormat("MMM").format(dateObj).toUpperCase();
+        
+        if (dateObj.hour == 0 && dateObj.minute == 0) {
+           time = "All Day";
+        } else {
+           time = DateFormat("h:mm a").format(dateObj); 
+        }
+      } catch (e) {
+        time = "TBA";
       }
-      subtitle = "$time • $location";
-    } else {
-      // Programme Specifics (Fallback)
-      badgeTop = data['code']?.toUpperCase() ?? "PG";
-      badgeBottom = "CODE";
-      subtitle = "Tap to view details";
+    }
+
+    if (data['time'] != null && data['time'].toString().isNotEmpty) {
+      time = data['time'];
     }
 
     return Container(
+      height: 100, 
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
@@ -520,7 +562,7 @@ class _DashboardViewState extends State<_DashboardView> {
           if (!isDark)
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
+              blurRadius: 12,
               offset: const Offset(0, 4),
             ),
         ],
@@ -529,63 +571,70 @@ class _DashboardViewState extends State<_DashboardView> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-             if (isEvent) {
-               final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
-               final safeData = {...data.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
-               Navigator.push(context, MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData)));
-             } else {
-               Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data)));
-             }
+             final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
+             final safeData = {...data.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
+             Navigator.push(context, MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData)));
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0), 
             child: Row(
               children: [
-                // 1️⃣ Left Icon Box (Dark Blue)
                 Container(
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A237E), // Dark Blue
-                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? Colors.white.withOpacity(0.1) : primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(
-                    isEvent ? Icons.location_on : Icons.school, 
-                    color: Colors.white, size: 28
+                    Icons.location_on_rounded, 
+                    color: isDark ? Colors.white : primaryColor, 
+                    size: 26
                   ),
                 ),
                 
                 const SizedBox(width: 16),
                 
-                // 2️⃣ Middle Details
                 Expanded(
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        location.toUpperCase(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
+                        style: GoogleFonts.lato(
+                          fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: textColor,
+                          letterSpacing: 0.5,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.lato(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: isDark ? Colors.white : primaryColor,
+                          height: 1.1,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      
-                      // Subtitle (Time/Location or Generic)
                       Row(
                         children: [
-                          if (isEvent) Icon(Icons.access_time, size: 14, color: Colors.grey),
-                          if (isEvent) const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          Icon(Icons.access_time_rounded, size: 14, color: Colors.blueGrey),
+                          const SizedBox(width: 4),
+                          Text(
+                            time,
+                            style: GoogleFonts.lato(
+                              fontSize: 13, 
+                              color: Colors.blueGrey,
+                              fontWeight: FontWeight.w700 
                             ),
                           ),
                         ],
@@ -596,34 +645,78 @@ class _DashboardViewState extends State<_DashboardView> {
                 
                 const SizedBox(width: 12),
                 
-                // 3️⃣ Right Badge (Orange)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: badgeColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        badgeTop,
-                        style: TextStyle(
-                          fontSize: isEvent ? 18 : 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min, 
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 4), 
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        type,
+                        style: GoogleFonts.lato(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: primaryColor,
+                          letterSpacing: 0.5,
                         ),
                       ),
-                      if (badgeBottom.isNotEmpty)
-                      Text(
-                        badgeBottom,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white70,
+                    ),
+                    
+                    Container(
+                      width: 52,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))
+                        ]
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min, 
+                          children: [
+                            Container(
+                              height: 22, 
+                              width: double.infinity,
+                              alignment: Alignment.center,
+                              color: primaryColor,
+                              child: Text(
+                                month,
+                                style: GoogleFonts.lato(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              height: 28, 
+                              width: double.infinity,
+                              alignment: Alignment.center,
+                              color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                              child: Text(
+                                day,
+                                style: GoogleFonts.lato(
+                                  fontSize: 18, 
+                                  fontWeight: FontWeight.w900,
+                                  color: isDark ? Colors.white : Colors.black87,
+                                  height: 1.0, 
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -634,106 +727,127 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   // ------------------------------------------------
-  // 🎨 STYLE B: IMAGE BACKGROUND (Used for Programmes)
+  // 🎨 WIDGET 2: NEWS CARD (THE 100% PRO "MAGAZINE" STYLE)
   // ------------------------------------------------
-  Widget _buildImageCard(BuildContext context, Map<String, dynamic> data, {bool isProgramme = false}) {
-    final String title = data['title'] ?? "Untitled";
+  Widget _buildNewsUpdateCard(BuildContext context, Map<String, dynamic> data) {
+    final String title = data['title'] ?? "Highlights";
     final String? imageUrl = data['image'] ?? data['imageUrl'];
-    String tagText = isProgramme ? "PROGRAMME" : "NEWS";
-    String subtitle = "";
-
-    if (isProgramme) {
-      String code = data['code']?.toUpperCase() ?? "";
-      if (code.isNotEmpty) tagText += " • $code";
-      subtitle = "Tap to view details & apply";
-    } else {
-      subtitle = "Tap to read more";
-    }
+    final String badgeText = "PROGRAMME"; 
+    
+    // Theme Colors
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+    final cardColor = Theme.of(context).cardColor; 
+    
+    // Pro Text Colors
+    final titleColor = isDark ? Colors.white : Colors.black;
+    final accentColor = const Color(0xFFD4AF37); // Gold
 
     return Container(
-      height: 180,
+      height: 160,
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: Colors.grey[300], // Fallback color
-        boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3)),
+        color: cardColor, 
+        boxShadow: [
+          if (!isDark)
+            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () {
-            if (isProgramme) {
-               Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data)));
-            }
+             Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data)));
           },
           child: Stack(
             children: [
               // 1. Background Image
               Positioned.fill(
-                child: _buildSafeImage(imageUrl, fallbackIcon: isProgramme ? Icons.school : Icons.article, fit: BoxFit.cover),
+                child: _buildSafeImage(imageUrl, fallbackIcon: Icons.business, fit: BoxFit.cover),
               ),
               
-              // 2. Gradient Overlay (Bottom)
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
+              // 2. "Side Fade" Gradient Overlay (Left -> Right)
+              // This creates a solid area for text that fades into the image. 
+              // Much more readable and "Magazine-like" than a bottom shadow.
+              Positioned.fill(
                 child: Container(
-                  height: 120,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
                       colors: [
-                        Colors.black.withOpacity(0.9),
-                        Colors.transparent,
+                        cardColor.withOpacity(1.0), // Solid Card Color on Left
+                        cardColor.withOpacity(0.95),
+                        cardColor.withOpacity(0.6),
+                        cardColor.withOpacity(0.0), // Transparent on Right
                       ],
+                      stops: const [0.0, 0.45, 0.65, 1.0], 
                     ),
                   ),
                 ),
               ),
 
-              // 3. Text Content
+              // 3. Content (Text Centered Vertically on the Left)
               Positioned(
-                bottom: 16,
-                left: 16,
-                right: 16,
+                top: 0,
+                bottom: 0,
+                left: 20, 
+                width: MediaQuery.of(context).size.width * 0.65, // Generous width for text
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // A. Small Category Badge (Capsule)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).primaryColor,
-                        borderRadius: BorderRadius.circular(4),
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20), // Pill shape
                       ),
                       child: Text(
-                        tagText,
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        badgeText, 
+                        style: GoogleFonts.lato(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: primaryColor,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+
+                    // B. Title (Big & Bold)
                     Text(
                       title,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                      style: GoogleFonts.lato(
+                        color: titleColor, 
+                        fontSize: 18, // Bigger
+                        fontWeight: FontWeight.w900,
+                        height: 1.1,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
+                    
+                    const SizedBox(height: 12),
+                    
+                    // C. "Read Now" Action (Gold Button Text)
+                    Row(
+                      children: [
+                        Text(
+                          "Read Now",
+                          style: GoogleFonts.lato(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: accentColor, 
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(Icons.arrow_forward_rounded, size: 16, color: accentColor),
+                      ],
+                    )
                   ],
                 ),
               ),
@@ -749,7 +863,7 @@ class _DashboardViewState extends State<_DashboardView> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Text(message, style: TextStyle(color: textColor)),
+        child: Text(message, style: GoogleFonts.lato(color: textColor)),
       ),
     );
   }

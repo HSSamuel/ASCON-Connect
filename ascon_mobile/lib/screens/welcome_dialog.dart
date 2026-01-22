@@ -53,7 +53,7 @@ class WelcomeDialog extends StatelessWidget {
               Text(
                 "Welcome to the ASCON Alumni Association!",
                 textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.lato(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: textColor, // ✅ Dynamic Text
@@ -73,7 +73,7 @@ class WelcomeDialog extends StatelessWidget {
                   children: [
                     Text(
                       '"Dear Esteemed Alumnus,',
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.lato(
                         fontSize: 14,
                         fontStyle: FontStyle.italic,
                         color: subTextColor, 
@@ -87,7 +87,7 @@ class WelcomeDialog extends StatelessWidget {
                       "Together, we will continue to uphold the values of excellence, integrity, and innovation that define ASCON.\n\n"
                       'Welcome aboard!"',
                       textAlign: TextAlign.justify,
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.lato(
                         fontSize: 14,
                         height: 1.5, 
                         color: subTextColor, // ✅ Dynamic Text
@@ -118,7 +118,7 @@ class WelcomeDialog extends StatelessWidget {
                         children: [
                           Text(
                             "Mrs. Funke Femi Adepoju Ph.D",
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.lato(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                               color: textColor, // ✅ Dynamic Text
@@ -126,7 +126,7 @@ class WelcomeDialog extends StatelessWidget {
                           ),
                           Text(
                             "Director General, ASCON",
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.lato(
                               fontSize: 12,
                               color: subTextColor, 
                             ),

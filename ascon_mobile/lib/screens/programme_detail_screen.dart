@@ -1,7 +1,9 @@
-import 'dart:convert'; // ✅ Import this
+import 'dart:convert';
+import 'package:flutter/gestures.dart'; 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 import 'programme_registration_screen.dart';
 import '../services/data_service.dart';
 
@@ -58,21 +60,19 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
   }
 
   // ✅ HELPER: Handles both HTTP URLs and Base64 Strings
-  Widget _buildSafeImage(String? imageUrl) {
+  Widget _buildSafeImage(String? imageUrl, {BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
-      return Container(color: Colors.grey[300]); // Default placeholder
+      return Container(color: Colors.grey[300]); 
     }
 
-    // 1. If it's a web URL
     if (imageUrl.startsWith('http')) {
       return Image.network(
         imageUrl,
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
       );
     }
 
-    // 2. If it's Base64
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -80,12 +80,29 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
       }
       return Image.memory(
         base64Decode(cleanBase64),
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
       );
     } catch (e) {
       return Container(color: Colors.grey[300]);
     }
+  }
+  
+  Future<void> _launchURL(String url) async {
+    final Uri uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      throw Exception('Could not launch $url');
+    }
+  }
+
+  // ✅ NAVIGATE TO FULL SCREEN IMAGE
+  void _openFullScreenImage(String imageUrl) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenImageViewer(imageUrl: imageUrl),
+      ),
+    );
   }
 
   @override
@@ -95,7 +112,6 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     final title = _programme['title'] ?? 'Loading...';
-    final code = _programme['code'] ?? '';
     final description = _programme['description'] ?? 'No description available.';
     final duration = _programme['duration'];
     final fee = _programme['fee'];
@@ -116,8 +132,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             
-            // HEADER
-            _buildHeader(programmeImage, title, code, primaryColor),
+            _buildHeader(programmeImage, title, primaryColor),
             
             const SizedBox(height: 25),
 
@@ -139,11 +154,10 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
 
             Text(
               "About this Programme", 
-              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
+              style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
             ),
             const SizedBox(height: 12),
             
-            // CUSTOM FORMATTER
             _buildFormattedDescription(description, isDark),
             
             const SizedBox(height: 40),
@@ -180,7 +194,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
   }
 
   Widget _buildFormattedDescription(String text, bool isDark) {
-    final baseStyle = GoogleFonts.inter(
+    final baseStyle = GoogleFonts.lato(
       fontSize: 15, 
       height: 1.6, 
       color: isDark ? Colors.grey[400] : Colors.grey[700]
@@ -224,7 +238,7 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
 
   TextSpan _parseRichText(String text, TextStyle baseStyle, bool isDark) {
     List<TextSpan> spans = [];
-    final regex = RegExp(r'\*\*(.*?)\*\*|\*(.*?)\*');
+    final regex = RegExp(r'(https?:\/\/[^\s]+)|\*\*(.*?)\*\*|\*(.*?)\*');
     int lastMatchEnd = 0;
 
     for (final match in regex.allMatches(text)) {
@@ -233,19 +247,34 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
       }
 
       if (match.group(1) != null) {
+        final String url = match.group(1)!;
         spans.add(TextSpan(
-          text: match.group(1),
+          text: url,
+          style: baseStyle.copyWith(
+            color: Colors.blue, 
+            decoration: TextDecoration.underline,
+            fontWeight: FontWeight.bold
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () => _launchURL(url),
+        ));
+      } 
+      else if (match.group(2) != null) {
+        spans.add(TextSpan(
+          text: match.group(2),
           style: baseStyle.copyWith(
             fontWeight: FontWeight.bold, 
             color: isDark ? Colors.white : Colors.black87
           ), 
         ));
-      } else if (match.group(2) != null) {
+      } 
+      else if (match.group(3) != null) {
         spans.add(TextSpan(
-          text: match.group(2),
+          text: match.group(3),
           style: baseStyle.copyWith(fontStyle: FontStyle.italic),
         ));
       }
+      
       lastMatchEnd = match.end;
     }
 
@@ -256,73 +285,82 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
     return TextSpan(style: baseStyle, children: spans);
   }
 
-  Widget _buildHeader(String? image, String title, String code, Color primaryColor) {
+  Widget _buildHeader(String? image, String title, Color primaryColor) {
     if (image != null && image.isNotEmpty) {
-      return Container(
-        height: 220, 
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: Colors.grey[200],
-          boxShadow: [
-             BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
-          ]
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              // ✅ USE SAFE IMAGE HERE
-              child: _buildSafeImage(image),
-            ),
-            Container(
-              decoration: BoxDecoration(
+      return GestureDetector(
+        // ✅ Make the image tappable
+        onTap: () => _openFullScreenImage(image),
+        child: Container(
+          height: 220, 
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.grey[200],
+            boxShadow: [
+               BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
+            ]
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.8)],
+                child: _buildSafeImage(image),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.8)],
+                  ),
                 ),
               ),
-            ),
-            Align(
-              alignment: Alignment.center,
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      title, 
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
-                        fontSize: 28.0, 
-                        fontWeight: FontWeight.w900, 
-                        color: Colors.white,
-                        height: 1.2
-                      )
-                    ),
-                    const SizedBox(height: 10),
-                    if (code.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2), 
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withOpacity(0.5))
-                        ),
-                        child: Text(
-                          code.toUpperCase(), 
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)
-                        ),
+              Align(
+                alignment: Alignment.center,
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        title, 
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.lato(
+                          fontSize: 28.0, 
+                          fontWeight: FontWeight.w900, 
+                          color: Colors.white,
+                          height: 1.2
+                        )
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+              // ✅ "View Photo" Badge at Bottom Right
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.3))
+                  ),
+                  child: Row(
+                    children: const [
+                      Icon(Icons.fullscreen, color: Colors.white, size: 16),
+                      SizedBox(width: 4),
+                      Text("View Photo", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              )
+            ],
+          ),
         ),
       );
     } else {
@@ -341,24 +379,12 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
             Text(
               title, 
               textAlign: TextAlign.center, 
-              style: GoogleFonts.inter(
+              style: GoogleFonts.lato(
                 fontSize: 26.0, 
                 fontWeight: FontWeight.w900, 
                 color: primaryColor
               )
             ),
-            if (code.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white, 
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: primaryColor.withOpacity(0.3))
-                ),
-                child: Text(code, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryColor)),
-              ),
-            ]
           ],
         ),
       );
@@ -388,5 +414,53 @@ class _ProgrammeDetailScreenState extends State<ProgrammeDetailScreen> {
         ],
       ),
     );
+  }
+}
+
+// ✅ NEW: Full Screen Image Viewer Widget
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const FullScreenImageViewer({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: _buildSafeImage(imageUrl),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSafeImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const Icon(Icons.image_not_supported, color: Colors.white, size: 50);
+    }
+
+    if (imageUrl.startsWith('http')) {
+      return Image.network(imageUrl, fit: BoxFit.contain);
+    }
+
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
+      return Image.memory(base64Decode(cleanBase64), fit: BoxFit.contain);
+    } catch (e) {
+      return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+    }
   }
 }

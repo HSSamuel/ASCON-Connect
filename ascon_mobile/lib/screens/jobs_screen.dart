@@ -45,7 +45,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           "Opportunities",
-          style: GoogleFonts.inter(
+          style: GoogleFonts.lato(
             fontWeight: FontWeight.w800,
             color: Colors.white,
             fontSize: 22,
@@ -70,7 +70,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
               ),
               labelColor: isDark ? Colors.white : primaryColor,
               unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
-              labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 13),
+              labelStyle: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 13),
               tabs: const [
                 Tab(text: "JOBS", height: 40),
                 Tab(text: "FACILITIES", height: 40),
@@ -155,7 +155,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                       alignment: Alignment.center,
                       child: Text(
                         initial,
-                        style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: brandColor),
+                        style: GoogleFonts.lato(fontSize: 20, fontWeight: FontWeight.w800, color: brandColor),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -165,14 +165,14 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                         children: [
                           Text(
                             job['title'] ?? "Untitled",
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 16),
+                            style: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 16),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             company,
-                            style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w500),
+                            style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),
@@ -186,7 +186,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                         ),
                         child: Text(
                           job['salary'],
-                          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green[700]),
+                          style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green[700]),
                         ),
                       ),
                   ],
@@ -204,7 +204,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                     const SizedBox(width: 4),
                     Text(
                       "Recently", 
-                      style: GoogleFonts.inter(fontSize: 11, color: Colors.grey[400]),
+                      style: GoogleFonts.lato(fontSize: 11, color: Colors.grey[400]),
                     ),
                   ],
                 ),
@@ -244,7 +244,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
             child: Icon(icon, size: 40, color: Colors.grey[400]),
           ),
           const SizedBox(height: 16),
-          Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
+          Text(msg, style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -370,7 +370,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
                         const SizedBox(width: 4),
                         Text(
                           isActive ? "AVAILABLE" : "BOOKED",
-                          style: GoogleFonts.inter(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          style: GoogleFonts.lato(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -389,31 +389,31 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
                       Expanded(
                         child: Text(
                           facility['name'] ?? "Facility Name",
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w800, fontSize: 17),
+                          style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 17),
                           maxLines: 1, overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       Text(
                         priceTag,
-                        style: GoogleFonts.inter(color: primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
+                        style: GoogleFonts.lato(color: primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
                       ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
                     facility['description'] ?? "No description available.",
-                    style: GoogleFonts.inter(color: Colors.grey[600], fontSize: 13, height: 1.4),
+                    style: GoogleFonts.lato(color: Colors.grey[600], fontSize: 13, height: 1.4),
                     maxLines: 2, overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Icon(Icons.star_rounded, size: 16, color: Colors.amber),
-                      Text(" 4.8", style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
+                      Text(" 4.8", style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
                       const Spacer(),
                       Text(
                         "Book Now",
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: primaryColor, fontSize: 12),
+                        style: GoogleFonts.lato(fontWeight: FontWeight.w600, color: primaryColor, fontSize: 12),
                       ),
                       const SizedBox(width: 2),
                       Icon(Icons.arrow_right_alt, size: 16, color: primaryColor),
@@ -471,7 +471,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
             child: Icon(icon, size: 40, color: Colors.grey[400]),
           ),
           const SizedBox(height: 16),
-          Text(msg, style: GoogleFonts.inter(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
+          Text(msg, style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
         ],
       ),
     );

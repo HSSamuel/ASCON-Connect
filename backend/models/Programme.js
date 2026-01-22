@@ -4,31 +4,25 @@ const programmeSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true,
-    unique: true,
     trim: true,
   },
-  code: {
-    type: String,
-    required: false,
-    uppercase: true,
-  },
+  // ❌ REMOVED: code field
   description: {
     type: String,
-    required: false,
+    required: true,
   },
-  // ✅ NEW: Location moved here
   location: {
     type: String,
     required: true,
-    default: "ASCON Complex, Badagry",
   },
   duration: {
     type: String,
-    required: false,
+    required: true,
   },
   fee: {
     type: String,
     required: false,
+    default: "Free",
   },
   image: {
     type: String,

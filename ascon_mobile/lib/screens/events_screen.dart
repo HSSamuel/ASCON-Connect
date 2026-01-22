@@ -1,4 +1,4 @@
-import 'dart:convert'; // ✅ Import this for Base64 decoding
+import 'dart:convert'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart'; 
@@ -35,44 +35,50 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  // ✅ UPDATED: Added colors for new professional event types
+  String _toTitleCase(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
   Color _getTypeColor(String type) {
     switch (type) {
-      case 'Reunion':    return const Color(0xFF1B5E3A); // Dark Green
-      case 'Webinar':    return Colors.blue[700]!;     
-      case 'Seminar':    return Colors.purple[700]!;   
-      case 'News':       return Colors.orange[800]!;   
-      
-      // New Types
-      case 'Conference': return const Color(0xFF0D47A1); // Deep Blue
-      case 'Workshop':   return const Color(0xFF00695C); // Teal
-      case 'Symposium':  return const Color(0xFFAD1457); // Pink/Magenta
-      case 'AGM':        return const Color(0xFFFF8F00); // Amber/Gold
-      case 'Induction':  return const Color(0xFF2E7D32); // Success Green
-      case 'Event':      return Colors.indigo[900]!;     // General Event
-      
-      default:           return Colors.grey[700]!;
+      case 'Reunion':    return const Color(0xFF1B5E3A); 
+      case 'Webinar':    return const Color(0xFF1565C0);     
+      case 'Seminar':    return const Color(0xFF6A1B9A);   
+      case 'News':       return const Color(0xFFE65100);   
+      case 'Conference': return const Color(0xFF0D47A1); 
+      case 'Workshop':   return const Color(0xFF00695C); 
+      case 'Symposium':  return const Color(0xFFC2185B); 
+      case 'AGM':        return const Color(0xFFF57F17); 
+      case 'Induction':  return const Color(0xFF2E7D32); 
+      case 'Event':      return const Color(0xFF283593);     
+      default:           return Colors.grey[800]!;
     }
   }
 
-  // ✅ NEW HELPER: Handles both HTTP URLs and Base64 Strings
   Widget _buildSafeImage(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) {
-      return Icon(Icons.event, color: Colors.grey[400], size: 30);
+      return Container(
+        color: Colors.grey[900],
+        child: Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white24, size: 40)),
+      );
     }
 
-    // 1. If it's a web URL
     if (imageUrl.startsWith('http')) {
       return Image.network(
         imageUrl,
         fit: BoxFit.cover,
-        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400]),
+        errorBuilder: (c, e, s) => Container(
+          color: Colors.grey[900],
+          child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
+        ),
       );
     }
 
-    // 2. If it's Base64 (Database string)
     try {
-      // Remove header if present (e.g., "data:image/png;base64,")
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
         cleanBase64 = cleanBase64.split(',').last;
@@ -80,10 +86,16 @@ class _EventsScreenState extends State<EventsScreen> {
       return Image.memory(
         base64Decode(cleanBase64),
         fit: BoxFit.cover,
-        errorBuilder: (c, e, s) => Icon(Icons.broken_image, color: Colors.grey[400]),
+        errorBuilder: (c, e, s) => Container(
+          color: Colors.grey[900],
+          child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
+        ),
       );
     } catch (e) {
-      return Icon(Icons.event, color: Colors.grey[400], size: 30);
+      return Container(
+        color: Colors.grey[900],
+        child: Center(child: Icon(Icons.error_outline, color: Colors.white24, size: 40)),
+      );
     }
   }
 
@@ -96,11 +108,12 @@ class _EventsScreenState extends State<EventsScreen> {
       appBar: AppBar(
         title: Text(
           "News & Events", 
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 18)
+          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
         ),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
+        elevation: 0,
       ),
       backgroundColor: scaffoldBg,
       
@@ -112,16 +125,17 @@ class _EventsScreenState extends State<EventsScreen> {
             : _events.isEmpty
                 ? _buildEmptyState()
                 : GridView.builder( 
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                     gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 200, 
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.80 : 0.85,
+                      maxCrossAxisExtent: 220, // Slightly wider cards
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      // Taller aspect ratio for an "Editorial" look
+                      childAspectRatio: 0.72, 
                     ),
                     itemCount: _events.length,
                     itemBuilder: (context, index) {
-                      return _buildCompactEventCard(_events[index]);
+                      return _buildImmersiveEventCard(_events[index]);
                     },
                   ),
       ),
@@ -135,146 +149,171 @@ class _EventsScreenState extends State<EventsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.event_note, size: 60, color: color?.withOpacity(0.3)),
+          Icon(Icons.newspaper_rounded, size: 70, color: color?.withOpacity(0.2)),
           const SizedBox(height: 16),
           Text(
-            "No news or events yet.",
-            style: GoogleFonts.inter(fontSize: 16, color: color, fontWeight: FontWeight.w500),
+            "No updates yet",
+            style: GoogleFonts.lato(fontSize: 18, color: color, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Check back later for news & events.",
+            style: GoogleFonts.lato(fontSize: 14, color: color?.withOpacity(0.6)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCompactEventCard(dynamic event) {
+  // ✅ 100% PRO: IMMERSIVE CARD DESIGN
+  Widget _buildImmersiveEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = Theme.of(context).cardColor;
-    final titleColor = isDark ? Colors.greenAccent[400] : const Color(0xFF1B5E20);
-
-    // --- DATE PARSING ---
+    
+    // Data Parsing
     String formattedDate = 'TBA';
     String rawDate = event['date']?.toString() ?? '';
     try {
       if (rawDate.isNotEmpty) {
         final dateObj = DateTime.parse(rawDate);
-        formattedDate = DateFormat("d MMM, y").format(dateObj);
+        formattedDate = DateFormat("d MMM").format(dateObj); // Shorter date format
       }
     } catch (e) {
-      formattedDate = event['date']?.toString() ?? 'TBA';
+      formattedDate = 'TBA';
     }
 
     final String title = event['title']?.toString() ?? 'No Title';
     final String type = event['type'] ?? 'News';
-    final String imageUrl = event['image'] ?? event['imageUrl'] ?? ''; // Pass empty string if null
+    final String imageUrl = event['image'] ?? event['imageUrl'] ?? ''; 
 
     return Container(
       decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20), // More rounded corners
         boxShadow: [
-          if (!isDark)
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.1), 
-              blurRadius: 6, 
-              offset: const Offset(0, 3)
-            ),
-        ],
-        border: Border.all(color: Colors.grey.withOpacity(0.15)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            final Map<String, dynamic> safeEventData = {
-              ...event,
-              '_id': (event['_id'] ?? event['id'] ?? '').toString(),
-              'date': formattedDate,
-              'rawDate': rawDate,
-            };
-            Navigator.push(
-              context, 
-              MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
-            );
-          },
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                child: SizedBox(
-                  height: 90, 
-                  width: double.infinity,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // ✅ USE SAFE IMAGE HERE
-                      _buildSafeImage(imageUrl),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: _getTypeColor(type).withOpacity(0.9),
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 2)],
-                          ),
-                          child: Text(
-                            type.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white, 
-                              fontSize: 8, 
-                              fontWeight: FontWeight.w900, 
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center, 
-                    children: [
-                      Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.visible, 
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800, 
-                          fontSize: 12.0,            
-                          color: titleColor,            
-                          height: 1.1,
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 6), 
-
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.green[900]!.withOpacity(0.3) : const Color(0xFFE8F5E9), 
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          formattedDate.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 9, 
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.green[200] : const Color(0xFF1B5E20), 
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.3 : 0.15),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 1. BACKGROUND IMAGE (Full Bleed)
+            _buildSafeImage(imageUrl),
+
+            // 2. GRADIENT OVERLAY (For Text Readability)
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.0), // Transparent top
+                    Colors.black.withOpacity(0.2),
+                    Colors.black.withOpacity(0.8), // Dark bottom
+                    Colors.black.withOpacity(0.95), // Very dark bottom edge
+                  ],
+                  stops: const [0.4, 0.6, 0.85, 1.0],
+                ),
+              ),
+            ),
+
+            // 3. TYPE BADGE (Top Right)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _getTypeColor(type), // Solid brand color
+                  borderRadius: BorderRadius.circular(20), // Pill shape
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))
+                  ]
+                ),
+                child: Text(
+                  type.toUpperCase(),
+                  style: GoogleFonts.lato(
+                    fontSize: 9, 
+                    fontWeight: FontWeight.w900, 
+                    color: Colors.white,
+                    letterSpacing: 0.5
+                  ),
+                ),
+              ),
+            ),
+
+            // 4. CONTENT (Bottom)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(14.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Date (Subtle)
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 10, color: Colors.white.withOpacity(0.8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          formattedDate.toUpperCase(),
+                          style: GoogleFonts.lato(
+                            fontSize: 10, 
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white.withOpacity(0.9), 
+                            letterSpacing: 0.5
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 6),
+
+                    // Title (White Text always, because it's on dark gradient)
+                    Text(
+                      _toTitleCase(title),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.lato(
+                        fontSize: 15, 
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white, 
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 5. RIPPLE EFFECT (For Interaction)
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    final Map<String, dynamic> safeEventData = {
+                      ...event,
+                      '_id': (event['_id'] ?? event['id'] ?? '').toString(),
+                      'date': formattedDate,
+                      'rawDate': rawDate,
+                    };
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

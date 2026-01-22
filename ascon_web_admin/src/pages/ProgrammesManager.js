@@ -17,9 +17,10 @@ function ProgrammesManager({ token, canEdit }) {
   const [showForm, setShowForm] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
+
+  // ✅ REMOVED 'code' from initial state
   const [progForm, setProgForm] = useState({
     title: "",
-    code: "",
     description: "",
     location: "ASCON Complex, Badagry",
     duration: "",
@@ -37,9 +38,9 @@ function ProgrammesManager({ token, canEdit }) {
 
   const resetForm = () => {
     setEditingId(null);
+    // ✅ REMOVED 'code' from reset
     setProgForm({
       title: "",
-      code: "",
       description: "",
       location: "ASCON Complex, Badagry",
       duration: "",
@@ -51,7 +52,8 @@ function ProgrammesManager({ token, canEdit }) {
   };
 
   const sanitizePayload = (data) => {
-    const { _id, id, createdAt, updatedAt, __v, ...cleanData } = data;
+    // Explicitly destructure to remove 'code' or other unwanted fields
+    const { _id, id, createdAt, updatedAt, __v, code, ...cleanData } = data;
     return cleanData;
   };
 
@@ -77,7 +79,10 @@ function ProgrammesManager({ token, canEdit }) {
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error(err);
-      showToast("Error saving programme", "error");
+      showToast(
+        err.response?.data?.message || "Error saving programme",
+        "error",
+      );
     }
   };
 
@@ -124,7 +129,15 @@ function ProgrammesManager({ token, canEdit }) {
         setShowForm={setShowForm}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
-          setProgForm({ ...prog, image: prog.image || "" });
+          // ✅ Explicitly set fields to avoid bringing back 'code' from old DB records
+          setProgForm({
+            title: prog.title || "",
+            description: prog.description || "",
+            location: prog.location || "ASCON Complex, Badagry",
+            duration: prog.duration || "",
+            fee: prog.fee || "",
+            image: prog.image || "",
+          });
           setShowForm(true); // Open form when editing
           window.scrollTo(0, 0);
         }}

@@ -1,12 +1,12 @@
-import 'dart:convert'; // ✅ Import this
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart'; 
-import 'package:url_launcher/url_launcher.dart'; 
-import 'package:flutter/gestures.dart'; 
-import 'event_registration_screen.dart'; 
-import '../services/data_service.dart'; 
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/gestures.dart';
+import 'event_registration_screen.dart';
+import '../services/data_service.dart';
 
 class EventDetailScreen extends StatefulWidget {
   final Map<String, dynamic> eventData;
@@ -27,7 +27,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _event = widget.eventData;
 
-    // Check if we need to fetch full details
     final String? idToFetch = _event['id'] ?? _event['_id'];
     if ((_event['date'] == null || _event['description'] == null) && idToFetch != null) {
       _fetchFullEventDetails(idToFetch);
@@ -51,22 +50,20 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  // ✅ NEW HELPER: Handles both HTTP URLs and Base64 Strings
-  Widget _buildSafeImage(String? imageUrl) {
+  // ✅ HELPER: Handles both HTTP URLs and Base64 Strings
+  Widget _buildSafeImage(String? imageUrl, {BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(color: Colors.grey[800]);
     }
 
-    // 1. If it's a web URL
     if (imageUrl.startsWith('http')) {
       return Image.network(
         imageUrl,
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
       );
     }
 
-    // 2. If it's Base64 (Database string)
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -74,12 +71,23 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       }
       return Image.memory(
         base64Decode(cleanBase64),
-        fit: BoxFit.cover,
+        fit: fit,
         errorBuilder: (c, e, s) => Container(color: Colors.grey[800]),
       );
     } catch (e) {
       return Container(color: Colors.grey[800]);
     }
+  }
+
+  // ✅ FULL SCREEN NAVIGATOR
+  void _openFullScreenImage(String imageUrl) {
+    if (imageUrl.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenImageViewer(imageUrl: imageUrl),
+      ),
+    );
   }
 
   @override
@@ -91,7 +99,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final dividerColor = Theme.of(context).dividerColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ DATA EXTRACTION
     final String image = _event['image'] ?? _event['imageUrl'] ?? '';
     final String title = _event['title'] ?? 'Event Details';
     
@@ -112,7 +119,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             widget.eventData['id'] ?? 
                             '').toString();
 
-    // ✅ DATE FORMATTING
+    // DATE FORMATTING
     String formattedDate = 'Date to be announced';
     String rawDateString = _event['rawDate'] ?? _event['date'] ?? '';
     DateTime? eventDateObject;
@@ -134,7 +141,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ? const Center(child: CircularProgressIndicator()) 
         : CustomScrollView(
         slivers: [
-          // 1. APP BAR IMAGE
+          // 1. APP BAR IMAGE (NOW CLICKABLE)
           SliverAppBar(
             expandedHeight: 280.0,
             pinned: true,
@@ -173,8 +180,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // ✅ USE SAFE IMAGE HERE
-                  _buildSafeImage(image),
+                  // ✅ MAKE IMAGE TAPPABLE
+                  GestureDetector(
+                    onTap: () => _openFullScreenImage(image),
+                    child: _buildSafeImage(image),
+                  ),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -184,6 +194,38 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ),
                     ),
                   ),
+                  // ✅ "VIEW PHOTO" BADGE
+                  if (image.isNotEmpty)
+                    Positioned(
+                      bottom: 40, // Just above the curved container
+                      right: 16,
+                      child: GestureDetector(
+                        onTap: () => _openFullScreenImage(image),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.fullscreen, color: Colors.white, size: 16),
+                              SizedBox(width: 4),
+                              Text(
+                                "View Photo",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -215,7 +257,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                     child: Text(
                       eventType.toUpperCase(),
-                      style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
+                      style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: 0.5),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -223,7 +265,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   // TITLE
                   Text(
                     title,
-                    style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: textColor, height: 1.2),
+                    style: GoogleFonts.lato(fontSize: 24, fontWeight: FontWeight.w800, color: textColor, height: 1.2),
                   ),
                   const SizedBox(height: 24),
                   
@@ -240,7 +282,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   const SizedBox(height: 30),
                   
                   // DESCRIPTION
-                  Text("About Event", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+                  Text("About Event", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
                   _buildFormattedDescription(description, isDark, primaryColor),
@@ -283,7 +325,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     elevation: 0,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: Text("Register Now", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text("Register Now", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -293,7 +335,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Widget _buildFormattedDescription(String text, bool isDark, Color linkColor) {
-    final baseStyle = GoogleFonts.inter(
+    final baseStyle = GoogleFonts.lato(
       fontSize: 15, 
       height: 1.6, 
       color: isDark ? Colors.grey[300] : Colors.grey[700]
@@ -419,17 +461,65 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             children: [
               Text(
                 label.toUpperCase(),
-                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: subTextColor?.withOpacity(0.7), letterSpacing: 1.0),
+                style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.bold, color: subTextColor?.withOpacity(0.7), letterSpacing: 1.0),
               ),
               const SizedBox(height: 4),
               Text(
                 value,
-                style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: textColor, height: 1.3),
+                style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.w600, color: textColor, height: 1.3),
               ),
             ],
           ),
         ),
       ],
     );
+  }
+}
+
+// ✅ NEW: Full Screen Image Viewer Widget
+class FullScreenImageViewer extends StatelessWidget {
+  final String imageUrl;
+
+  const FullScreenImageViewer({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: _buildSafeImage(imageUrl),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSafeImage(String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const Icon(Icons.image_not_supported, color: Colors.white, size: 50);
+    }
+
+    if (imageUrl.startsWith('http')) {
+      return Image.network(imageUrl, fit: BoxFit.contain);
+    }
+
+    try {
+      String cleanBase64 = imageUrl;
+      if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
+      return Image.memory(base64Decode(cleanBase64), fit: BoxFit.contain);
+    } catch (e) {
+      return const Icon(Icons.broken_image, color: Colors.white, size: 50);
+    }
   }
 }

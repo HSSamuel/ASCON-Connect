@@ -94,63 +94,31 @@ function ProgrammesTab({
               </div>
 
               <form onSubmit={handleProgrammeSubmit}>
-                {/* ROW 1: Title & Code */}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    marginBottom: "15px",
-                  }}
-                >
-                  <div style={{ flex: 3 }}>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        color: "#666",
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Programme Title *
-                    </label>
-                    <input
-                      style={{
-                        width: "100%",
-                        padding: "10px",
-                        boxSizing: "border-box",
-                      }}
-                      placeholder="e.g. Regular Course"
-                      value={progForm.title}
-                      onChange={(e) =>
-                        setProgForm({ ...progForm, title: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        color: "#666",
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Code
-                    </label>
-                    <input
-                      style={{
-                        width: "100%",
-                        padding: "10px",
-                        boxSizing: "border-box",
-                      }}
-                      placeholder="e.g. RC"
-                      value={progForm.code}
-                      onChange={(e) =>
-                        setProgForm({ ...progForm, code: e.target.value })
-                      }
-                    />
-                  </div>
+                {/* ROW 1: Title Only (Code Removed) */}
+                <div style={{ marginBottom: "15px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      color: "#666",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    Programme Title *
+                  </label>
+                  <input
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      boxSizing: "border-box",
+                    }}
+                    placeholder="e.g. Regular Course"
+                    value={progForm.title}
+                    onChange={(e) =>
+                      setProgForm({ ...progForm, title: e.target.value })
+                    }
+                    required
+                  />
                 </div>
 
                 {/* ROW 2: Image URL */}
@@ -313,8 +281,7 @@ function ProgrammesTab({
           <thead>
             <tr>
               <th>Image</th>
-              <th style={{ width: "30%" }}>Title</th>
-              <th>Code</th>
+              <th style={{ width: "40%" }}>Title</th>
               <th>Info</th>
               <th>Action</th>
             </tr>
@@ -368,17 +335,7 @@ function ProgrammesTab({
                     </div>
                   )}
                 </td>
-                <td data-label="Code">
-                  <span
-                    className="tag"
-                    style={{
-                      backgroundColor: "#eef2ff",
-                      color: "#4f46e5",
-                    }}
-                  >
-                    {prog.code || "-"}
-                  </span>
-                </td>
+                {/* Code Column Removed */}
                 <td data-label="Info">
                   <div style={{ fontSize: "13px" }}>
                     {prog.duration && <div>⏳ {prog.duration}</div>}

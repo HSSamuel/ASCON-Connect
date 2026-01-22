@@ -6,13 +6,17 @@ const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
 // ==========================================
-// 🛡️ VALIDATION SCHEMA
+// 🛡️ VALIDATION SCHEMA (Fixed)
 // ==========================================
 const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-  location: Joi.string().optional().allow(""), // ✅ Allow location
+
+  // ✅ ADD THIS LINE to fix the error:
+  time: Joi.string().optional().allow(""),
+
+  location: Joi.string().optional().allow(""),
   type: Joi.string()
     .valid(
       "News",
@@ -24,7 +28,7 @@ const eventSchema = Joi.object({
       "Workshop",
       "Symposium",
       "AGM",
-      "Induction"
+      "Induction",
     )
     .default("News"),
   image: Joi.string().optional().allow(""),
@@ -67,7 +71,8 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       title: req.body.title,
       description: req.body.description,
       date: req.body.date,
-      location: req.body.location, // ✅ Save Location
+      time: req.body.time, // ✅ Make sure this is added
+      location: req.body.location,
       type: req.body.type,
       image: req.body.image,
     });
@@ -78,7 +83,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       await sendBroadcastNotification(
         `New ${savedEvent.type}: ${savedEvent.title}`,
         `${savedEvent.description.substring(0, 50)}...`,
-        { route: "event_detail", id: savedEvent._id.toString() }
+        { route: "event_detail", id: savedEvent._id.toString() },
       );
     } catch (notifyErr) {
       console.error("Notification failed:", notifyErr);
@@ -91,9 +96,8 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // @route   PUT /api/events/:id
-// @desc    Update an existing Event (✅ NEW ROUTE)
+// @desc    Update an existing Event
 router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
-  // Validate the new data
   const { error } = eventSchema.validate(req.body);
   if (error) return res.status(400).json({ message: error.details[0].message });
 
@@ -104,11 +108,12 @@ router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
         title: req.body.title,
         description: req.body.description,
         date: req.body.date,
-        location: req.body.location, // ✅ Allow updating location
+        time: req.body.time, // ✅ Make sure this is added
+        location: req.body.location,
         type: req.body.type,
         image: req.body.image,
       },
-      { new: true } // Return the updated document
+      { new: true },
     );
 
     if (!updatedEvent)

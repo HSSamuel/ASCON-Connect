@@ -61,6 +61,7 @@ const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
+  time: Joi.string().optional().allow(""),
   location: Joi.string().optional().allow(""),
   type: Joi.string()
     .valid(
@@ -79,10 +80,10 @@ const eventSchema = Joi.object({
   image: Joi.string().optional().allow(""),
 });
 
+// ✅ UPDATED: Removed 'code' from validation
 const programmeSchema = Joi.object({
   title: Joi.string().min(3).required(),
-  code: Joi.string().optional().allow(""),
-  description: Joi.string().min(10).required(),
+  description: Joi.string().min(5).required(), // Reduced min length to be safe
   location: Joi.string().required(),
   duration: Joi.string().required(),
   fee: Joi.string().optional().allow(""),
@@ -249,12 +250,13 @@ router.post("/events", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { title, description, date, type, image, location } = req.body;
+    const { title, description, date, time, type, image, location } = req.body;
 
     const newEvent = new Event({
       title,
       description,
       date,
+      time,
       type,
       image,
       location,
@@ -304,29 +306,27 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 });
 
 // ==========================================
-// 3. PROGRAMME MANAGEMENT (UPDATED)
+// 3. PROGRAMME MANAGEMENT (UPDATED: Removed Code)
 // ==========================================
 
 router.get("/programmes", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const search = req.query.search || ""; // ✅ Added Search Logic
+    const search = req.query.search || "";
 
     let query = {};
     if (search) {
       query = {
-        $or: [
-          { title: { $regex: search, $options: "i" } },
-          { code: { $regex: search, $options: "i" } },
-        ],
+        // ✅ UPDATED: Search only by Title (Removed 'code' from search)
+        $or: [{ title: { $regex: search, $options: "i" } }],
       };
     }
 
     const skip = (page - 1) * limit;
 
     const programmes = await Programme.find(query)
-      .sort({ createdAt: -1 }) // ✅ CHANGED: Newest First (was title: 1)
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
@@ -354,8 +354,8 @@ router.post("/programmes", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { title, code, description, location, duration, fee, image } =
-      req.body;
+    // ✅ UPDATED: Removed 'code' destructuring
+    const { title, description, location, duration, fee, image } = req.body;
 
     const exists = await Programme.findOne({ title });
     if (exists)
@@ -363,7 +363,7 @@ router.post("/programmes", verifyEditor, async (req, res) => {
 
     const newProg = new Programme({
       title,
-      code,
+      // code, // <-- Removed
       description,
       location,
       duration,
@@ -394,12 +394,12 @@ router.put("/programmes/:id", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    const { title, code, description, location, duration, fee, image } =
-      req.body;
+    // ✅ UPDATED: Removed 'code'
+    const { title, description, location, duration, fee, image } = req.body;
 
     const updatedProg = await Programme.findByIdAndUpdate(
       req.params.id,
-      { title, code, description, location, duration, fee, image },
+      { title, description, location, duration, fee, image },
       { new: true },
     );
     res.json({ message: "Programme updated!", programme: updatedProg });

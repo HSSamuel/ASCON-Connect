@@ -25,7 +25,7 @@ class AboutScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: scaffoldBg, 
       appBar: AppBar(
-        title: Text("About ASCON", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: Text("About ASCON", style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 18)),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -34,7 +34,7 @@ class AboutScreen extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 1. ENHANCED HERO SECTION (Kept Original) ---
+            // --- 1. ENHANCED HERO SECTION ---
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
@@ -60,7 +60,7 @@ class AboutScreen extends StatelessWidget {
                   Text(
                     "Administrative Staff College of Nigeria",
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -77,7 +77,7 @@ class AboutScreen extends StatelessWidget {
                     child: Text(
                       "...the natural place for human capacity building.",
                       textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.lato(
                         color: const Color(0xFFFFD700), // Gold
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
@@ -96,7 +96,7 @@ class AboutScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  // Vision Card (Full Text Restored)
+                  // Vision Card
                   _buildInfoCard(
                     context,
                     icon: Icons.visibility_outlined,
@@ -106,7 +106,7 @@ class AboutScreen extends StatelessWidget {
                   
                   const SizedBox(height: 16),
 
-                  // Mission Card (Full Text Restored)
+                  // Mission Card
                   _buildInfoCard(
                     context,
                     icon: Icons.track_changes_outlined,
@@ -116,7 +116,7 @@ class AboutScreen extends StatelessWidget {
                   
                   const SizedBox(height: 16),
 
-                  // Contact Card (Kept Original)
+                  // Contact Card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -132,7 +132,7 @@ class AboutScreen extends StatelessWidget {
                       children: [
                           Text(
                           "Contact Information",
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.lato(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: primaryColor,
@@ -152,10 +152,10 @@ class AboutScreen extends StatelessWidget {
 
                   const SizedBox(height: 30),
 
-                  // ✅ 3. NEW SOCIAL MEDIA SECTION (Added Here)
+                  // ✅ 3. NEW SOCIAL MEDIA SECTION
                   Text(
                     "Connect with ASCON", 
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                       fontSize: 14, 
                       fontWeight: FontWeight.bold, 
                       color: Colors.grey[600]
@@ -181,7 +181,7 @@ class AboutScreen extends StatelessWidget {
 
                   const SizedBox(height: 30),
 
-                  // Visit Button (Kept Original)
+                  // Visit Button
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -195,7 +195,7 @@ class AboutScreen extends StatelessWidget {
                       ),
                       child: Text(
                         "VISIT OFFICIAL WEBSITE",
-                        style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 14),
+                        style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14),
                       ),
                     ),
                   ),
@@ -204,7 +204,7 @@ class AboutScreen extends StatelessWidget {
                   
                   Text(
                     "ASCON Alumni App v1.1.0",
-                    style: GoogleFonts.inter(color: Colors.grey[400], fontSize: 12),
+                    style: GoogleFonts.lato(color: Colors.grey[400], fontSize: 12),
                   ),
                   const SizedBox(height: 40),
                 ],
@@ -216,7 +216,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER: Info Card (Original) ---
+  // --- HELPER: Info Card ---
   Widget _buildInfoCard(BuildContext context, {required IconData icon, required String title, required String content}) {
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
@@ -248,7 +248,7 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             title,
-            style: GoogleFonts.inter(
+            style: GoogleFonts.lato(
               fontSize: 16,
               fontWeight: FontWeight.bold,
               color: textColor,
@@ -258,7 +258,7 @@ class AboutScreen extends StatelessWidget {
           Text(
             content,
             textAlign: TextAlign.justify, 
-            style: GoogleFonts.inter(
+            style: GoogleFonts.lato(
               fontSize: 14,
               height: 1.5,
               color: subTextColor,
@@ -269,7 +269,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- HELPER: Contact Row (Original) ---
+  // --- HELPER: Contact Row ---
   Widget _buildContactRow(BuildContext context, IconData icon, String text, {VoidCallback? onTap}) {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     
@@ -284,7 +284,7 @@ class AboutScreen extends StatelessWidget {
             child: Text(
               text,
               textAlign: TextAlign.center, 
-              style: GoogleFonts.inter(
+              style: GoogleFonts.lato(
                 fontSize: 14, 
                 color: onTap != null ? Theme.of(context).primaryColor : textColor, 
                 fontWeight: FontWeight.w500,
@@ -297,7 +297,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  // --- NEW HELPER: Social Icon ---
+  // --- HELPER: Social Icon ---
   Widget _buildSocialIcon(IconData icon, Color color, String url) {
     return InkWell(
       onTap: () => _launchURL(url),

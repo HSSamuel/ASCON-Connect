@@ -9,15 +9,16 @@ import {
   FaCalendarAlt,
   FaExclamationTriangle,
   FaMapMarkerAlt,
+  FaClock,
 } from "react-icons/fa";
-// Ensure you have this CSS file or add the styles to your global CSS
 import "./EventsManager.css";
 import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
 import * as XLSX from "xlsx";
 import SkeletonTable from "../components/SkeletonTable";
 
-const BASE_URL = process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+const BASE_URL =
+  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function EventsManager({ token, canEdit }) {
   // ==========================
@@ -32,7 +33,7 @@ function EventsManager({ token, canEdit }) {
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
-  // Form State (Includes Location)
+  // Form State (✅ Added 'time' field)
   const [eventForm, setEventForm] = useState({
     title: "",
     description: "",
@@ -40,6 +41,7 @@ function EventsManager({ token, canEdit }) {
     image: "",
     location: "",
     date: "",
+    time: "",
   });
 
   const showToast = (message, type = "success") => setToast({ message, type });
@@ -50,7 +52,6 @@ function EventsManager({ token, canEdit }) {
   const fetchEvents = useCallback(async () => {
     try {
       const res = await axios.get(`${BASE_URL}/api/events`);
-      // Handle various response structures
       const data = Array.isArray(res.data)
         ? res.data
         : res.data.events || res.data.data || [];
@@ -83,6 +84,7 @@ function EventsManager({ token, canEdit }) {
       image: "",
       location: "",
       date: "",
+      time: "", // ✅ Reset Time
     });
   };
 
@@ -94,8 +96,8 @@ function EventsManager({ token, canEdit }) {
       type: event.type,
       image: event.image || "",
       location: event.location || "",
-      // Format date for HTML date input (YYYY-MM-DD)
       date: event.date ? new Date(event.date).toISOString().split("T")[0] : "",
+      time: event.time || "", // ✅ Load existing time
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -108,7 +110,6 @@ function EventsManager({ token, canEdit }) {
 
     try {
       const payload = { ...eventForm };
-      // Ensure date is present
       if (!payload.date) payload.date = new Date();
 
       if (editingId) {
@@ -156,8 +157,6 @@ function EventsManager({ token, canEdit }) {
   // ==========================
   // 5. RENDER HELPERS
   // ==========================
-
-  // Style for the new Image Column
   const thumbnailStyle = {
     width: "60px",
     height: "40px",
@@ -171,7 +170,6 @@ function EventsManager({ token, canEdit }) {
 
   return (
     <div className="events-container">
-      {/* Toast Notification */}
       {toast && (
         <Toast
           message={toast.message}
@@ -180,7 +178,6 @@ function EventsManager({ token, canEdit }) {
         />
       )}
 
-      {/* Delete Confirmation */}
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Delete Event"
@@ -189,7 +186,6 @@ function EventsManager({ token, canEdit }) {
         onConfirm={handleDelete}
       />
 
-      {/* Header & Actions */}
       <div className="table-header">
         <h2>Events Management</h2>
         <div className="header-actions">
@@ -210,7 +206,6 @@ function EventsManager({ token, canEdit }) {
         </div>
       </div>
 
-      {/* Form Section */}
       {showForm && (
         <div className="form-card fade-in">
           <h3>{editingId ? "Edit Event" : "Create New Event"}</h3>
@@ -233,16 +228,36 @@ function EventsManager({ token, canEdit }) {
                 <option value="Event">Event</option>
                 <option value="Webinar">Webinar</option>
                 <option value="Reunion">Reunion</option>
+                <option value="Seminar">Seminar</option> {/* Added Seminar */}
                 <option value="Conference">Conference</option>
                 <option value="Workshop">Workshop</option>
+                <option value="Symposium">Symposium</option>{" "}
+                {/* Added Symposium */}
+                <option value="AGM">AGM</option> {/* Added AGM */}
+                <option value="Induction">Induction</option>{" "}
+                {/* Added Induction */}
               </select>
-              <input
-                type="date"
-                name="date"
-                value={eventForm.date}
-                onChange={handleInputChange}
-                required
-              />
+
+              {/* ✅ DATE & TIME ROW */}
+              <div style={{ display: "flex", gap: "10px" }}>
+                <input
+                  type="date"
+                  name="date"
+                  value={eventForm.date}
+                  onChange={handleInputChange}
+                  required
+                  style={{ flex: 1 }}
+                />
+                <input
+                  type="text" // Using text to allow "10:00 AM" or "All Day" freely
+                  name="time"
+                  placeholder="Time (e.g. 10:00 AM)"
+                  value={eventForm.time}
+                  onChange={handleInputChange}
+                  style={{ flex: 1 }}
+                />
+              </div>
+
               <input
                 type="text"
                 name="location"
@@ -280,15 +295,14 @@ function EventsManager({ token, canEdit }) {
         </div>
       )}
 
-      {/* Events Table */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
             <tr>
-              <th>Image</th> {/* ✅ 1. Added Image Column */}
+              <th>Image</th>
               <th>Title</th>
               <th>Type</th>
-              <th>Date</th>
+              <th>Date & Time</th> {/* ✅ Merged Header */}
               <th>Location</th>
               <th>Status</th>
               <th>Actions</th>
@@ -297,7 +311,6 @@ function EventsManager({ token, canEdit }) {
           <tbody>
             {events.length > 0 ? (
               events.map((event) => {
-                // Status Logic
                 const eventDate = new Date(event.date);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
@@ -333,7 +346,6 @@ function EventsManager({ token, canEdit }) {
 
                 return (
                   <tr key={event._id}>
-                    {/* ✅ 2. Render Image Thumbnail */}
                     <td>
                       <img
                         src={event.image}
@@ -351,11 +363,33 @@ function EventsManager({ token, canEdit }) {
                       <span className="event-type-badge">{event.type}</span>
                     </td>
                     <td>
-                      {eventDate.toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          fontSize: "0.9em",
+                        }}
+                      >
+                        <span>
+                          {eventDate.toLocaleDateString("en-GB", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                        {/* ✅ Display Time */}
+                        <span
+                          style={{
+                            color: "#666",
+                            fontSize: "0.85em",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <FaClock size={10} /> {event.time || "10:00 AM"}
+                        </span>
+                      </div>
                     </td>
                     <td className="text-muted">
                       {event.location ? (

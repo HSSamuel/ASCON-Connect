@@ -145,7 +145,7 @@ class JobDetailScreen extends StatelessWidget {
                           children: [
                             Text(
                               job['title'] ?? "Untitled Role",
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.lato(
                                 fontSize: 22, 
                                 fontWeight: FontWeight.w800,
                                 color: textColor,
@@ -155,7 +155,7 @@ class JobDetailScreen extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               job['company'] ?? "Unknown Company",
-                              style: GoogleFonts.inter(
+                              style: GoogleFonts.lato(
                                 fontSize: 16, 
                                 color: subTextColor, 
                                 fontWeight: FontWeight.w500
@@ -189,7 +189,7 @@ class JobDetailScreen extends StatelessWidget {
                   // --- DESCRIPTION ---
                   Text(
                     "Job Description",
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                       fontSize: 18, 
                       fontWeight: FontWeight.bold,
                       color: textColor
@@ -199,7 +199,7 @@ class JobDetailScreen extends StatelessWidget {
                   
                   Text(
                     job['description'] ?? "No description available.",
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                       fontSize: 16, 
                       height: 1.6,
                       color: isDark ? Colors.grey[300] : Colors.grey[800]

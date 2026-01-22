@@ -71,7 +71,7 @@ class AlumniDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: scaffoldBg,
       appBar: AppBar(
-        title: Text("Alumni Profile", style: GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 18)),
+        title: Text("Alumni Profile", style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 18)),
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -149,7 +149,7 @@ class AlumniDetailScreen extends StatelessWidget {
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                       fontSize: 22, 
                       fontWeight: FontWeight.bold, 
                       color: textColor // Uses our forced color
@@ -167,7 +167,7 @@ class AlumniDetailScreen extends StatelessWidget {
                         Flexible(
                           child: Text(
                             "$job${(job.isNotEmpty && org.isNotEmpty) ? ' at ' : ''}$org",
-                            style: GoogleFonts.inter(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
+                            style: GoogleFonts.lato(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -186,7 +186,7 @@ class AlumniDetailScreen extends StatelessWidget {
                     ),
                     child: Text(
                       "Class of $year",
-                      style: GoogleFonts.inter(color: const Color(0xFFB8860B), fontWeight: FontWeight.bold, fontSize: 12),
+                      style: GoogleFonts.lato(color: const Color(0xFFB8860B), fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                   ),
                 ],
@@ -236,7 +236,7 @@ class AlumniDetailScreen extends StatelessWidget {
                             const SizedBox(width: 8),
                             Text(
                               "About Me",
-                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+                              style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
                             ),
                           ],
                         ),
@@ -244,7 +244,7 @@ class AlumniDetailScreen extends StatelessWidget {
                         // ✅ BIO TEXT
                         Text(
                           bio,
-                          style: GoogleFonts.inter(fontSize: 14, height: 1.6, color: subTextColor),
+                          style: GoogleFonts.lato(fontSize: 14, height: 1.6, color: subTextColor),
                           textAlign: TextAlign.justify,
                         ),
                       ],
@@ -283,12 +283,12 @@ class AlumniDetailScreen extends StatelessWidget {
                             children: [
                               Text(
                                 "Programme Attended",
-                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: subTextColor),
+                                style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w600, color: subTextColor),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 programme,
-                                style: GoogleFonts.inter(
+                                style: GoogleFonts.lato(
                                   fontSize: 14, 
                                   fontWeight: FontWeight.bold, 
                                   color: programme == 'Not Specified' ? Colors.grey : textColor
@@ -338,7 +338,7 @@ class AlumniDetailScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             label,
-            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+            style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey[600]),
           ),
         ],
       ),

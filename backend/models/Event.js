@@ -14,15 +14,19 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  // ✅ NEW FIELD: Location
+  // ✅ NEW: Explicit Time Field
+  time: {
+    type: String, 
+    trim: true,
+    default: "10:00 AM", // A sensible default if omitted
+  },
   location: {
     type: String,
     trim: true,
-    default: "ASCON Complex, Topo-Badagry", // Default fallback if admin leaves it empty
+    default: "ASCON Complex, Topo-Badagry",
   },
   type: {
     type: String,
-    // ✅ UPDATE: Added new professional terms
     enum: [
       "News",
       "Event",

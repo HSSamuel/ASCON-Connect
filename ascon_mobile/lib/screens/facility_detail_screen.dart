@@ -247,7 +247,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                       Expanded(
                         child: Text(
                           widget.facility['name'] ?? "Facility",
-                          style: GoogleFonts.inter(
+                          style: GoogleFonts.lato(
                               fontSize: 24, fontWeight: FontWeight.w800),
                         ),
                       ),
@@ -258,7 +258,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
 
                   Text(
                     description,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.lato(
                         fontSize: 15,
                         height: 1.5,
                         color: isDark ? Colors.grey[300] : Colors.grey[700]),
@@ -266,7 +266,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                   const SizedBox(height: 25),
 
                   Text("Key Amenities",
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.lato(
                           fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 10),
                   Wrap(
@@ -299,7 +299,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("Booking Details",
-                            style: GoogleFonts.inter(
+                            style: GoogleFonts.lato(
                                 fontSize: 16, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 15),
 
@@ -362,7 +362,7 @@ class _FacilityDetailScreenState extends State<FacilityDetailScreen> {
 
                   if (rates.isNotEmpty) ...[
                     Text("Official Rates",
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.lato(
                             fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 10),
                     ...rates.map((rate) => _buildRateCard(rate, isDark)),
