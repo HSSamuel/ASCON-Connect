@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import axios from "axios";
+import api from "../api"; // ✅ Import centralized API
 import { FaTrash, FaEdit, FaTimes, FaLink } from "react-icons/fa";
 import "./FacilitiesTab.css";
 import Toast from "../Toast";
@@ -11,11 +11,8 @@ function FacilitiesTab({ onRefreshStats }) {
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
-  // ✅ 1. NEW STATE: Loading state
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // UI STATE
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
@@ -28,35 +25,26 @@ function FacilitiesTab({ onRefreshStats }) {
 
   const [rates, setRates] = useState([{ type: "", naira: "", dollar: "" }]);
 
-  const API_URL =
-    process.env.REACT_APP_API_URL || "https://ascon-connect-api.onrender.com";
-  const token = localStorage.getItem("auth_token");
-
   // Fetch Facilities
   const fetchFacilities = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/facilities`);
+      const res = await api.get("/api/facilities");
       setFacilities(res.data.data || []);
       setIsLoading(false);
     } catch (err) {
       console.error("Error fetching facilities:", err);
       setIsLoading(false);
     }
-  }, [API_URL]);
+  }, []);
 
   useEffect(() => {
     fetchFacilities();
   }, [fetchFacilities]);
 
-  // Toast Helper
-  const showToast = (message, type = "success") => {
-    setToast({ message, type });
-  };
+  const showToast = (message, type = "success") => setToast({ message, type });
 
-  // Form Handlers
-  const handleInputChange = (e) => {
+  const handleInputChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleRateChange = (index, e) => {
     const newRates = [...rates];
@@ -64,16 +52,11 @@ function FacilitiesTab({ onRefreshStats }) {
     setRates(newRates);
   };
 
-  const addRateRow = () => {
+  const addRateRow = () =>
     setRates([...rates, { type: "", naira: "", dollar: "" }]);
-  };
+  const removeRateRow = (index) =>
+    setRates(rates.filter((_, i) => i !== index));
 
-  const removeRateRow = (index) => {
-    const newRates = rates.filter((_, i) => i !== index);
-    setRates(newRates);
-  };
-
-  // Edit Mode
   const handleEdit = (facility) => {
     setEditingId(facility._id);
     setFormData({
@@ -87,16 +70,10 @@ function FacilitiesTab({ onRefreshStats }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Toggle Status Logic
   const toggleStatus = async (facility) => {
     try {
       const newStatus = !facility.isActive;
-      await axios.put(
-        `${API_URL}/api/facilities/${facility._id}`,
-        { isActive: newStatus },
-        { headers: { "auth-token": token } },
-      );
-
+      await api.put(`/api/facilities/${facility._id}`, { isActive: newStatus });
       showToast(`Facility ${newStatus ? "Enabled" : "Disabled"}`, "success");
       fetchFacilities();
     } catch (err) {
@@ -104,34 +81,23 @@ function FacilitiesTab({ onRefreshStats }) {
     }
   };
 
-  // Delete Logic
-  const confirmDelete = (id) => {
-    setDeleteModal({ show: true, id });
-  };
+  const confirmDelete = (id) => setDeleteModal({ show: true, id });
 
   const handleDelete = async () => {
-    const id = deleteModal.id;
-    // ✅ Start Loading
     setIsSubmitting(true);
-
     try {
-      await axios.delete(`${API_URL}/api/facilities/${id}`, {
-        headers: { "auth-token": token },
-      });
+      await api.delete(`/api/facilities/${deleteModal.id}`);
       showToast("Facility Deleted Successfully!", "success");
       fetchFacilities();
-
       if (onRefreshStats) onRefreshStats();
     } catch (err) {
       showToast("Failed to delete facility", "error");
     } finally {
-      // ✅ Stop Loading
       setIsSubmitting(false);
       setDeleteModal({ show: false, id: null });
     }
   };
 
-  // Reset Logic
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
@@ -140,48 +106,30 @@ function FacilitiesTab({ onRefreshStats }) {
   };
 
   const toggleForm = () => {
-    if (showForm) {
-      resetForm();
-    } else {
-      setShowForm(true);
-    }
+    if (showForm) resetForm();
+    else setShowForm(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.image) {
-      showToast("Name and Image are required!", "error");
-      return;
-    }
-
-    // ✅ Start Loading
+    if (!formData.name || !formData.image)
+      return showToast("Name and Image are required!", "error");
     setIsSubmitting(true);
 
     try {
       if (editingId) {
-        await axios.put(
-          `${API_URL}/api/facilities/${editingId}`,
-          { ...formData, rates },
-          { headers: { "auth-token": token } },
-        );
+        await api.put(`/api/facilities/${editingId}`, { ...formData, rates });
         showToast("Facility Updated Successfully!", "success");
       } else {
-        await axios.post(
-          `${API_URL}/api/facilities`,
-          { ...formData, rates },
-          { headers: { "auth-token": token } },
-        );
+        await api.post("/api/facilities", { ...formData, rates });
         showToast("Facility Added Successfully!", "success");
       }
-
       resetForm();
       fetchFacilities();
-
       if (onRefreshStats) onRefreshStats();
     } catch (err) {
       showToast(err.response?.data?.message || "Operation failed", "error");
     } finally {
-      // ✅ Stop Loading
       setIsSubmitting(false);
     }
   };
@@ -197,16 +145,14 @@ function FacilitiesTab({ onRefreshStats }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Delete Facility"
-        message="Are you sure you want to remove this facility?"
+        message="Are you sure?"
         confirmText="Delete"
         isDanger={true}
         onConfirm={handleDelete}
         onCancel={() => setDeleteModal({ show: false, id: null })}
-        // ✅ Pass loading
         isLoading={isSubmitting}
       />
 
@@ -238,7 +184,6 @@ function FacilitiesTab({ onRefreshStats }) {
                 onChange={handleInputChange}
                 required
               />
-
               <input
                 type="text"
                 name="paymentUrl"
@@ -247,7 +192,6 @@ function FacilitiesTab({ onRefreshStats }) {
                 onChange={handleInputChange}
                 style={{ gridColumn: "1 / -1" }}
               />
-
               <textarea
                 name="description"
                 placeholder="Description"
@@ -263,9 +207,7 @@ function FacilitiesTab({ onRefreshStats }) {
                 }}
               />
             </div>
-
             <div className="form-section-title">Rental Rates</div>
-
             <div className="rates-container">
               {rates.map((rate, index) => (
                 <div key={index} className="rate-row">
@@ -309,9 +251,7 @@ function FacilitiesTab({ onRefreshStats }) {
                 + Add Another Rate
               </button>
             </div>
-
             <div className="form-actions">
-              {/* ✅ SPINNER BUTTON */}
               <button
                 type="submit"
                 className="approve-btn"
@@ -340,7 +280,6 @@ function FacilitiesTab({ onRefreshStats }) {
         </div>
       )}
 
-      {/* Table (Unchanged) */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
@@ -380,7 +319,7 @@ function FacilitiesTab({ onRefreshStats }) {
                     {fac.rates && fac.rates.length > 0 ? (
                       fac.rates.map((r, i) => (
                         <div key={i} className="rate-item">
-                          <span className="rate-type">{r.type}:</span>
+                          <span className="rate-type">{r.type}:</span>{" "}
                           <strong>₦{r.naira}</strong> / ${r.dollar}
                         </div>
                       ))
@@ -390,9 +329,7 @@ function FacilitiesTab({ onRefreshStats }) {
                   </td>
                   <td>
                     <span
-                      className={`status-badge ${
-                        fac.isActive ? "active" : "inactive"
-                      }`}
+                      className={`status-badge ${fac.isActive ? "active" : "inactive"}`}
                       onClick={() => toggleStatus(fac)}
                       title="Click to toggle status"
                       style={{ cursor: "pointer" }}

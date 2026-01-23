@@ -1,8 +1,9 @@
-import 'dart:convert'; 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart'; 
-import '../services/data_service.dart'; 
+import 'package:google_fonts/google_fonts.dart';
+import '../services/data_service.dart';
+import '../widgets/skeleton_loader.dart'; // ✅ Import Skeleton Loader
 import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -13,7 +14,7 @@ class EventsScreen extends StatefulWidget {
 }
 
 class _EventsScreenState extends State<EventsScreen> {
-  final DataService _dataService = DataService(); 
+  final DataService _dataService = DataService();
   
   List<dynamic> _events = [];
   bool _isLoading = true;
@@ -25,6 +26,9 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<void> _loadEvents() async {
+    // Optional: Add artificial delay to test skeleton
+    // await Future.delayed(const Duration(seconds: 2));
+    
     final events = await _dataService.fetchEvents();
     
     if (mounted) {
@@ -35,7 +39,7 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  // ✅ FIXED: Robust Title Casing
+  // ✅ FIXED: Robust Title Casing (Preserves ASCON)
   String _toTitleCase(String text) {
     if (text.isEmpty) return text;
     
@@ -74,7 +78,7 @@ class _EventsScreenState extends State<EventsScreen> {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
         color: Colors.grey[900],
-        child: Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white24, size: 40)),
+        child: const Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white24, size: 40)),
       );
     }
 
@@ -84,7 +88,7 @@ class _EventsScreenState extends State<EventsScreen> {
         fit: BoxFit.cover,
         errorBuilder: (c, e, s) => Container(
           color: Colors.grey[900],
-          child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
+          child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
         ),
       );
     }
@@ -99,13 +103,13 @@ class _EventsScreenState extends State<EventsScreen> {
         fit: BoxFit.cover,
         errorBuilder: (c, e, s) => Container(
           color: Colors.grey[900],
-          child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
+          child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
         ),
       );
     } catch (e) {
       return Container(
         color: Colors.grey[900],
-        child: Center(child: Icon(Icons.error_outline, color: Colors.white24, size: 40)),
+        child: const Center(child: Icon(Icons.error_outline, color: Colors.white24, size: 40)),
       );
     }
   }
@@ -131,13 +135,14 @@ class _EventsScreenState extends State<EventsScreen> {
       body: RefreshIndicator(
         onRefresh: _loadEvents,
         color: primaryColor,
+        // ✅ 1. SKELETON LOADING
         child: _isLoading
-            ? Center(child: CircularProgressIndicator(color: primaryColor))
+            ? const EventSkeletonList() 
             : _events.isEmpty
                 ? _buildEmptyState()
                 : GridView.builder( 
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 220, 
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
@@ -175,7 +180,7 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // ✅ 100% PRO: IMMERSIVE CARD DESIGN (CENTERED)
+  // ✅ 100% PRO: IMMERSIVE CARD DESIGN
   Widget _buildImmersiveEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -256,7 +261,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
             ),
 
-            // 4. CONTENT (Bottom - CENTERED)
+            // 4. CONTENT (Bottom)
             Positioned(
               bottom: 0,
               left: 0,
@@ -264,8 +269,7 @@ class _EventsScreenState extends State<EventsScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(14.0),
                 child: Column(
-                  // ✅ CENTER EVERYTHING
-                  crossAxisAlignment: CrossAxisAlignment.center, 
+                  crossAxisAlignment: CrossAxisAlignment.center, // ✅ Centered
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Date (Centered Row)

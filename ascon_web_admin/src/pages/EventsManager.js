@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import axios from "axios";
+import api from "../api"; // ✅ Import centralized API
 import {
   FaTrash,
   FaEdit,
@@ -17,26 +17,16 @@ import ConfirmModal from "../ConfirmModal";
 import * as XLSX from "xlsx";
 import SkeletonTable from "../components/SkeletonTable";
 
-const BASE_URL =
-  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
-
-function EventsManager({ token, canEdit }) {
-  // ==========================
-  // 1. STATE MANAGEMENT
-  // ==========================
+function EventsManager({ canEdit }) {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-
-  // ✅ NEW: Track form submission loading state
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // UI Feedback
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
-  // Form State
   const [eventForm, setEventForm] = useState({
     title: "",
     description: "",
@@ -49,12 +39,9 @@ function EventsManager({ token, canEdit }) {
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
-  // ==========================
-  // 2. DATA FETCHING
-  // ==========================
   const fetchEvents = useCallback(async () => {
     try {
-      const res = await axios.get(`${BASE_URL}/api/events`);
+      const res = await api.get("/api/events");
       const data = Array.isArray(res.data)
         ? res.data
         : res.data.events || res.data.data || [];
@@ -70,12 +57,8 @@ function EventsManager({ token, canEdit }) {
     fetchEvents();
   }, [fetchEvents]);
 
-  // ==========================
-  // 3. FORM HANDLERS
-  // ==========================
-  const handleInputChange = (e) => {
+  const handleInputChange = (e) =>
     setEventForm({ ...eventForm, [e.target.name]: e.target.value });
-  };
 
   const resetForm = () => {
     setEditingId(null);
@@ -110,8 +93,6 @@ function EventsManager({ token, canEdit }) {
     e.preventDefault();
     if (eventForm.title.length < 5)
       return showToast("Title must be at least 5 chars", "error");
-
-    // ✅ Start Loading
     setIsSubmitting(true);
 
     try {
@@ -119,43 +100,30 @@ function EventsManager({ token, canEdit }) {
       if (!payload.date) payload.date = new Date();
 
       if (editingId) {
-        await axios.put(`${BASE_URL}/api/admin/events/${editingId}`, payload, {
-          headers: { "auth-token": token },
-        });
+        await api.put(`/api/admin/events/${editingId}`, payload);
         showToast("Event updated successfully");
       } else {
-        await axios.post(`${BASE_URL}/api/admin/events`, payload, {
-          headers: { "auth-token": token },
-        });
+        await api.post("/api/admin/events", payload);
         showToast("Event created successfully");
       }
       resetForm();
       fetchEvents();
     } catch (err) {
-      console.error(err);
       showToast(err.response?.data?.message || "Error saving event", "error");
     } finally {
-      // ✅ Stop Loading
       setIsSubmitting(false);
     }
   };
 
-  // ==========================
-  // 4. DELETE LOGIC
-  // ==========================
   const handleDelete = async () => {
-    // ✅ Start Loading
     setIsSubmitting(true);
     try {
-      await axios.delete(`${BASE_URL}/api/admin/events/${deleteModal.id}`, {
-        headers: { "auth-token": token },
-      });
+      await api.delete(`/api/admin/events/${deleteModal.id}`);
       showToast("Event deleted successfully");
       fetchEvents();
     } catch (err) {
       showToast("Delete failed", "error");
     } finally {
-      // ✅ Stop Loading & Close Modal
       setIsSubmitting(false);
       setDeleteModal({ show: false, id: null });
     }
@@ -168,9 +136,6 @@ function EventsManager({ token, canEdit }) {
     XLSX.writeFile(workbook, "ASCON_Events.xlsx");
   };
 
-  // ==========================
-  // 5. RENDER HELPERS
-  // ==========================
   const thumbnailStyle = {
     width: "60px",
     height: "40px",
@@ -191,15 +156,13 @@ function EventsManager({ token, canEdit }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Delete Event"
         message="Are you sure? This cannot be undone."
         onClose={() => setDeleteModal({ show: false, id: null })}
         onConfirm={handleDelete}
-        // ✅ Pass loading state to ConfirmModal (if supported)
-        isLoading={isSubmitting} 
+        isLoading={isSubmitting}
       />
 
       <div className="table-header">
@@ -251,8 +214,6 @@ function EventsManager({ token, canEdit }) {
                 <option value="AGM">AGM</option>
                 <option value="Induction">Induction</option>
               </select>
-
-              {/* ✅ DATE & TIME ROW */}
               <div style={{ display: "flex", gap: "10px" }}>
                 <input
                   type="date"
@@ -271,11 +232,10 @@ function EventsManager({ token, canEdit }) {
                   style={{ flex: 1 }}
                 />
               </div>
-
               <input
                 type="text"
                 name="location"
-                placeholder="Location (e.g. ASCON Complex)"
+                placeholder="Location"
                 value={eventForm.location}
                 onChange={handleInputChange}
               />
@@ -289,7 +249,7 @@ function EventsManager({ token, canEdit }) {
               />
               <textarea
                 name="description"
-                placeholder="Event Description"
+                placeholder="Description"
                 value={eventForm.description}
                 onChange={handleInputChange}
                 rows="3"
@@ -298,22 +258,26 @@ function EventsManager({ token, canEdit }) {
               />
             </div>
             <div className="form-actions">
-              {/* ✅ UPDATED BUTTON with Spinner */}
-              <button type="submit" className="save-btn" disabled={isSubmitting}>
+              <button
+                type="submit"
+                className="save-btn"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? (
                   <>
                     <span className="loading-spinner"></span> Saving...
                   </>
+                ) : editingId ? (
+                  "Update Event"
                 ) : (
-                  editingId ? "Update Event" : "Save Event"
+                  "Save Event"
                 )}
               </button>
-              
-              <button 
-                type="button" 
-                onClick={resetForm} 
+              <button
+                type="button"
+                onClick={resetForm}
                 className="cancel-btn"
-                disabled={isSubmitting} // Disable cancel while saving
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
@@ -343,40 +307,38 @@ function EventsManager({ token, canEdit }) {
                 today.setHours(0, 0, 0, 0);
                 const timeDiff = eventDate.getTime() - today.getTime();
                 const daysDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
                 let status;
-                if (daysDiff < 0) {
+                if (daysDiff < 0)
                   status = {
                     label: "Past",
                     class: "status-past",
                     icon: <FaTimesCircle />,
                   };
-                } else if (daysDiff === 0) {
+                else if (daysDiff === 0)
                   status = {
                     label: "Today",
                     class: "status-today",
                     icon: <FaCheckCircle />,
                   };
-                } else if (daysDiff <= 7) {
+                else if (daysDiff <= 7)
                   status = {
                     label: "Upcoming",
                     class: "status-upcoming",
                     icon: <FaExclamationTriangle />,
                   };
-                } else {
+                else
                   status = {
                     label: "Scheduled",
                     class: "status-scheduled",
                     icon: <FaCalendarAlt />,
                   };
-                }
 
                 return (
                   <tr key={event._id}>
                     <td>
                       <img
                         src={event.image}
-                        alt={event.title}
+                        alt=""
                         style={thumbnailStyle}
                         onError={(e) => {
                           e.target.onerror = null;
@@ -438,7 +400,6 @@ function EventsManager({ token, canEdit }) {
                           <button
                             onClick={() => handleEdit(event)}
                             className="edit-btn compact-btn"
-                            title="Edit"
                           >
                             <FaEdit />
                           </button>
@@ -447,7 +408,6 @@ function EventsManager({ token, canEdit }) {
                               setDeleteModal({ show: true, id: event._id })
                             }
                             className="delete-btn compact-btn"
-                            title="Delete"
                           >
                             <FaTrash />
                           </button>

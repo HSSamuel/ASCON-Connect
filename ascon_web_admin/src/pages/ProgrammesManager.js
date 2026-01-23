@@ -1,25 +1,21 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api"; // ✅ Import centralized API
 import ProgrammesTab from "../components/ProgrammesTab";
 import ConfirmModal from "../ConfirmModal";
 import Toast from "../Toast";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 
-const BASE_URL =
-  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+// Note: usePaginatedFetch might still use raw axios if not refactored.
+// For now, let's focus on the mutations (POST/PUT/DELETE) which are handled here.
 
-function ProgrammesManager({ token, canEdit }) {
+function ProgrammesManager({ canEdit }) {
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  // ✅ 1. NEW STATE: Controls form visibility & Loading
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [editingId, setEditingId] = useState(null);
 
-  // ✅ REMOVED 'code' from initial state
   const [progForm, setProgForm] = useState({
     title: "",
     description: "",
@@ -29,9 +25,14 @@ function ProgrammesManager({ token, canEdit }) {
     image: "",
   });
 
+  // Since usePaginatedFetch is a custom hook, we pass the *endpoint* only if we updated the hook.
+  // Assuming the hook still expects a full URL or we haven't touched it yet,
+  // we might keep the full URL string just for the fetch hook for now to avoid breaking it.
+  const BASE_URL =
+    process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
   const programmes = usePaginatedFetch(
     `${BASE_URL}/api/admin/programmes`,
-    token,
+    localStorage.getItem("auth_token"),
     refreshTrigger,
   );
 
@@ -51,33 +52,25 @@ function ProgrammesManager({ token, canEdit }) {
   };
 
   const sanitizePayload = (data) => {
-    // Explicitly destructure to remove 'code' or other unwanted fields
     const { _id, id, createdAt, updatedAt, __v, code, ...cleanData } = data;
     return cleanData;
   };
 
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
-    // ✅ Start Loading
     setIsSubmitting(true);
 
     try {
       const cleanData = sanitizePayload(progForm);
 
       if (editingId) {
-        await axios.put(
-          `${BASE_URL}/api/admin/programmes/${editingId}`,
-          cleanData,
-          { headers: { "auth-token": token } },
-        );
+        await api.put(`/api/admin/programmes/${editingId}`, cleanData);
         showToast("Programme updated");
       } else {
-        await axios.post(`${BASE_URL}/api/admin/programmes`, cleanData, {
-          headers: { "auth-token": token },
-        });
+        await api.post("/api/admin/programmes", cleanData);
         showToast("Programme created");
       }
-      resetForm(); // This will now also close the form
+      resetForm();
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       console.error(err);
@@ -86,24 +79,19 @@ function ProgrammesManager({ token, canEdit }) {
         "error",
       );
     } finally {
-      // ✅ Stop Loading
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
-    // ✅ Start Loading
     setIsSubmitting(true);
     try {
-      await axios.delete(`${BASE_URL}/api/admin/programmes/${deleteModal.id}`, {
-        headers: { "auth-token": token },
-      });
+      await api.delete(`/api/admin/programmes/${deleteModal.id}`);
       showToast("Programme deleted");
       setRefreshTrigger((prev) => prev + 1);
     } catch (err) {
       showToast("Delete failed", "error");
     } finally {
-      // ✅ Stop Loading
       setIsSubmitting(false);
       setDeleteModal({ show: false, id: null });
     }
@@ -118,14 +106,12 @@ function ProgrammesManager({ token, canEdit }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Delete Programme"
         message="Are you sure?"
         onClose={() => setDeleteModal({ show: false, id: null })}
         onConfirm={handleDelete}
-        // ✅ Pass loading state
         isLoading={isSubmitting}
       />
 
@@ -138,11 +124,9 @@ function ProgrammesManager({ token, canEdit }) {
         handleProgrammeSubmit={handleProgrammeSubmit}
         showForm={showForm}
         setShowForm={setShowForm}
-        // ✅ 2. Pass loading state to Tab
         isSubmitting={isSubmitting}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
-          // ✅ Explicitly set fields
           setProgForm({
             title: prog.title || "",
             description: prog.description || "",
@@ -151,7 +135,7 @@ function ProgrammesManager({ token, canEdit }) {
             fee: prog.fee || "",
             image: prog.image || "",
           });
-          setShowForm(true); // Open form when editing
+          setShowForm(true);
           window.scrollTo(0, 0);
         }}
         cancelEditProgramme={resetForm}

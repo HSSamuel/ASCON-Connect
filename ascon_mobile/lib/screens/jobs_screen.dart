@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import '../services/data_service.dart';
+import '../widgets/skeleton_loader.dart'; // ✅ Import Skeleton Loader
 import 'job_detail_screen.dart';
 import 'facility_detail_screen.dart';
 
@@ -26,7 +27,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 
   Color _getCompanyColor(String name) {
     final List<Color> colors = [
-      Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.teal, Colors.redAccent
+      Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.teal, Colors.redAccent, Colors.indigo
     ];
     return colors[name.hashCode.abs() % colors.length];
   }
@@ -44,7 +45,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         foregroundColor: Colors.white, 
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          "Opportunities",
+          "Opportunities & Facilities",
           style: GoogleFonts.lato(
             fontWeight: FontWeight.w800,
             color: Colors.white,
@@ -90,14 +91,15 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   }
 
   // ==========================================
-  // 💼 JOBS LIST 
+  // 💼 JOBS LIST (UPDATED)
   // ==========================================
   Widget _buildJobsList(bool isDark, Color primaryColor) {
     return FutureBuilder(
       future: _dataService.fetchJobs(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator(color: primaryColor));
+          // ✅ 1. SKELETON LOADING
+          return const JobSkeletonList();
         }
         if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
           return _buildEmptyState("No active job openings.", Icons.work_off);
@@ -108,104 +110,140 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
           padding: const EdgeInsets.all(16),
           itemCount: jobs.length,
           itemBuilder: (context, index) {
-            return _buildModernJobCard(jobs[index], isDark, primaryColor);
+            return _buildPremiumJobCard(jobs[index], isDark, primaryColor);
           },
         );
       },
     );
   }
 
-  Widget _buildModernJobCard(dynamic job, bool isDark, Color primaryColor) {
+  // ✅ 100% PRO: PREMIUM JOB CARD DESIGN
+  Widget _buildPremiumJobCard(dynamic job, bool isDark, Color primaryColor) {
     final String company = job['company'] ?? "ASCON";
     final String initial = company.isNotEmpty ? company[0].toUpperCase() : "A";
     final Color brandColor = _getCompanyColor(company);
+    final String salary = job['salary'] ?? "";
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? Colors.white10 : Colors.grey.withOpacity(0.1),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           )
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => JobDetailScreen(job: job))),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // --- HEADER: Logo + Title ---
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 48, height: 48,
+                      width: 50, height: 50,
                       decoration: BoxDecoration(
                         color: brandColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         initial,
-                        style: GoogleFonts.lato(fontSize: 20, fontWeight: FontWeight.w800, color: brandColor),
+                        style: GoogleFonts.rubik(
+                          fontSize: 22, 
+                          fontWeight: FontWeight.bold, 
+                          color: brandColor
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            job['title'] ?? "Untitled",
-                            style: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 16),
+                            job['title'] ?? "Untitled Role",
+                            style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 17, height: 1.2),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             company,
-                            style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w500),
+                            style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
                     ),
-                    if (job['salary'] != null && job['salary'] != "Negotiable")
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          job['salary'],
-                          style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green[700]),
-                        ),
-                      ),
                   ],
                 ),
+                
                 const SizedBox(height: 16),
-                Divider(height: 1, color: Colors.grey.withOpacity(0.1)),
-                const SizedBox(height: 12),
-                Row(
+                
+                // --- BADGES ROW ---
+                Wrap(
+                  spacing: 8, runSpacing: 8,
                   children: [
                     _buildTag(job['type'] ?? 'Full-time', Colors.blue, isDark),
-                    const SizedBox(width: 8),
                     _buildTag(job['location'] ?? 'Remote', Colors.orange, isDark),
-                    const Spacer(),
-                    Icon(Icons.access_time, size: 14, color: Colors.grey[400]),
-                    const SizedBox(width: 4),
+                    if (salary.isNotEmpty && salary != "Negotiable")
+                      _buildTag(salary, Colors.green, isDark, isSalary: true),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+                Divider(height: 1, color: Colors.grey.withOpacity(0.1)),
+                const SizedBox(height: 14),
+
+                // --- FOOTER: Action Button ---
+                Row(
+                  children: [
+                    Icon(Icons.access_time_filled, size: 14, color: Colors.grey[400]),
+                    const SizedBox(width: 6),
                     Text(
-                      "Recently", 
-                      style: GoogleFonts.lato(fontSize: 11, color: Colors.grey[400]),
+                      "Posted recently", 
+                      style: GoogleFonts.lato(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500),
                     ),
+                    const Spacer(),
+                    
+                    // Call to Action
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: primaryColor.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            "View Details",
+                            style: GoogleFonts.lato(
+                              fontSize: 12, 
+                              fontWeight: FontWeight.w700, 
+                              color: primaryColor
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_rounded, size: 14, color: primaryColor)
+                        ],
+                      ),
+                    )
                   ],
                 ),
               ],
@@ -216,16 +254,21 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTag(String text, Color color, bool isDark) {
+  Widget _buildTag(String text, Color color, bool isDark, {bool isSalary = false}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withOpacity(isDark ? 0.15 : 0.08),
         borderRadius: BorderRadius.circular(8),
+        border: isSalary ? Border.all(color: color.withOpacity(0.3), width: 1) : null,
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 11),
+        style: GoogleFonts.lato(
+          color: isDark ? color.withOpacity(0.9) : color.darken(0.1), 
+          fontWeight: FontWeight.w700, 
+          fontSize: 11
+        ),
       ),
     );
   }
@@ -236,15 +279,15 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
+              color: Colors.grey.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 40, color: Colors.grey[400]),
+            child: Icon(icon, size: 48, color: Colors.grey[400]),
           ),
           const SizedBox(height: 16),
-          Text(msg, style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 15, fontWeight: FontWeight.w500)),
+          Text(msg, style: GoogleFonts.lato(color: Colors.grey[500], fontSize: 16, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -252,7 +295,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 }
 
 // ==========================================
-// 🏢 FACILITIES TAB (Triggers Video Popup)
+// 🏢 FACILITIES TAB
 // ==========================================
 class FacilitiesTab extends StatefulWidget {
   const FacilitiesTab({super.key});
@@ -291,6 +334,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
       future: _dataService.fetchFacilities(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          // You could add a FacilitySkeleton here too, but Circular is fine for now
           return Center(child: CircularProgressIndicator(color: primaryColor));
         }
         
@@ -298,7 +342,6 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
-          // No header index shift needed anymore
           itemCount: facilities.isEmpty ? 1 : facilities.length,
           itemBuilder: (context, index) {
             if (facilities.isEmpty) {
@@ -479,7 +522,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
 }
 
 // ==========================================
-// 🎬 VIDEO POPUP DIALOG (FIXED)
+// 🎬 VIDEO POPUP DIALOG
 // ==========================================
 class VideoPopupDialog extends StatefulWidget {
   const VideoPopupDialog({super.key});
@@ -504,8 +547,8 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
           setState(() {
             _initialized = true;
           });
-          _controller.play(); // Auto-play
-          _controller.setVolume(1.0); // Sound ON for popup
+          _controller.play(); 
+          _controller.setVolume(1.0); 
         }
       }).catchError((error) {
         debugPrint("❌ Popup Video Error: $error");
@@ -520,7 +563,6 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ 1. ADDED Clip.hardEdge to clip scrolling content correctly
     return Dialog(
       backgroundColor: Colors.transparent, 
       insetPadding: const EdgeInsets.symmetric(horizontal: 10), 
@@ -530,12 +572,10 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
         ),
-        // ✅ 2. WRAPPED IN SingleChildScrollView TO PREVENT OVERFLOW
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Video Section
               _initialized
                   ? AspectRatio(
                       aspectRatio: _controller.value.aspectRatio,
@@ -546,7 +586,6 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
                       child: Center(child: CircularProgressIndicator()),
                     ),
               
-              // Close Button
               InkWell(
                 onTap: () => Navigator.pop(context),
                 child: Container(
@@ -571,5 +610,15 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
         ),
       ),
     );
+  }
+}
+
+// ✅ HELPER EXTENSION
+extension ColorDarken on Color {
+  Color darken([double amount = .1]) {
+    assert(amount >= 0 && amount <= 1);
+    final hsl = HSLColor.fromColor(this);
+    final hslDark = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+    return hslDark.toColor();
   }
 }
