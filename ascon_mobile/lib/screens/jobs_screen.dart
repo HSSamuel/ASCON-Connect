@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart'; 
 import '../services/data_service.dart';
-import '../widgets/skeleton_loader.dart'; // ✅ Import Skeleton Loader
+import '../widgets/skeleton_loader.dart'; 
 import 'job_detail_screen.dart';
 import 'facility_detail_screen.dart';
 
@@ -19,10 +20,23 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   late TabController _tabController;
   final DataService _dataService = DataService();
   
+  // ✅ NEW: Future variable to handle refresh logic
+  late Future<List<dynamic>> _jobsFuture;
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _jobsFuture = _dataService.fetchJobs(); // Initial load
+  }
+
+  // ✅ NEW: Refresh Logic
+  Future<void> _refreshJobs() async {
+    final newJobs = _dataService.fetchJobs();
+    setState(() {
+      _jobsFuture = newJobs;
+    });
+    await newJobs; // Wait for completion
   }
 
   Color _getCompanyColor(String name) {
@@ -91,38 +105,51 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   }
 
   // ==========================================
-  // 💼 JOBS LIST (UPDATED)
+  // 💼 JOBS LIST (With Pull-to-Refresh)
   // ==========================================
   Widget _buildJobsList(bool isDark, Color primaryColor) {
-    return FutureBuilder(
-      future: _dataService.fetchJobs(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // ✅ 1. SKELETON LOADING
-          return const JobSkeletonList();
-        }
-        if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
-          return _buildEmptyState("No active job openings.", Icons.work_off);
-        }
+    return RefreshIndicator(
+      onRefresh: _refreshJobs, // ✅ Pull-to-Refresh Trigger
+      color: primaryColor,
+      child: FutureBuilder(
+        future: _jobsFuture, // ✅ Use the state variable
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const JobSkeletonList();
+          }
+          if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
+            // Wrap empty state in ListView to allow pull-to-refresh even when empty
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
+                  child: _buildEmptyState("No active job openings.", Icons.work_off),
+                ),
+              ],
+            );
+          }
 
-        final jobs = snapshot.data as List;
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: jobs.length,
-          itemBuilder: (context, index) {
-            return _buildPremiumJobCard(jobs[index], isDark, primaryColor);
-          },
-        );
-      },
+          final jobs = snapshot.data as List;
+          return ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(), // Ensure scroll works for refresh
+            padding: const EdgeInsets.all(16),
+            itemCount: jobs.length,
+            itemBuilder: (context, index) {
+              return _buildPremiumJobCard(jobs[index], isDark, primaryColor);
+            },
+          );
+        },
+      ),
     );
   }
 
-  // ✅ 100% PRO: PREMIUM JOB CARD DESIGN
   Widget _buildPremiumJobCard(dynamic job, bool isDark, Color primaryColor) {
     final String company = job['company'] ?? "ASCON";
     final String initial = company.isNotEmpty ? company[0].toUpperCase() : "A";
     final Color brandColor = _getCompanyColor(company);
     final String salary = job['salary'] ?? "";
+    final String? logoUrl = job['image'] ?? job['logo']; 
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -150,7 +177,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- HEADER: Logo + Title ---
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -159,16 +185,21 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                       decoration: BoxDecoration(
                         color: brandColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(14),
+                        image: (logoUrl != null && logoUrl.startsWith('http')) 
+                            ? DecorationImage(image: CachedNetworkImageProvider(logoUrl), fit: BoxFit.cover)
+                            : null
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        initial,
-                        style: GoogleFonts.rubik(
-                          fontSize: 22, 
-                          fontWeight: FontWeight.bold, 
-                          color: brandColor
-                        ),
-                      ),
+                      child: (logoUrl == null || !logoUrl.startsWith('http')) 
+                        ? Text(
+                            initial,
+                            style: GoogleFonts.rubik(
+                              fontSize: 22, 
+                              fontWeight: FontWeight.bold, 
+                              color: brandColor
+                            ),
+                          )
+                        : null,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -194,7 +225,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                 
                 const SizedBox(height: 16),
                 
-                // --- BADGES ROW ---
                 Wrap(
                   spacing: 8, runSpacing: 8,
                   children: [
@@ -209,7 +239,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                 Divider(height: 1, color: Colors.grey.withOpacity(0.1)),
                 const SizedBox(height: 14),
 
-                // --- FOOTER: Action Button ---
                 Row(
                   children: [
                     Icon(Icons.access_time_filled, size: 14, color: Colors.grey[400]),
@@ -220,7 +249,6 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
                     ),
                     const Spacer(),
                     
-                    // Call to Action
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
@@ -295,7 +323,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 }
 
 // ==========================================
-// 🏢 FACILITIES TAB
+// 🏢 FACILITIES TAB (UNCHANGED but included for completeness)
 // ==========================================
 class FacilitiesTab extends StatefulWidget {
   const FacilitiesTab({super.key});
@@ -311,7 +339,6 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
   @override
   void initState() {
     super.initState();
-    // ✅ AUTO-PLAY VIDEO POPUP
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showVideoPopup();
     });
@@ -320,7 +347,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
   void _showVideoPopup() {
     showDialog(
       context: context,
-      barrierDismissible: false, // User must click close button
+      barrierDismissible: false,
       builder: (context) => const VideoPopupDialog(),
     );
   }
@@ -334,7 +361,6 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
       future: _dataService.fetchFacilities(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // You could add a FacilitySkeleton here too, but Circular is fine for now
           return Center(child: CircularProgressIndicator(color: primaryColor));
         }
         
@@ -478,13 +504,16 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
         child: Icon(Icons.business, size: 50, color: Colors.grey[400])
       );
     }
+
     if (imageUrl.startsWith('http')) {
-      return Image.network(
-        imageUrl,
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
         fit: BoxFit.cover,
-        errorBuilder: (c, e, s) => Container(color: Colors.grey[300]),
+        placeholder: (context, url) => const SkeletonImage(),
+        errorWidget: (context, url, error) => Container(color: Colors.grey[300]),
       );
     }
+
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -522,7 +551,7 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
 }
 
 // ==========================================
-// 🎬 VIDEO POPUP DIALOG
+// 🎬 VIDEO POPUP DIALOG (UNCHANGED)
 // ==========================================
 class VideoPopupDialog extends StatefulWidget {
   const VideoPopupDialog({super.key});
@@ -535,7 +564,6 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
   late VideoPlayerController _controller;
   bool _initialized = false;
   
-  // ✅ ASSET VIDEO
   final String _assetVideoPath = 'assets/videos/facility_intro.mp4';
 
   @override

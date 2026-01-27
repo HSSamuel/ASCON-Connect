@@ -1,12 +1,9 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "./api"; // ✅ Import centralized API
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import "./App.css";
 import logo from "./assets/logo.png";
-
-// ✅ USE ENV VARIABLE (Standardized)
-const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -22,10 +19,8 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      const res = await axios.post(`${BASE_URL}/api/auth/login`, {
-        email,
-        password,
-      });
+      // ✅ Cleaner Call
+      const res = await api.post("/api/auth/login", { email, password });
       processLogin(res.data.token);
     } catch (err) {
       setError(err.response?.data?.message || "Login failed.");
@@ -40,12 +35,10 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      // 1. Send Google Token to Backend
-      const res = await axios.post(`${BASE_URL}/api/auth/google`, {
+      // ✅ Cleaner Call
+      const res = await api.post("/api/auth/google", {
         token: credentialResponse.credential,
       });
-
-      // 2. Process Backend Response
       processLogin(res.data.token);
     } catch (err) {
       if (err.response && err.response.status === 404) {
@@ -58,12 +51,9 @@ function Login({ onLogin }) {
     }
   };
 
-  // --- COMMON LOGIC (VERIFY ADMIN) ---
   const processLogin = (token) => {
     try {
       const decoded = jwtDecode(token);
-
-      // 🔐 SECURITY CHECK: Only Admins Allowed
       if (decoded.isAdmin === true) {
         localStorage.setItem("auth_token", token);
         onLogin(token);
@@ -80,7 +70,6 @@ function Login({ onLogin }) {
       <div className="login-card">
         <img src={logo} alt="ASCON Logo" className="login-logo" />
         <h2 className="login-title">Admin Portal</h2>
-
         {error && <div className="login-error">{error}</div>}
 
         <form onSubmit={handleLogin}>
@@ -92,13 +81,12 @@ function Login({ onLogin }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="Enter admin email"
-              className="login-input" // ✅ Added class for mobile styling
+              className="login-input"
             />
           </div>
 
           <div className="form-group">
             <label>Password</label>
-            {/* ✅ WRAPPER FOR RELATIVE POSITIONING */}
             <div className="password-wrapper">
               <input
                 type={showPassword ? "text" : "password"}
@@ -106,7 +94,7 @@ function Login({ onLogin }) {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="Enter password"
-                className="login-input" // ✅ Added class for mobile styling
+                className="login-input"
               />
               <button
                 type="button"
@@ -114,7 +102,6 @@ function Login({ onLogin }) {
                 onClick={() => setShowPassword(!showPassword)}
                 title={showPassword ? "Hide password" : "Show password"}
               >
-                {/* Switch icons based on state */}
                 {showPassword ? "🙈" : "👁️"}
               </button>
             </div>
@@ -125,7 +112,7 @@ function Login({ onLogin }) {
             className="approve-btn login-btn"
             disabled={isLoading}
           >
-            {isLoading ? "Logging in..." : "LOGIN"}
+            {isLoading ? <span className="loading-spinner"></span> : "LOGIN"}
           </button>
         </form>
 
@@ -143,7 +130,6 @@ function Login({ onLogin }) {
           ></div>
         </div>
 
-        {/* ✅ FIXED: Centered the button and gave it a standard width */}
         <div
           className="google-login-container"
           style={{ display: "flex", justifyContent: "center", width: "100%" }}
@@ -153,7 +139,7 @@ function Login({ onLogin }) {
             onError={() => setError("Google Login Failed")}
             theme="outline"
             size="large"
-            width="300" // Sets it to a nice wide size without overflowing mobile screens
+            width="300"
           />
         </div>
       </div>

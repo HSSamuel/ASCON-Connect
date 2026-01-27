@@ -1,9 +1,10 @@
-import 'dart:convert';
+import 'dart:convert'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../services/data_service.dart';
-import '../widgets/skeleton_loader.dart'; // ✅ Import Skeleton Loader
+import 'package:google_fonts/google_fonts.dart'; 
+import 'package:cached_network_image/cached_network_image.dart'; // ✅ 1. ADDED PACKAGE
+import '../services/data_service.dart'; 
+import '../widgets/skeleton_loader.dart'; // ✅ 2. IMPORTED SKELETON
 import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class EventsScreen extends StatefulWidget {
 }
 
 class _EventsScreenState extends State<EventsScreen> {
-  final DataService _dataService = DataService();
+  final DataService _dataService = DataService(); 
   
   List<dynamic> _events = [];
   bool _isLoading = true;
@@ -26,9 +27,6 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<void> _loadEvents() async {
-    // Optional: Add artificial delay to test skeleton
-    // await Future.delayed(const Duration(seconds: 2));
-    
     final events = await _dataService.fetchEvents();
     
     if (mounted) {
@@ -43,13 +41,11 @@ class _EventsScreenState extends State<EventsScreen> {
   String _toTitleCase(String text) {
     if (text.isEmpty) return text;
     
-    // 1. Basic Title Case
     String titleCased = text.split(' ').map((word) {
       if (word.isEmpty) return word;
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
     }).join(' ');
 
-    // 2. 🛡️ FORCE 'ASCON' TO UPPERCASE ALWAYS
     titleCased = titleCased.replaceAllMapped(
       RegExp(r'\bascon\b', caseSensitive: false), 
       (match) => 'ASCON'
@@ -74,6 +70,7 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
+  // ✅ 3. SMART IMAGE CACHING LOGIC
   Widget _buildSafeImage(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
@@ -82,17 +79,21 @@ class _EventsScreenState extends State<EventsScreen> {
       );
     }
 
+    // A. Use Cached Image for URLs
     if (imageUrl.startsWith('http')) {
-      return Image.network(
-        imageUrl,
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
         fit: BoxFit.cover,
-        errorBuilder: (c, e, s) => Container(
+        // ✅ Show Shimmer Skeleton while downloading
+        placeholder: (context, url) => const SkeletonImage(),
+        errorWidget: (context, url, error) => Container(
           color: Colors.grey[900],
           child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40)),
         ),
       );
     }
 
+    // B. Use Memory Image for Base64 (already local)
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -135,7 +136,7 @@ class _EventsScreenState extends State<EventsScreen> {
       body: RefreshIndicator(
         onRefresh: _loadEvents,
         color: primaryColor,
-        // ✅ 1. SKELETON LOADING
+        // ✅ SKELETON LOADING STATE
         child: _isLoading
             ? const EventSkeletonList() 
             : _events.isEmpty
@@ -216,7 +217,7 @@ class _EventsScreenState extends State<EventsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. BACKGROUND IMAGE
+            // 1. BACKGROUND IMAGE (Cached)
             _buildSafeImage(imageUrl),
 
             // 2. GRADIENT OVERLAY
@@ -269,7 +270,7 @@ class _EventsScreenState extends State<EventsScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(14.0),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center, // ✅ Centered
+                  crossAxisAlignment: CrossAxisAlignment.center, 
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Date (Centered Row)
@@ -295,8 +296,8 @@ class _EventsScreenState extends State<EventsScreen> {
                     // Title (Centered & 3 Lines)
                     Text(
                       _toTitleCase(title),
-                      maxLines: 3, // ✅ Allow 3 lines
-                      textAlign: TextAlign.center, // ✅ Center text alignment
+                      maxLines: 3, 
+                      textAlign: TextAlign.center, 
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.lato(
                         fontSize: 15, 

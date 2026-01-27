@@ -18,6 +18,34 @@ class SkeletonLoader extends StatelessWidget {
   }
 }
 
+// ✅ NEW: Reusable Image Placeholder (Used by CachedNetworkImage)
+class SkeletonImage extends StatelessWidget {
+  final double? width;
+  final double? height;
+  final double borderRadius;
+
+  const SkeletonImage({
+    super.key, 
+    this.width, 
+    this.height, 
+    this.borderRadius = 0
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonLoader(
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(borderRadius),
+        ),
+      ),
+    );
+  }
+}
+
 // 1. EVENT CARD SKELETON
 class EventSkeletonList extends StatelessWidget {
   const EventSkeletonList({super.key});
@@ -46,7 +74,7 @@ class EventSkeletonList extends StatelessWidget {
   }
 }
 
-// 2. JOB CARD SKELETON (Fixed BoxDecoration)
+// 2. JOB CARD SKELETON
 class JobSkeletonList extends StatelessWidget {
   const JobSkeletonList({super.key});
 
@@ -92,7 +120,6 @@ class JobSkeletonList extends StatelessWidget {
                 const Spacer(),
                 Row(
                   children: [
-                    // ✅ FIXED: borderRadius inside BoxDecoration
                     Container(
                       width: 60, 
                       height: 20, 

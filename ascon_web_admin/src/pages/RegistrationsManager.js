@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../api"; // ✅ Import centralized API
 import RegistrationsTab from "../components/RegistrationsTab";
 import ConfirmModal from "../ConfirmModal";
 import Toast from "../Toast";
@@ -16,22 +16,19 @@ function RegistrationsManager({ token, canEdit }) {
     type: null,
   });
 
-  // ✅ 1. FETCH DATA (Both endpoints)
+  // Data Fetching hooks still use BASE_URL/token for now
   const progRegs = usePaginatedFetch(
     `${BASE_URL}/api/programme-interest`,
-    token
+    token,
   );
   const eventRegs = usePaginatedFetch(
     `${BASE_URL}/api/event-registration`,
-    token
+    token,
   );
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
-  // --- ACTIONS ---
   const confirmDelete = (id, type) => {
-    // 'type' comes from the Tab component as "programmes" or "events"
-    // We map it to our internal API types
     const deleteType = type === "programmes" ? "reg_prog" : "reg_event";
     setDeleteModal({ show: true, id, type: deleteType });
   };
@@ -42,14 +39,10 @@ function RegistrationsManager({ token, canEdit }) {
 
     try {
       if (type === "reg_prog") {
-        await axios.delete(`${BASE_URL}/api/programme-interest/${id}`, {
-          headers: { "auth-token": token },
-        });
+        await api.delete(`/api/programme-interest/${id}`); // ✅ Cleaner
         progRegs.refresh();
       } else {
-        await axios.delete(`${BASE_URL}/api/event-registration/${id}`, {
-          headers: { "auth-token": token },
-        });
+        await api.delete(`/api/event-registration/${id}`); // ✅ Cleaner
         eventRegs.refresh();
       }
       showToast("Registration deleted");
@@ -67,7 +60,6 @@ function RegistrationsManager({ token, canEdit }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Delete Registration"
@@ -75,7 +67,6 @@ function RegistrationsManager({ token, canEdit }) {
         onClose={() => setDeleteModal({ show: false, id: null, type: null })}
         onConfirm={handleDelete}
       />
-
       <RegistrationsTab
         registrations={progRegs.data}
         eventRegistrations={eventRegs.data}

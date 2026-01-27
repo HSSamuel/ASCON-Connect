@@ -1,30 +1,24 @@
 import { useState, useEffect } from "react";
-import axios from "axios";
-
-export function useStats(baseUrl, token, refreshTrigger) {
+import api from "../api"; // ✅ Import centralized API
+export function useStats(refreshTrigger) {
   const [stats, setStats] = useState({
     users: 0,
     events: 0,
     programmes: 0,
     totalRegistrations: 0,
     jobs: 0,
-    facilities: 0, // ✅ Initialize facilities count
+    facilities: 0,
   });
 
   useEffect(() => {
-    if (!token) return;
-
     const fetchAllStats = async () => {
       try {
-        const config = { headers: { "auth-token": token } };
-
-        // ✅ Run both fetches in parallel
+        // ✅ Run fetches in parallel using api client
         const [adminStatsRes, jobsRes] = await Promise.all([
-          axios.get(`${baseUrl}/api/admin/stats`, config),
-          axios.get(`${baseUrl}/api/jobs`, config),
+          api.get("/api/admin/stats"),
+          api.get("/api/jobs"),
         ]);
 
-        // ✅ Calculate Job Count safely
         let jobsCount = 0;
         const jobsData = jobsRes.data;
 
@@ -36,7 +30,6 @@ export function useStats(baseUrl, token, refreshTrigger) {
           jobsCount = jobsData.count;
         }
 
-        // ✅ Merge stats (adminStatsRes.data now includes facilities)
         setStats({
           ...adminStatsRes.data,
           jobs: jobsCount,
@@ -47,7 +40,7 @@ export function useStats(baseUrl, token, refreshTrigger) {
     };
 
     fetchAllStats();
-  }, [baseUrl, token, refreshTrigger]);
+  }, [refreshTrigger]); // ✅ Only depends on refreshTrigger now
 
   return stats;
 }

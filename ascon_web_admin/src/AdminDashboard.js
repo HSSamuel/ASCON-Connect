@@ -23,10 +23,8 @@ function AdminDashboard({ token, onLogout }) {
 
   // ✅ 1. CREATE A REFRESH TRIGGER
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  // ✅ 2. PASS TRIGGER TO useStats (This forces stats to re-fetch when trigger changes)
   const { canEdit, userRole } = useAuth(token, onLogout);
-  const stats = useStats(BASE_URL, token, refreshTrigger);
+  const stats = useStats(refreshTrigger);
 
   useEffect(() => {
     document.body.setAttribute("data-theme", theme);
