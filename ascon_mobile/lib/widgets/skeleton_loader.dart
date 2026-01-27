@@ -18,7 +18,7 @@ class SkeletonLoader extends StatelessWidget {
   }
 }
 
-// ✅ NEW: Reusable Image Placeholder (Used by CachedNetworkImage)
+// ✅ Reusable Image Placeholder
 class SkeletonImage extends StatelessWidget {
   final double? width;
   final double? height;
@@ -98,14 +98,7 @@ class JobSkeletonList extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 50, 
-                      height: 50, 
-                      decoration: BoxDecoration(
-                        color: Colors.white, 
-                        borderRadius: BorderRadius.circular(14)
-                      )
-                    ),
+                    Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14))),
                     const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,24 +113,53 @@ class JobSkeletonList extends StatelessWidget {
                 const Spacer(),
                 Row(
                   children: [
-                    Container(
-                      width: 60, 
-                      height: 20, 
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8)
-                      )
-                    ),
+                    Container(width: 60, height: 20, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8))),
                     const SizedBox(width: 8),
-                    Container(
-                      width: 60, 
-                      height: 20, 
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8)
-                      )
-                    ),
+                    Container(width: 60, height: 20, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8))),
                   ],
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ✅ 3. DIRECTORY SKELETON (ADDED THIS SECTION)
+class DirectorySkeletonList extends StatelessWidget {
+  const DirectorySkeletonList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: 8,
+      itemBuilder: (context, index) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: SkeletonLoader(
+          child: Container(
+            height: 80,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(width: 50, height: 50, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(width: 150, height: 14, color: Colors.white),
+                      const SizedBox(height: 8),
+                      Container(width: 100, height: 12, color: Colors.white),
+                    ],
+                  ),
                 )
               ],
             ),

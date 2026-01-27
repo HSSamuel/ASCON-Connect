@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart'; 
+import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
+import 'chat_screen.dart'; // ✅ FIXED: Added this missing import
 
 class AlumniDetailScreen extends StatelessWidget {
   final Map<String, dynamic> alumniData;
@@ -21,15 +23,19 @@ class AlumniDetailScreen extends StatelessWidget {
     }
   }
 
-  ImageProvider? getProfileImage(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) return null;
-    if (imagePath.startsWith('http')) {
-      return NetworkImage(imagePath);
-    } 
+  // ✅ Helper to Format "Last Seen" Time
+  String _formatLastSeen(String? dateString) {
+    if (dateString == null) return "a while ago";
     try {
-      return MemoryImage(base64Decode(imagePath));
+      final date = DateTime.parse(dateString);
+      final diff = DateTime.now().difference(date);
+
+      if (diff.inMinutes < 1) return "just now";
+      if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
+      if (diff.inHours < 24) return "${diff.inHours}h ago";
+      return "${diff.inDays}d ago";
     } catch (e) {
-      return null;
+      return "recently";
     }
   }
 
@@ -37,24 +43,27 @@ class AlumniDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // ✅ FIX 1: FORCE VISIBLE COLORS
-    // Instead of relying on Theme (which might be wrong), we hardcode safe colors.
     final scaffoldBg = isDark ? const Color(0xFF121212) : Colors.grey[50];
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final primaryColor = const Color(0xFF1B5E3A);
     
-    // ✅ Main Text is Black (Light Mode) or White (Dark Mode)
     final textColor = isDark ? Colors.white : Colors.black87;
-    // ✅ Sub Text is Grey
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
     final String fullName = alumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = alumniData['jobTitle'] ?? '';
     final String org = alumniData['organization'] ?? '';
     
-    // ✅ FIX 2: Handle Empty Bio Logic
     String rawBio = alumniData['bio'] ?? '';
     final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
+
+    final bool showPhone = alumniData['isPhoneVisible'] == true;
+    final bool showEmail = alumniData['isEmailVisible'] == true;
+    final bool isMentor = alumniData['isOpenToMentorship'] == true;
+    
+    // ✅ Online Status Logic
+    final bool isOnline = alumniData['isOnline'] == true;
+    final String lastSeen = _formatLastSeen(alumniData['lastSeen']);
 
     final String phone = alumniData['phoneNumber'] ?? '';
     final String linkedin = alumniData['linkedin'] ?? '';
@@ -102,15 +111,17 @@ class AlumniDetailScreen extends StatelessWidget {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FullScreenImage(
-                              imageUrl: imageString,
-                              heroTag: zoomHeroTag,
+                        if (imageString.isNotEmpty && !imageString.contains('https://lh3.googleusercontent.com/a/ACg8ocLUAgz3dKVYY5ttmmjOi3u8H9kodBXwT0ZrOX2YK7DghVqRhopX=s96-c')) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FullScreenImage(
+                                imageUrl: imageString,
+                                heroTag: zoomHeroTag,
+                              ),
                             ),
-                          ),
-                        );
+                          );
+                        }
                       },
                       child: Hero(
                         tag: zoomHeroTag,
@@ -123,14 +134,8 @@ class AlumniDetailScreen extends StatelessWidget {
                                 BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
                             ],
                           ),
-                          child: CircleAvatar(
-                            radius: 45, 
-                            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                            backgroundImage: getProfileImage(imageString),
-                            child: getProfileImage(imageString) == null
-                                ? Icon(Icons.person, size: 45, color: isDark ? Colors.grey[500] : Colors.grey)
-                                : null,
-                          ),
+                          // ✅ Robust Image Handler
+                          child: _buildRobustAvatar(imageString, isDark),
                         ),
                       ),
                     ),
@@ -145,19 +150,17 @@ class AlumniDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // ✅ FULL NAME
                   Text(
                     fullName,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.lato(
                       fontSize: 22, 
                       fontWeight: FontWeight.bold, 
-                      color: textColor // Uses our forced color
+                      color: textColor 
                     ),
                   ),
                   const SizedBox(height: 4),
                   
-                  // ✅ JOB & ORG
                   if (job.isNotEmpty || org.isNotEmpty)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -174,9 +177,57 @@ class AlumniDetailScreen extends StatelessWidget {
                       ],
                     ),
                   
+                  // ✅ Online Status Indicator
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            color: isOnline ? Colors.green : Colors.grey,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isOnline ? "Online" : "Last seen $lastSeen",
+                          style: GoogleFonts.lato(
+                            color: isOnline ? Colors.green[700] : Colors.grey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
                   const SizedBox(height: 10),
                   
-                  // ✅ CLASS OF (This was already working because color is hardcoded)
+                  // ✅ MENTORSHIP BADGE
+                  if (isMentor)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.amber.shade600),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.stars_rounded, color: Colors.amber.shade700, size: 16),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Open to Mentoring",
+                            style: GoogleFonts.lato(color: Colors.amber.shade800, fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
@@ -199,11 +250,26 @@ class AlumniDetailScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // ✅ Message Button navigates to ChatScreen
+                _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        receiverId: alumniData['_id'] ?? '',
+                        receiverName: fullName,
+                      ),
+                    ),
+                  );
+                }),
+
                 if (linkedin.isNotEmpty)
                   _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
-                if (email.isNotEmpty)
+                
+                if (showEmail && email.isNotEmpty)
                   _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
-                if (phone.isNotEmpty)
+                
+                if (showPhone && phone.isNotEmpty)
                   _buildCircleAction(context, Icons.phone, "Call", Colors.green[600]!, () => _launchURL("tel:$phone")),
               ],
             ),
@@ -215,7 +281,6 @@ class AlumniDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  // About Me
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -241,7 +306,6 @@ class AlumniDetailScreen extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        // ✅ BIO TEXT
                         Text(
                           bio,
                           style: GoogleFonts.lato(fontSize: 14, height: 1.6, color: subTextColor),
@@ -253,7 +317,6 @@ class AlumniDetailScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // Academic Record
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -310,12 +373,48 @@ class AlumniDetailScreen extends StatelessWidget {
     );
   }
 
+  // ✅ Robust Avatar Builder
+  Widget _buildRobustAvatar(String imageString, bool isDark) {
+    if (imageString.isEmpty || imageString.contains('googleusercontent.com/profile/picture/0')) {
+      return _buildPlaceholder(isDark);
+    }
+
+    if (imageString.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imageString,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: 45,
+          backgroundImage: imageProvider,
+        ),
+        placeholder: (context, url) => _buildPlaceholder(isDark),
+        errorWidget: (context, url, error) => _buildPlaceholder(isDark),
+      );
+    }
+
+    try {
+      return CircleAvatar(
+        radius: 45,
+        backgroundImage: MemoryImage(base64Decode(imageString)),
+      );
+    } catch (e) {
+      return _buildPlaceholder(isDark);
+    }
+  }
+
+  Widget _buildPlaceholder(bool isDark) {
+    return CircleAvatar(
+      radius: 45,
+      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+      child: Icon(Icons.person, size: 45, color: isDark ? Colors.grey[500] : Colors.grey),
+    );
+  }
+
   Widget _buildCircleAction(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white; // ✅ Forced card color
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white; 
     
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Column(
         children: [
           InkWell(

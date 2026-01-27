@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
+import '../services/socket_service.dart'; // ✅ NEW: Import Socket Service
 import '../config.dart'; // ✅ Import AppConfig
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -35,6 +36,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
+
+    // ✅ NEW: Connect Socket for Online Presence immediately
+    // This ensures the green dot appears instantly
+    if (user['_id'] != null) {
+      SocketService().connectUser(user['_id']);
+    }
 
     bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
     String safeName = user['fullName'] ?? "Alumni"; 

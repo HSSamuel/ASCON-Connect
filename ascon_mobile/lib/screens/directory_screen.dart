@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart'; 
 import '../services/data_service.dart';
+import '../widgets/skeleton_loader.dart'; 
 import 'alumni_detail_screen.dart';
 
 class DirectoryScreen extends StatefulWidget {
@@ -92,14 +94,47 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     });
   }
 
-  ImageProvider? getProfileImage(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) return null;
-    if (imagePath.startsWith('http')) return NetworkImage(imagePath);
-    try {
-      return MemoryImage(base64Decode(imagePath));
-    } catch (e) {
-      return null;
+  // ✅ FIXED: Robust Avatar Builder (Prevents Crash)
+  Widget _buildAvatar(String? imagePath, bool isDark) {
+    // 1. Filter out null, empty, or the specific BAD google URL
+    if (imagePath == null || 
+        imagePath.isEmpty || 
+        imagePath.contains('profile/picture/0')) { 
+      return _buildPlaceholder(isDark);
     }
+
+    // 2. HTTP Image (Use CachedNetworkImage Widget for safety)
+    if (imagePath.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: 24,
+          backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+          backgroundImage: imageProvider,
+        ),
+        placeholder: (context, url) => _buildPlaceholder(isDark),
+        errorWidget: (context, url, error) => _buildPlaceholder(isDark),
+      );
+    }
+
+    // 3. Base64 Image
+    try {
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+        backgroundImage: MemoryImage(base64Decode(imagePath)),
+      );
+    } catch (e) {
+      return _buildPlaceholder(isDark);
+    }
+  }
+
+  Widget _buildPlaceholder(bool isDark) {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+      child: const Icon(Icons.person, color: Colors.grey, size: 26),
+    );
   }
 
   @override
@@ -151,7 +186,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               onRefresh: () => _loadDirectory(), 
               color: primaryColor,
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator(color: primaryColor))
+                  ? const DirectorySkeletonList() // ✅ Skeleton Loading
                   : _allAlumni.isEmpty
                       ? _buildEmptyState()
                       : _isSearching
@@ -172,7 +207,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         String year = _groupedAlumni.keys.elementAt(index);
         List<dynamic> classMembers = _groupedAlumni[year]!;
 
-        // Dynamic Colors
         final isDark = Theme.of(context).brightness == Brightness.dark;
         final cardColor = Theme.of(context).cardColor;
         final primaryColor = Theme.of(context).primaryColor;
@@ -208,7 +242,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                   color: isDark ? Colors.white : primaryColor, 
                 ),
               ),
-              // ✅ FIXED: Singular/Plural Grammar Logic
               subtitle: Text(
                 "${classMembers.length} ${classMembers.length == 1 ? 'Member' : 'Members'}",
                 style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
@@ -303,19 +336,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ✅ 2. USING ROBUST AVATAR
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: borderColor, width: 1),
                   ),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                    backgroundImage: getProfileImage(user['profilePicture']),
-                    child: getProfileImage(user['profilePicture']) == null
-                        ? Icon(Icons.person, color: subTextColor, size: 26)
-                        : null,
-                  ),
+                  child: _buildAvatar(user['profilePicture'], isDark), // Using the new safe builder
                 ),
                 const SizedBox(width: 12),
                 Expanded(

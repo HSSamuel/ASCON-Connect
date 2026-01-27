@@ -13,6 +13,7 @@ import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
+import 'socket_service.dart'; // ✅ NEW: Import Socket Service
 
 class AuthService {
   final ApiClient _api = ApiClient();
@@ -248,6 +249,11 @@ class AuthService {
         await _storage.write(key: 'refresh_token', value: refreshToken);
       }
 
+      // ✅ NEW: Save User ID for Socket Service (Real-time Online Status)
+      if (user['_id'] != null) {
+        await _storage.write(key: 'userId', value: user['_id']);
+      }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', token); 
       await prefs.setString('cached_user', jsonEncode(user));
@@ -335,6 +341,13 @@ class AuthService {
   // 🚪 LOGOUT (FIXED FOR WEB RACE CONDITION)
   // =================================================
   Future<void> logout() async {
+    // ✅ NEW: Disconnect Socket on Logout
+    try {
+      SocketService().disconnect();
+    } catch (e) {
+      debugPrint("⚠️ Socket disconnect error: $e");
+    }
+
     // 1. Google Sign Out (Safely)
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn(

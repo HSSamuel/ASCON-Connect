@@ -9,12 +9,16 @@ const rateLimit = require("express-rate-limit");
 const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
+const http = require("http"); // ✅ NEW: Import HTTP
+const { Server } = require("socket.io"); // ✅ NEW: Import Socket.io
+const User = require("./models/User"); // ✅ NEW: Import User Model
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
 
 // 1. Initialize the App
 const app = express();
+const server = http.createServer(app); // ✅ NEW: Wrap Express with HTTP Server
 
 // ✅ FIX: TELL EXPRESS TO TRUST RENDER'S PROXY
 app.set("trust proxy", 1);
@@ -36,7 +40,7 @@ app.use(helmet());
 app.use(
   morgan("combined", {
     stream: { write: (message) => logger.info(message.trim()) },
-  })
+  }),
 );
 
 // ✅ D. RATE LIMITER
@@ -109,10 +113,64 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "auth-token"],
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
+
+// ==========================================
+// ✅ NEW: SOCKET.IO CONFIGURATION
+// ==========================================
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Allow mobile app connections
+    methods: ["GET", "POST"],
+  },
+});
+
+// ✅ MIDDLEWARE: Share Socket.io with REST Routes
+// This allows api/chat.js to use `req.io` to send messages!
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
+io.on("connection", (socket) => {
+  // 1. User Joins (App Opens)
+  socket.on("user_connected", async (userId) => {
+    if (!userId) return;
+    socket.userId = userId; // Store ID on socket session
+
+    // ✅ CRITICAL: Join a specific room for Private Messaging
+    socket.join(userId);
+
+    try {
+      await User.findByIdAndUpdate(userId, { isOnline: true });
+      io.emit("user_status_update", { userId, isOnline: true });
+    } catch (e) {
+      logger.error(`Socket Error (Connect): ${e.message}`);
+    }
+  });
+
+  // 2. User Disconnects (App Closes/Background)
+  socket.on("disconnect", async () => {
+    if (socket.userId) {
+      try {
+        await User.findByIdAndUpdate(socket.userId, {
+          isOnline: false,
+          lastSeen: new Date(),
+        });
+        io.emit("user_status_update", {
+          userId: socket.userId,
+          isOnline: false,
+          lastSeen: new Date(),
+        });
+      } catch (e) {
+        logger.error(`Socket Error (Disconnect): ${e.message}`);
+      }
+    }
+  });
+});
 
 // ==========================================
 // 3. ROUTES
@@ -125,6 +183,7 @@ const eventsRoute = require("./routes/events");
 const programmeInterestRoute = require("./routes/programmeInterest");
 const notificationRoutes = require("./routes/notifications");
 const eventRegistrationRoute = require("./routes/eventRegistration");
+const chatRoute = require("./routes/chat");
 
 app.use("/api/auth", authRoute);
 app.use("/api/directory", directoryRoute);
@@ -136,6 +195,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/event-registration", eventRegistrationRoute);
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/facilities", require("./routes/facilities"));
+app.use("/api/chat", chatRoute);
 
 // ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);
@@ -145,12 +205,12 @@ app.use(errorHandler);
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
-logger.info("⏳ Attempting to connect to MongoDB..."); 
+logger.info("⏳ Attempting to connect to MongoDB...");
 
 mongoose
   .connect(process.env.DB_CONNECT)
   .then(() => {
-    logger.info("✅ Connected to MongoDB Successfully!"); 
+    logger.info("✅ Connected to MongoDB Successfully!");
 
     if (process.env.NODE_ENV === "production") {
       logger.info("🛡️  Production Security Hardening Active");
@@ -162,8 +222,9 @@ mongoose
       res.status(200).send("ASCON Server is Awake! 🚀");
     });
 
-    app.listen(PORT, () => {
-      logger.info(`🚀 Server is running on port ${PORT}`); 
+    // ✅ UPDATED: Use server.listen instead of app.listen for Socket.io
+    server.listen(PORT, () => {
+      logger.info(`🚀 Server is running on port ${PORT}`);
 
       const docsUrl =
         process.env.NODE_ENV === "production"
@@ -172,7 +233,7 @@ mongoose
 
       logger.info(`📖 API Docs available at ${docsUrl}`);
     });
-  }) // 👈 FIXED: Removed the extra semicolon ";" here
+  })
   .catch((err) => {
-    logger.error("❌ Database Connection Failed:", err); 
+    logger.error("❌ Database Connection Failed:", err);
   });

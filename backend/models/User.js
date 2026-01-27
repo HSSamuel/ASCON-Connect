@@ -6,6 +6,12 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, max: 255, min: 6 },
     password: { type: String, required: true, max: 1024, min: 6 },
     phoneNumber: { type: String, default: "" },
+    
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: Date.now },
+    isPhoneVisible: { type: Boolean, default: false }, // Privacy
+    isEmailVisible: { type: Boolean, default: false }, // Privacy
+    isOpenToMentorship: { type: Boolean, default: false }, // Mentorship Feature
 
     programmeTitle: { type: String, required: false },
     customProgramme: { type: String, default: "" },
@@ -42,7 +48,7 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 userSchema.index({ email: 1 });
