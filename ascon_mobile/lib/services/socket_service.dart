@@ -44,6 +44,9 @@ class SocketService with WidgetsBindingObserver {
     // 2. Setup URL (Strip '/api' because Socket.io connects to root)
     final String socketUrl = AppConfig.baseUrl.replaceAll('/api', '');
 
+    // ✅ DEBUG: Print the exact URL we are trying to connect to
+    debugPrint("🔌 Socket Connecting to: $socketUrl");
+
     // 3. Initialize Socket
     socket = IO.io(socketUrl, <String, dynamic>{
       'transports': ['websocket'],
