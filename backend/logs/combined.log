@@ -214,3 +214,10 @@
 {"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-28 15:04:27"}
 {"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-28 15:04:28"}
 {"code":"ETIMEOUT","hostname":"_mongodb._tcp.cluster0.mrowpyh.mongodb.net","level":"error","message":"❌ Database Connection Failed: querySrv ETIMEOUT _mongodb._tcp.cluster0.mrowpyh.mongodb.net","stack":"Error: querySrv ETIMEOUT _mongodb._tcp.cluster0.mrowpyh.mongodb.net\n    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17)","syscall":"querySrv","timestamp":"2026-01-28 15:05:19"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-28 15:06:43"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-28 15:06:44"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-28 15:06:51"}
+{"level":"info","message":"🛡️  Production Security Hardening Active","timestamp":"2026-01-28 15:06:51"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-01-28 15:06:52"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-28 15:06:52"}
+{"level":"info","message":"📖 API Docs available at https://ascon-st50.onrender.com/api-docs","timestamp":"2026-01-28 15:06:52"}

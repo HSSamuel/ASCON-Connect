@@ -62,16 +62,21 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     }
   }
 
+  // ✅ UPDATED: Now supports Dark Mode
   void _showSmartMatchPopup() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = Theme.of(context).cardColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => Container(
         height: 350,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: backgroundColor, // ✅ Uses Theme Card Color
+          borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -81,13 +86,23 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               children: [
                 const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 28),
                 const SizedBox(width: 10),
-                const Text("We found your classmates!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  "We found your classmates!", 
+                  style: TextStyle(
+                    fontSize: 20, 
+                    fontWeight: FontWeight.bold, 
+                    color: textColor // ✅ Adaptive Text Color
+                  )
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               "Based on your profile, here are alumni from your Class Year and Programme. Connect with them now!",
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600], // ✅ Adaptive Grey
+                fontSize: 14
+              ),
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -101,16 +116,22 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                     margin: const EdgeInsets.only(right: 12),
                     child: Column(
                       children: [
-                        _buildAvatar(user['profilePicture'], false),
+                        _buildAvatar(user['profilePicture'], isDark), // ✅ Pass isDark
                         const SizedBox(height: 8),
                         Text(
                           user['fullName'].toString().split(' ')[0], 
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textColor // ✅ Adaptive Name Color
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           user['jobTitle'] ?? 'Alumni',
-                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 10, 
+                            color: isDark ? Colors.grey[400] : Colors.grey // ✅ Adaptive Subtext
+                          ),
                           overflow: TextOverflow.ellipsis,
                         )
                       ],
@@ -378,9 +399,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  // ✅ UPDATED WIDGET: Circular Recommendations
+  // ✅ WIDGET: Recommender Carousel (UPDATED: Circles instead of Squares)
   Widget _buildRecommendationsSection() {
     final primaryColor = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
       padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8),
@@ -423,7 +445,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                           ),
                           child: SizedBox(
                             width: 60, height: 60,
-                            child: _buildAvatar(user['profilePicture'], false),
+                            child: _buildAvatar(user['profilePicture'], isDark), // ✅ Pass isDark
                           ),
                         ),
                         const SizedBox(height: 8),
