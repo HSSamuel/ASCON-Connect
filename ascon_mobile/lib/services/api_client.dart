@@ -56,6 +56,14 @@ class ApiClient {
     ));
   }
 
+  // ✅ NEW: DELETE METHOD (Added for Chat Deletion)
+  Future<dynamic> delete(String endpoint) async {
+    return _request(() => http.delete(
+      Uri.parse('${AppConfig.baseUrl}$endpoint'),
+      headers: _headers,
+    ));
+  }
+
   Future<dynamic> _request(Future<http.Response> Function() req) async {
     try {
       var response = await req().timeout(_timeoutDuration);

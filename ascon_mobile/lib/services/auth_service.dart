@@ -240,23 +240,26 @@ class AuthService {
   // =================================================
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
-    try {
-      _tokenCache = token;
-      _api.setAuthToken(token);
+  try {
+    _tokenCache = token;
+    _api.setAuthToken(token);
 
-      await _storage.write(key: 'auth_token', value: token);
-      if (refreshToken != null) {
-        await _storage.write(key: 'refresh_token', value: refreshToken);
-      }
+    await _storage.write(key: 'auth_token', value: token);
+    if (refreshToken != null) {
+      await _storage.write(key: 'refresh_token', value: refreshToken);
+    }
 
-      // ✅ NEW: Save User ID for Socket Service (Real-time Online Status)
-      if (user['_id'] != null) {
-        await _storage.write(key: 'userId', value: user['_id']);
-      }
+    // ✅ FIX: Check for both 'id' (API response) and '_id' (Raw Mongo Object)
+    final userId = user['id'] ?? user['_id']; 
+    if (userId != null) {
+      await _storage.write(key: 'userId', value: userId);
+    } else {
+      debugPrint("⚠️ Warning: User ID not found in session data");
+    }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_token', token); 
-      await prefs.setString('cached_user', jsonEncode(user));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+    await prefs.setString('cached_user', jsonEncode(user));
       
       if (user['fullName'] != null) {
         await prefs.setString('user_name', user['fullName']);

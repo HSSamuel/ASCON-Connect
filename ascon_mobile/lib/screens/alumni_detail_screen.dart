@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
+import 'package:intl/intl.dart'; // ✅ Added for time formatting
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
-import 'chat_screen.dart'; // ✅ FIXED: Added this missing import
+import 'chat_screen.dart'; 
 
 class AlumniDetailScreen extends StatelessWidget {
   final Map<String, dynamic> alumniData;
@@ -23,19 +24,33 @@ class AlumniDetailScreen extends StatelessWidget {
     }
   }
 
-  // ✅ Helper to Format "Last Seen" Time
+  // ✅ UPGRADED: Authentic & Specific "Last Seen"
   String _formatLastSeen(String? dateString) {
-    if (dateString == null) return "a while ago";
+    if (dateString == null) return "Offline";
+    
     try {
-      final date = DateTime.parse(dateString);
-      final diff = DateTime.now().difference(date);
+      final lastSeen = DateTime.parse(dateString).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(lastSeen);
 
-      if (diff.inMinutes < 1) return "just now";
-      if (diff.inMinutes < 60) return "${diff.inMinutes}m ago";
-      if (diff.inHours < 24) return "${diff.inHours}h ago";
-      return "${diff.inDays}d ago";
+      if (diff.inMinutes < 1) return "Last seen just now";
+      if (diff.inMinutes < 60) return "Last seen ${diff.inMinutes}m ago";
+      
+      // If it is today
+      if (now.day == lastSeen.day && now.month == lastSeen.month && now.year == lastSeen.year) {
+        return "Last seen today at ${DateFormat('h:mm a').format(lastSeen)}";
+      }
+      
+      // If it was yesterday
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (yesterday.day == lastSeen.day && yesterday.month == lastSeen.month && yesterday.year == lastSeen.year) {
+        return "Last seen yesterday at ${DateFormat('h:mm a').format(lastSeen)}";
+      }
+
+      // Older dates
+      return "Last seen ${DateFormat('MMM d, h:mm a').format(lastSeen)}";
     } catch (e) {
-      return "recently";
+      return "Offline";
     }
   }
 
@@ -58,12 +73,13 @@ class AlumniDetailScreen extends StatelessWidget {
     final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
 
     final bool showPhone = alumniData['isPhoneVisible'] == true;
-    final bool showEmail = alumniData['isEmailVisible'] == true;
+    // final bool showEmail = alumniData['isEmailVisible'] == true; // ⚠️ REMOVED to make email always visible
     final bool isMentor = alumniData['isOpenToMentorship'] == true;
     
-    // ✅ Online Status Logic
+    // ✅ STATUS LOGIC
     final bool isOnline = alumniData['isOnline'] == true;
-    final String lastSeen = _formatLastSeen(alumniData['lastSeen']);
+    // We calculate the string here so we can use it in the UI and pass it to Chat
+    final String statusText = isOnline ? "Active Now" : _formatLastSeen(alumniData['lastSeen']);
 
     final String phone = alumniData['phoneNumber'] ?? '';
     final String linkedin = alumniData['linkedin'] ?? '';
@@ -134,7 +150,6 @@ class AlumniDetailScreen extends StatelessWidget {
                                 BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))
                             ],
                           ),
-                          // ✅ Robust Image Handler
                           child: _buildRobustAvatar(imageString, isDark),
                         ),
                       ),
@@ -177,7 +192,7 @@ class AlumniDetailScreen extends StatelessWidget {
                       ],
                     ),
                   
-                  // ✅ Online Status Indicator
+                  // ✅ REAL PRESENCE STATUS
                   Padding(
                     padding: const EdgeInsets.only(top: 8, bottom: 4),
                     child: Row(
@@ -186,15 +201,15 @@ class AlumniDetailScreen extends StatelessWidget {
                         Container(
                           width: 8, height: 8,
                           decoration: BoxDecoration(
-                            color: isOnline ? Colors.green : Colors.grey,
+                            color: isOnline ? Colors.green : Colors.grey[400],
                             shape: BoxShape.circle,
                           ),
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          isOnline ? "Online" : "Last seen $lastSeen",
+                          statusText, // Uses our new specific formatter
                           style: GoogleFonts.lato(
-                            color: isOnline ? Colors.green[700] : Colors.grey,
+                            color: isOnline ? Colors.green[700] : Colors.grey[600],
                             fontSize: 12,
                             fontWeight: FontWeight.w600
                           ),
@@ -205,7 +220,6 @@ class AlumniDetailScreen extends StatelessWidget {
                   
                   const SizedBox(height: 10),
                   
-                  // ✅ MENTORSHIP BADGE
                   if (isMentor)
                     Container(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -250,7 +264,7 @@ class AlumniDetailScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ✅ Message Button navigates to ChatScreen
+                // ✅ UPDATED: Pass Image & Status to Chat Screen
                 _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
                   Navigator.push(
                     context,
@@ -258,6 +272,10 @@ class AlumniDetailScreen extends StatelessWidget {
                       builder: (_) => ChatScreen(
                         receiverId: alumniData['_id'] ?? '',
                         receiverName: fullName,
+                        // ✅ Pass these new fields:
+                        receiverProfilePic: imageString,
+                        isOnline: isOnline,
+                        lastSeen: alumniData['lastSeen'],
                       ),
                     ),
                   );
@@ -266,7 +284,8 @@ class AlumniDetailScreen extends StatelessWidget {
                 if (linkedin.isNotEmpty)
                   _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
                 
-                if (showEmail && email.isNotEmpty)
+                // ✅ ALWAYS VISIBLE EMAIL: Removed 'showEmail' check
+                if (email.isNotEmpty)
                   _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
                 
                 if (showPhone && phone.isNotEmpty)
@@ -373,7 +392,6 @@ class AlumniDetailScreen extends StatelessWidget {
     );
   }
 
-  // ✅ Robust Avatar Builder
   Widget _buildRobustAvatar(String imageString, bool isDark) {
     if (imageString.isEmpty || imageString.contains('googleusercontent.com/profile/picture/0')) {
       return _buildPlaceholder(isDark);

@@ -80,10 +80,9 @@ const eventSchema = Joi.object({
   image: Joi.string().optional().allow(""),
 });
 
-// ✅ UPDATED: Removed 'code' from validation
 const programmeSchema = Joi.object({
   title: Joi.string().min(3).required(),
-  description: Joi.string().min(5).required(), // Reduced min length to be safe
+  description: Joi.string().min(5).required(),
   location: Joi.string().required(),
   duration: Joi.string().required(),
   fee: Joi.string().optional().allow(""),
@@ -263,8 +262,9 @@ router.post("/events", verifyEditor, async (req, res) => {
     });
     await newEvent.save();
 
+    // ✅ UPDATED: Removed "New [Type]:"
     await sendBroadcastNotification(
-      `New ${type}: ${title}`,
+      title, // Just the title
       `${description.substring(0, 60)}...`,
       {
         route: "event_detail",
@@ -306,7 +306,7 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 });
 
 // ==========================================
-// 3. PROGRAMME MANAGEMENT (UPDATED: Removed Code)
+// 3. PROGRAMME MANAGEMENT
 // ==========================================
 
 router.get("/programmes", async (req, res) => {
@@ -318,7 +318,6 @@ router.get("/programmes", async (req, res) => {
     let query = {};
     if (search) {
       query = {
-        // ✅ UPDATED: Search only by Title (Removed 'code' from search)
         $or: [{ title: { $regex: search, $options: "i" } }],
       };
     }
@@ -354,7 +353,6 @@ router.post("/programmes", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    // ✅ UPDATED: Removed 'code' destructuring
     const { title, description, location, duration, fee, image } = req.body;
 
     const exists = await Programme.findOne({ title });
@@ -363,7 +361,6 @@ router.post("/programmes", verifyEditor, async (req, res) => {
 
     const newProg = new Programme({
       title,
-      // code, // <-- Removed
       description,
       location,
       duration,
@@ -372,8 +369,9 @@ router.post("/programmes", verifyEditor, async (req, res) => {
     });
     await newProg.save();
 
+    // ✅ UPDATED: Removed "New Programme:"
     await sendBroadcastNotification(
-      `New Programme: ${title}`,
+      title, // Just the Title
       `${description.substring(0, 60)}...`,
       {
         route: "programme_detail",
@@ -394,7 +392,6 @@ router.put("/programmes/:id", verifyEditor, async (req, res) => {
   if (error) return res.status(400).json({ message: error.details[0].message });
 
   try {
-    // ✅ UPDATED: Removed 'code'
     const { title, description, location, duration, fee, image } = req.body;
 
     const updatedProg = await Programme.findByIdAndUpdate(

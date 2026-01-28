@@ -5,7 +5,6 @@ const Job = require("../models/Job");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
-// Ensure this path is correct too. If this file doesn't exist, it will also crash.
 const { sendBroadcastNotification } = require("../utils/notificationHandler");
 
 // @route   GET /api/jobs
@@ -30,10 +29,11 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     // 🔔 Notify all users
     try {
       if (sendBroadcastNotification) {
+        // ✅ UPDATED: Removed "New Opportunity:" prefix
         await sendBroadcastNotification(
-          `New Opportunity: ${savedJob.title}`,
+          savedJob.title, // Just the Job Title
           `at ${savedJob.company}. Tap to view details.`,
-          { route: "job_detail", id: savedJob._id.toString() }
+          { route: "job_detail", id: savedJob._id.toString() },
         );
       }
     } catch (notifyErr) {

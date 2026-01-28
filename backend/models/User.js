@@ -10,7 +10,7 @@ const userSchema = new mongoose.Schema(
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: Date.now },
     isPhoneVisible: { type: Boolean, default: false }, // Privacy
-    isEmailVisible: { type: Boolean, default: false }, // Privacy
+    isEmailVisible: { type: Boolean, default: true }, // Show Email in Directory
     isOpenToMentorship: { type: Boolean, default: false }, // Mentorship Feature
 
     programmeTitle: { type: String, required: false },

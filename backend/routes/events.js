@@ -6,16 +6,13 @@ const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
 // ==========================================
-// 🛡️ VALIDATION SCHEMA (Fixed)
+// 🛡️ VALIDATION SCHEMA
 // ==========================================
 const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
   date: Joi.date().optional(),
-
-  // ✅ ADD THIS LINE to fix the error:
   time: Joi.string().optional().allow(""),
-
   location: Joi.string().optional().allow(""),
   type: Joi.string()
     .valid(
@@ -71,7 +68,7 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       title: req.body.title,
       description: req.body.description,
       date: req.body.date,
-      time: req.body.time, // ✅ Make sure this is added
+      time: req.body.time,
       location: req.body.location,
       type: req.body.type,
       image: req.body.image,
@@ -80,8 +77,9 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
     const savedEvent = await event.save();
 
     try {
+      // ✅ UPDATED: Removed "New Event:" prefix
       await sendBroadcastNotification(
-        `New ${savedEvent.type}: ${savedEvent.title}`,
+        savedEvent.title, // Just the Title
         `${savedEvent.description.substring(0, 50)}...`,
         { route: "event_detail", id: savedEvent._id.toString() },
       );
@@ -108,7 +106,7 @@ router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
         title: req.body.title,
         description: req.body.description,
         date: req.body.date,
-        time: req.body.time, // ✅ Make sure this is added
+        time: req.body.time,
         location: req.body.location,
         type: req.body.type,
         image: req.body.image,

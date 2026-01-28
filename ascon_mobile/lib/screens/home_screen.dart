@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // ✅ Added for robust images
+
 import '../main.dart';
 import 'directory_screen.dart';
 import 'profile_screen.dart';
@@ -76,8 +78,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_screens.isEmpty)
+    if (_screens.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     final primaryColor = Theme.of(context).primaryColor;
     final navBarColor = Theme.of(context).cardColor;
@@ -193,8 +196,11 @@ class _DashboardViewState extends State<_DashboardView> {
     _viewModel.loadData();
   }
 
+  // ✅ UPDATED: Robust Image Builder (Fixes Google Avatars)
   Widget _buildSafeImage(String? imageUrl,
       {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
+    
+    // 1. Empty Check
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
         color: Colors.grey[200],
@@ -202,15 +208,26 @@ class _DashboardViewState extends State<_DashboardView> {
       );
     }
 
+    // 2. Google Default/Broken Check (CRITICAL FIX)
+    if (imageUrl.contains('googleusercontent.com/profile/picture/0')) {
+       return Container(
+        color: Colors.grey[200],
+        child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)),
+      );
+    }
+
+    // 3. Network Image (Cached)
     if (imageUrl.startsWith('http')) {
-      return Image.network(
-        imageUrl,
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
         fit: fit,
-        errorBuilder: (c, e, s) =>
+        placeholder: (context, url) => Container(color: Colors.grey[200]),
+        errorWidget: (context, url, error) =>
             Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)),
       );
     }
 
+    // 4. Base64 Image
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -370,6 +387,7 @@ class _DashboardViewState extends State<_DashboardView> {
                                         child: ClipOval(
                                           child: SizedBox(
                                             width: 56, height: 56,
+                                            // ✅ Uses new Robust Image Builder
                                             child: _buildSafeImage(img, fallbackIcon: Icons.person),
                                           ),
                                         ),
@@ -451,7 +469,7 @@ class _DashboardViewState extends State<_DashboardView> {
                     const SizedBox(height: 25),
 
                     // ------------------------------------------------
-                    // 3️⃣ NEWS & UPDATES (Refined Pro Design)
+                    // 3️⃣ NEWS & UPDATES
                     // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -500,7 +518,6 @@ class _DashboardViewState extends State<_DashboardView> {
                         itemCount: _viewModel.programmes.length > 3 ? 3 : _viewModel.programmes.length, 
                         separatorBuilder: (c, i) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
-                          // ✅ NEW: Uses Pro Editorial Design
                           return _buildNewsUpdateCard(context, _viewModel.programmes[index]);
                         },
                       ),
@@ -517,7 +534,7 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   // ------------------------------------------------
-  // 🎨 WIDGET 1: UPCOMING EVENT CARD (PRO)
+  // 🎨 WIDGET 1: UPCOMING EVENT CARD
   // ------------------------------------------------
   Widget _buildUpcomingEventCard(BuildContext context, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -727,7 +744,7 @@ class _DashboardViewState extends State<_DashboardView> {
   }
 
   // ------------------------------------------------
-  // 🎨 WIDGET 2: NEWS CARD (THE 100% PRO "MAGAZINE" STYLE)
+  // 🎨 WIDGET 2: NEWS CARD
   // ------------------------------------------------
   Widget _buildNewsUpdateCard(BuildContext context, Map<String, dynamic> data) {
     final String title = data['title'] ?? "Highlights";
@@ -764,12 +781,11 @@ class _DashboardViewState extends State<_DashboardView> {
             children: [
               // 1. Background Image
               Positioned.fill(
+                // ✅ Uses new Robust Image Builder
                 child: _buildSafeImage(imageUrl, fallbackIcon: Icons.business, fit: BoxFit.cover),
               ),
               
               // 2. "Side Fade" Gradient Overlay (Left -> Right)
-              // This creates a solid area for text that fades into the image. 
-              // Much more readable and "Magazine-like" than a bottom shadow.
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -777,10 +793,10 @@ class _DashboardViewState extends State<_DashboardView> {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        cardColor.withOpacity(1.0), // Solid Card Color on Left
+                        cardColor.withOpacity(1.0), 
                         cardColor.withOpacity(0.95),
                         cardColor.withOpacity(0.6),
-                        cardColor.withOpacity(0.0), // Transparent on Right
+                        cardColor.withOpacity(0.0), 
                       ],
                       stops: const [0.0, 0.45, 0.65, 1.0], 
                     ),
@@ -788,23 +804,23 @@ class _DashboardViewState extends State<_DashboardView> {
                 ),
               ),
 
-              // 3. Content (Text Centered Vertically on the Left)
+              // 3. Content
               Positioned(
                 top: 0,
                 bottom: 0,
                 left: 20, 
-                width: MediaQuery.of(context).size.width * 0.65, // Generous width for text
+                width: MediaQuery.of(context).size.width * 0.65,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // A. Small Category Badge (Capsule)
+                    // A. Badge
                     Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20), // Pill shape
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         badgeText, 
@@ -817,14 +833,14 @@ class _DashboardViewState extends State<_DashboardView> {
                       ),
                     ),
 
-                    // B. Title (Big & Bold)
+                    // B. Title
                     Text(
                       title,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.lato(
                         color: titleColor, 
-                        fontSize: 18, // Bigger
+                        fontSize: 18, 
                         fontWeight: FontWeight.w900,
                         height: 1.1,
                         letterSpacing: -0.5,
@@ -833,7 +849,7 @@ class _DashboardViewState extends State<_DashboardView> {
                     
                     const SizedBox(height: 12),
                     
-                    // C. "Read Now" Action (Gold Button Text)
+                    // C. "Read Now" Action
                     Row(
                       children: [
                         Text(

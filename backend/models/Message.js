@@ -2,22 +2,29 @@ const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
   {
-    conversationId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Conversation",
-      required: true,
-    },
+    conversationId: { type: String, required: true },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    text: { type: String, required: true },
-    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Array of users who read it
+
+    type: {
+      type: String,
+      enum: ["text", "image", "audio", "file"],
+      default: "text",
+    },
+
+    text: { type: String, default: "" },
+    fileUrl: { type: String, default: "" },
+
+    isDeleted: { type: Boolean, default: false },
+    isEdited: { type: Boolean, default: false },
+
+    // ✅ NEW: Read Status
+    isRead: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
-
-messageSchema.index({ conversationId: 1, createdAt: 1 });
 
 module.exports = mongoose.model("Message", messageSchema);
