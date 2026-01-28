@@ -7,6 +7,37 @@ class JobDetailScreen extends StatelessWidget {
   final Map<String, dynamic> job;
   const JobDetailScreen({super.key, required this.job});
 
+  // ✅ HELPER: Parses Bold (*), Italic (_), and Underline (~)
+  // Same logic as ChatScreen to maintain consistency
+  List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
+    final List<TextSpan> spans = [];
+    
+    // Regex matches pairs of *, _, or ~
+    final RegExp exp = RegExp(r'([*_~])(.*?)\1');
+
+    text.splitMapJoin(
+      exp,
+      onMatch: (Match m) {
+        final String marker = m.group(1)!;
+        final String content = m.group(2)!;
+
+        TextStyle newStyle = baseStyle;
+        if (marker == '*') newStyle = newStyle.copyWith(fontWeight: FontWeight.bold);
+        if (marker == '_') newStyle = newStyle.copyWith(fontStyle: FontStyle.italic);
+        if (marker == '~') newStyle = newStyle.copyWith(decoration: TextDecoration.underline);
+
+        spans.add(TextSpan(text: content, style: newStyle));
+        return '';
+      },
+      onNonMatch: (String s) {
+        spans.add(TextSpan(text: s, style: baseStyle));
+        return '';
+      },
+    );
+
+    return spans;
+  }
+
   // ✅ INTELLIGENT APPLICATION HANDLER
   Future<void> _handleApplication(BuildContext context) async {
     String link = job['applicationLink'] ?? "";
@@ -18,7 +49,6 @@ class JobDetailScreen extends StatelessWidget {
       return;
     }
 
-    // 1. Check if it's an email address (Contains @ and no http)
     final bool isEmail = link.contains('@') && !link.startsWith('http');
 
     if (isEmail) {
@@ -28,7 +58,7 @@ class JobDetailScreen extends StatelessWidget {
     }
   }
 
-  // 📧 EMAIL LAUNCHER (Like Facility Inquiry)
+  // 📧 EMAIL LAUNCHER
   Future<void> _launchEmailApp(BuildContext context, String email) async {
     final String jobTitle = job['title'] ?? "Job Opportunity";
     final String company = job['company'] ?? "ASCON";
@@ -61,7 +91,7 @@ class JobDetailScreen extends StatelessWidget {
     }
   }
 
-  // 🌐 BROWSER LAUNCHER (Google Forms / Websites)
+  // 🌐 BROWSER LAUNCHER
   Future<void> _launchBrowser(BuildContext context, String urlString) async {
     if (!urlString.startsWith('http')) {
       urlString = 'https://$urlString';
@@ -70,10 +100,9 @@ class JobDetailScreen extends StatelessWidget {
     final Uri url = Uri.parse(urlString);
 
     try {
-      // Try launching inside the app first (WebView)
       final bool launched = await launchUrl(
         url,
-        mode: LaunchMode.externalApplication, // Changed to external for better Google Form support
+        mode: LaunchMode.externalApplication,
       );
 
       if (!launched) {
@@ -88,7 +117,6 @@ class JobDetailScreen extends StatelessWidget {
     }
   }
 
-  // Share functionality
   void _shareJob() {
     final String title = job['title'] ?? "Job Opportunity";
     final String company = job['company'] ?? "ASCON Network";
@@ -98,7 +126,6 @@ class JobDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Theme Awareness
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     
@@ -197,14 +224,19 @@ class JobDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   
-                  Text(
-                    job['description'] ?? "No description available.",
-                    style: GoogleFonts.lato(
-                      fontSize: 16, 
-                      height: 1.6,
-                      color: isDark ? Colors.grey[300] : Colors.grey[800]
+                  // ✅ UPDATED: Supports Bold, Italics, Underline
+                  Text.rich(
+                    TextSpan(
+                      children: _parseFormattedText(
+                        job['description'] ?? "No description available.",
+                        GoogleFonts.lato(
+                          fontSize: 16, 
+                          height: 1.6,
+                          color: isDark ? Colors.grey[300] : Colors.grey[800]
+                        )
+                      ),
                     ),
-                    textAlign: TextAlign.justify,
+                    textAlign: TextAlign.left, // Keeps the clean left alignment
                   ),
                   const SizedBox(height: 40),
                 ],
@@ -235,7 +267,6 @@ class JobDetailScreen extends StatelessWidget {
                   elevation: 4,
                   shadowColor: primaryColor.withOpacity(0.4),
                 ),
-                // ✅ UPDATE: Uses new intelligent handler
                 onPressed: () => _handleApplication(context),
                 icon: const Icon(Icons.send, color: Colors.white),
                 label: const Text(

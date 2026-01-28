@@ -687,6 +687,38 @@ class _ChatScreenState extends State<ChatScreen> {
   // 🎨 WIDGETS
   // --------------------------------------------------------
 
+  // ✅ HELPER: Parses Bold (*), Italic (_), and Underline (~)
+  List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
+    final List<TextSpan> spans = [];
+    
+    // Regex matches pairs of *, _, or ~
+    // Group 1: The delimiter
+    // Group 2: The content inside
+    final RegExp exp = RegExp(r'([*_~])(.*?)\1');
+
+    text.splitMapJoin(
+      exp,
+      onMatch: (Match m) {
+        final String marker = m.group(1)!;
+        final String content = m.group(2)!;
+
+        TextStyle newStyle = baseStyle;
+        if (marker == '*') newStyle = newStyle.copyWith(fontWeight: FontWeight.bold);
+        if (marker == '_') newStyle = newStyle.copyWith(fontStyle: FontStyle.italic);
+        if (marker == '~') newStyle = newStyle.copyWith(decoration: TextDecoration.underline);
+
+        spans.add(TextSpan(text: content, style: newStyle));
+        return '';
+      },
+      onNonMatch: (String s) {
+        spans.add(TextSpan(text: s, style: baseStyle));
+        return '';
+      },
+    );
+
+    return spans;
+  }
+
   Widget _buildMessageBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     // 1. DELETED MESSAGE (Return Empty SizedBox to hide completely since we use Hard Delete)
     if (msg.isDeleted) return const SizedBox.shrink();
@@ -727,11 +759,16 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       );
     } else {
-      content = Text(
-        msg.text, 
-        style: TextStyle(
-          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-          fontSize: 15,
+      // ✅ REPLACED plain Text with RichText parser
+      content = Text.rich(
+        TextSpan(
+          children: _parseFormattedText(
+            msg.text, 
+            TextStyle(
+              color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+              fontSize: 15,
+            )
+          )
         )
       );
     }
