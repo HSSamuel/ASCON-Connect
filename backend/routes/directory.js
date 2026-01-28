@@ -42,6 +42,8 @@ router.get("/", verifyToken, async (req, res) => {
       linkedin: user.linkedin,
       phoneNumber: user.phoneNumber,
       email: user.email,
+      isOnline: user.isOnline,
+      lastSeen: user.lastSeen,
     }));
 
     res.json(safeList);
