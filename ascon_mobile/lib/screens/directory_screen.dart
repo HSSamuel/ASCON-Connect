@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../services/data_service.dart';
+import '../services/api_client.dart'; 
 import '../widgets/skeleton_loader.dart'; 
 import 'alumni_detail_screen.dart';
 
@@ -14,14 +15,18 @@ class DirectoryScreen extends StatefulWidget {
 }
 
 class _DirectoryScreenState extends State<DirectoryScreen> {
-  final DataService _dataService = DataService();
-
+  final ApiClient _api = ApiClient(); 
+  
   List<dynamic> _allAlumni = [];
   List<dynamic> _searchResults = [];
   Map<String, List<dynamic>> _groupedAlumni = {};
   
   bool _isLoading = false;
   bool _isSearching = false;
+  
+  // ✅ Mentorship Filter State
+  bool _showMentorsOnly = false;
+
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -39,15 +44,31 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   Future<void> _loadDirectory({String query = ""}) async {
     setState(() => _isLoading = true);
     
-    final list = await _dataService.fetchDirectory(); 
+    try {
+      String endpoint = '/api/directory?search=$query';
+      if (_showMentorsOnly) endpoint += '&mentorship=true';
 
-    if (mounted) {
-      setState(() {
-        _allAlumni = list;
-        _searchResults = list; 
-        _groupedAlumni = _groupUsersByYear(list);
-        _isLoading = false;
-      });
+      final response = await _api.get(endpoint);
+
+      // ✅ FIX: Extract the 'data' list from the response map
+      if (response['success'] == true && response['data'] is List) {
+        final List<dynamic> data = response['data'];
+
+        if (mounted) {
+          setState(() {
+            _allAlumni = data;
+            _searchResults = data; 
+            _groupedAlumni = _groupUsersByYear(data);
+            _isLoading = false;
+          });
+        }
+      } else {
+        debugPrint("Unexpected API response format: $response");
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Error loading directory: $e");
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -94,16 +115,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     });
   }
 
-  // ✅ FIXED: Robust Avatar Builder (Prevents Crash)
   Widget _buildAvatar(String? imagePath, bool isDark) {
-    // 1. Filter out null, empty, or the specific BAD google URL
-    if (imagePath == null || 
-        imagePath.isEmpty || 
-        imagePath.contains('profile/picture/0')) { 
+    if (imagePath == null || imagePath.isEmpty || imagePath.contains('profile/picture/0')) { 
       return _buildPlaceholder(isDark);
     }
 
-    // 2. HTTP Image (Use CachedNetworkImage Widget for safety)
     if (imagePath.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imagePath,
@@ -117,7 +133,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       );
     }
 
-    // 3. Base64 Image
     try {
       return CircleAvatar(
         radius: 24,
@@ -152,31 +167,82 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       ),
       body: Column(
         children: [
-          // --- SEARCH BAR AREA ---
+          // --- SEARCH & FILTER AREA ---
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             color: primaryColor, 
-            child: Container(
-              height: 45,
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: TextField(
-                controller: _searchController,
-                onChanged: _onSearchChanged,
-                textAlignVertical: TextAlignVertical.center,
-                style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color), 
-                decoration: InputDecoration(
-                  hintText: 'Search Name, Company, or Year...',
-                  hintStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
-                  prefixIcon: Icon(Icons.search,
-                      color: isDark ? Colors.grey : const Color(0xFF1B5E3A), size: 20),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                  isDense: true,
+            child: Column(
+              children: [
+                // 1. Search Bar
+                Container(
+                  height: 45,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    textAlignVertical: TextAlignVertical.center,
+                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color), 
+                    decoration: InputDecoration(
+                      hintText: 'Search Name, Company, or Year...',
+                      hintStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
+                      prefixIcon: Icon(Icons.search,
+                          color: isDark ? Colors.grey : const Color(0xFF1B5E3A), size: 20),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                      isDense: true,
+                    ),
+                  ),
                 ),
-              ),
+                
+                // ✅ 2. VISIBLE Mentors Filter
+                Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: const Text("Mentors Only"),
+                        selected: _showMentorsOnly,
+                        showCheckmark: false,
+                        
+                        // Icons
+                        avatar: Icon(
+                          _showMentorsOnly ? Icons.check : Icons.handshake_outlined,
+                          size: 18,
+                          // If selected (Gold bg), White icon. If unselected (White bg), Green icon.
+                          color: _showMentorsOnly ? Colors.white : const Color(0xFF1B5E3A),
+                        ),
+                        
+                        // Background Colors
+                        backgroundColor: Colors.white, // 🟢 Default: White (Highly Visible)
+                        selectedColor: const Color(0xFFD4AF37), // 🟡 Active: Gold
+                        
+                        // Text Style
+                        labelStyle: TextStyle(
+                          color: _showMentorsOnly ? Colors.white : const Color(0xFF1B5E3A),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13
+                        ),
+                        
+                        // Border/Shape
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide.none, 
+                        ),
+                        
+                        onSelected: (bool selected) {
+                          setState(() {
+                            _showMentorsOnly = selected;
+                            _loadDirectory(query: _searchController.text);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -186,7 +252,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               onRefresh: () => _loadDirectory(), 
               color: primaryColor,
               child: _isLoading
-                  ? const DirectorySkeletonList() // ✅ Skeleton Loading
+                  ? const DirectorySkeletonList() 
                   : _allAlumni.isEmpty
                       ? _buildEmptyState()
                       : _isSearching
@@ -302,6 +368,8 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     final borderColor = Theme.of(context).dividerColor;
     final primaryColor = Theme.of(context).primaryColor;
 
+    final bool isMentor = user['isOpenToMentorship'] == true;
+
     String subtitle = user['programmeTitle'] ?? 'Member';
     if (user['jobTitle'] != null && user['jobTitle'].toString().isNotEmpty) {
       subtitle = "${user['jobTitle']} • ${user['organization'] ?? ''}";
@@ -336,13 +404,12 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ 2. USING ROBUST AVATAR
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(color: borderColor, width: 1),
                   ),
-                  child: _buildAvatar(user['profilePicture'], isDark), // Using the new safe builder
+                  child: _buildAvatar(user['profilePicture'], isDark),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -353,15 +420,26 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            child: Text(
-                              user['fullName'] ?? 'Unknown',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: textColor, 
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    user['fullName'] ?? 'Unknown',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor, 
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isMentor) 
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 4.0),
+                                    child: Icon(Icons.stars_rounded, color: Colors.amber[700], size: 16),
+                                  ),
+                              ],
                             ),
                           ),
                           if (yearDisplay.isNotEmpty)

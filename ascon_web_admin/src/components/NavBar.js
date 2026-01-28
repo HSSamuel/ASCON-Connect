@@ -3,7 +3,7 @@ import "./NavBar.css";
 
 function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false); // Mobile Menu
-  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false); // ✅ Desktop Dropdown
+  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false); // Desktop Dropdown
 
   // Ref to close dropdown when clicking outside
   const dropdownRef = useRef(null);
@@ -22,7 +22,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
   const handleTabClick = (tab) => {
     setActiveTab(tab);
     setIsMenuOpen(false); // Close mobile menu
-    setIsDesktopDropdownOpen(false); // ✅ Close desktop dropdown
+    setIsDesktopDropdownOpen(false); // Close desktop dropdown
   };
 
   const navItems = [
@@ -32,6 +32,8 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
     { id: "jobs", label: "Jobs", icon: "💼" },
     { id: "facilities", label: "Facilities", icon: "🏢" },
     { id: "registrations", label: "Registrations", icon: "📋" },
+    // ✅ DOCUMENTS TAB IS HERE
+    { id: "documents", label: "Documents", icon: "📄" },
   ];
 
   // Get the object for the currently active tab
@@ -49,7 +51,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           <span className="brand-text">ASCON Admin</span>
         </div>
 
-        {/* ✅ NEW DROPDOWN MENU CONTAINER */}
+        {/* ✅ DROPDOWN MENU CONTAINER */}
         <div className="nav-dropdown-container" ref={dropdownRef}>
           <span className="nav-label-text">Current View:</span>
 
@@ -86,20 +88,26 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
           )}
         </div>
 
-        <button className="logout-btn" onClick={onLogout}>
-          Logout ↪
-        </button>
+        <div className="nav-actions">
+          <button className="logout-btn" onClick={onLogout}>
+            Logout ↪
+          </button>
+        </div>
       </nav>
 
       {/* ==============================
-          2. MOBILE MENU OVERLAY (Unchanged)
+          2. MOBILE MENU OVERLAY
           ============================== */}
       {isMenuOpen && (
         <div className="mobile-menu-overlay">
           <div className="mobile-menu-content">
             <h3>Menu</h3>
             {navItems.map((item) => (
-              <button key={item.id} onClick={() => handleTabClick(item.id)}>
+              <button
+                key={item.id}
+                className={activeTab === item.id ? "active-mobile-item" : ""}
+                onClick={() => handleTabClick(item.id)}
+              >
                 {item.icon} {item.label}
               </button>
             ))}
@@ -115,7 +123,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
       )}
 
       {/* ==============================
-          3. MOBILE BOTTOM BAR (Unchanged)
+          3. MOBILE BOTTOM BAR
           ============================== */}
       <div className="mobile-bottom-bar">
         <div

@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart'; 
 import 'login_screen.dart';
-import 'edit_profile_screen.dart'; 
+import 'edit_profile_screen.dart';
+import 'document_request_screen.dart'; // ✅ Import the new screen
 
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -90,8 +91,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final String email = _userProfile?['email'] ?? 'No Email';
     final String phone = (_userProfile?['phoneNumber']?.toString().isNotEmpty ?? false)
         ? _userProfile!['phoneNumber'] : 'Add Phone Number';
-    
-    // ✅ 1. EXTRACT BIO FROM DATA
     final String bio = _userProfile?['bio'] ?? '';
 
     return Scaffold(
@@ -186,7 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 25), 
 
-                    // ✅ 2. ADDED ABOUT ME SECTION
+                    // --- ABOUT ME SECTION ---
                     if (bio.isNotEmpty) ...[
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -207,7 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 8),
                             Text(
                               bio, 
-                              textAlign: TextAlign.justify, // ✅ JUSTIFIED TEXT ALIGNMENT
+                              textAlign: TextAlign.justify,
                               style: TextStyle(fontSize: 14, color: textColor, height: 1.4),
                             ),
                           ],
@@ -268,6 +267,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 20),
+
+                    // ✅ NEW: ALUMNI SERVICES SECTION
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16), 
+                      decoration: BoxDecoration(
+                        color: cardColor, 
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          if (!isDark) 
+                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text("Alumni Services", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
+                          ),
+                          ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                              child: const Icon(Icons.description_outlined, color: Colors.blue),
+                            ),
+                            title: const Text("Document Requests", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            subtitle: const Text("Transcripts, certificates, etc.", style: TextStyle(fontSize: 12)),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (c) => const DocumentRequestScreen()));
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+
                     const SizedBox(height: 30),
                   ],
                 ),

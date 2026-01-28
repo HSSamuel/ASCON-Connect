@@ -6,25 +6,28 @@ const verifyToken = require("./verifyToken"); // ✅ Protected Route
 // 1. DIRECTORY SEARCH (PROTECTED)
 // =========================================================
 // @route   GET /api/directory
-// ✅ SECURITY: Added verifyToken. Contact info should not be public.
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, mentorship } = req.query; // ✅ Accept mentorship param
 
     let query = { isVerified: true };
 
+    // 1. Filter by Mentorship Status
+    if (mentorship === 'true') {
+      query.isOpenToMentorship = true;
+    }
+
+    // 2. Search Logic
     if (search) {
       const isYear = !isNaN(search);
       if (isYear) {
         query.yearOfAttendance = Number(search);
       } else {
-        // ✅ Escape special regex chars to prevent crashes
         const sanitizedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         query.$text = { $search: sanitizedSearch };
       }
     }
 
-    // Fetch users
     const alumniList = await User.find(query)
       .sort({ yearOfAttendance: -1 })
       .limit(50);
@@ -44,6 +47,7 @@ router.get("/", verifyToken, async (req, res) => {
       email: user.email,
       isOnline: user.isOnline,
       lastSeen: user.lastSeen,
+      isOpenToMentorship: user.isOpenToMentorship, // ✅ Ensure this is sent
     }));
 
     res.json(safeList);

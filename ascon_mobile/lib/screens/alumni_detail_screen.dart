@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
-import 'package:intl/intl.dart'; // ✅ Added for time formatting
+import 'package:intl/intl.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
@@ -24,10 +24,8 @@ class AlumniDetailScreen extends StatelessWidget {
     }
   }
 
-  // ✅ UPGRADED: Authentic & Specific "Last Seen"
   String _formatLastSeen(String? dateString) {
     if (dateString == null) return "Offline";
-    
     try {
       final lastSeen = DateTime.parse(dateString).toLocal();
       final now = DateTime.now();
@@ -36,18 +34,15 @@ class AlumniDetailScreen extends StatelessWidget {
       if (diff.inMinutes < 1) return "Last seen just now";
       if (diff.inMinutes < 60) return "Last seen ${diff.inMinutes}m ago";
       
-      // If it is today
       if (now.day == lastSeen.day && now.month == lastSeen.month && now.year == lastSeen.year) {
         return "Last seen today at ${DateFormat('h:mm a').format(lastSeen)}";
       }
       
-      // If it was yesterday
       final yesterday = now.subtract(const Duration(days: 1));
       if (yesterday.day == lastSeen.day && yesterday.month == lastSeen.month && yesterday.year == lastSeen.year) {
         return "Last seen yesterday at ${DateFormat('h:mm a').format(lastSeen)}";
       }
 
-      // Older dates
       return "Last seen ${DateFormat('MMM d, h:mm a').format(lastSeen)}";
     } catch (e) {
       return "Offline";
@@ -73,12 +68,9 @@ class AlumniDetailScreen extends StatelessWidget {
     final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
 
     final bool showPhone = alumniData['isPhoneVisible'] == true;
-    // final bool showEmail = alumniData['isEmailVisible'] == true; // ⚠️ REMOVED to make email always visible
     final bool isMentor = alumniData['isOpenToMentorship'] == true;
     
-    // ✅ STATUS LOGIC
     final bool isOnline = alumniData['isOnline'] == true;
-    // We calculate the string here so we can use it in the UI and pass it to Chat
     final String statusText = isOnline ? "Active Now" : _formatLastSeen(alumniData['lastSeen']);
 
     final String phone = alumniData['phoneNumber'] ?? '';
@@ -192,7 +184,7 @@ class AlumniDetailScreen extends StatelessWidget {
                       ],
                     ),
                   
-                  // ✅ REAL PRESENCE STATUS
+                  // Presence Status
                   Padding(
                     padding: const EdgeInsets.only(top: 8, bottom: 4),
                     child: Row(
@@ -207,7 +199,7 @@ class AlumniDetailScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          statusText, // Uses our new specific formatter
+                          statusText, 
                           style: GoogleFonts.lato(
                             color: isOnline ? Colors.green[700] : Colors.grey[600],
                             fontSize: 12,
@@ -258,13 +250,44 @@ class AlumniDetailScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 20),
+            // ✅ NEW: REQUEST MENTORSHIP BUTTON (Only if they are a mentor)
+            if (isMentor)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 60, vertical: 10),
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          receiverId: alumniData['_id'] ?? '',
+                          receiverName: fullName,
+                          receiverProfilePic: imageString,
+                          isOnline: isOnline,
+                          lastSeen: alumniData['lastSeen'],
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.handshake_rounded, color: Colors.white, size: 20),
+                  label: Text("Request Mentorship", style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber[800], // Gold/Amber
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 10),
 
             // --- 3. CONTACT ACTION BUTTONS ---
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ✅ UPDATED: Pass Image & Status to Chat Screen
                 _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
                   Navigator.push(
                     context,
@@ -272,7 +295,6 @@ class AlumniDetailScreen extends StatelessWidget {
                       builder: (_) => ChatScreen(
                         receiverId: alumniData['_id'] ?? '',
                         receiverName: fullName,
-                        // ✅ Pass these new fields:
                         receiverProfilePic: imageString,
                         isOnline: isOnline,
                         lastSeen: alumniData['lastSeen'],
@@ -284,7 +306,7 @@ class AlumniDetailScreen extends StatelessWidget {
                 if (linkedin.isNotEmpty)
                   _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
                 
-                // ✅ ALWAYS VISIBLE EMAIL: Removed 'showEmail' check
+                // Email is ALWAYS visible now
                 if (email.isNotEmpty)
                   _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
                 
@@ -300,6 +322,7 @@ class AlumniDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
+                  // About Me Card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -336,6 +359,7 @@ class AlumniDetailScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
+                  // Programme Card
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),

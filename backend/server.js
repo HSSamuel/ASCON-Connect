@@ -184,6 +184,7 @@ const programmeInterestRoute = require("./routes/programmeInterest");
 const notificationRoutes = require("./routes/notifications");
 const eventRegistrationRoute = require("./routes/eventRegistration");
 const chatRoute = require("./routes/chat");
+const documentRoute = require("./routes/documents");
 
 app.use("/api/auth", authRoute);
 app.use("/api/directory", directoryRoute);
@@ -196,6 +197,7 @@ app.use("/api/event-registration", eventRegistrationRoute);
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/facilities", require("./routes/facilities"));
 app.use("/api/chat", chatRoute);
+app.use("/api/documents", documentRoute);
 
 // ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);

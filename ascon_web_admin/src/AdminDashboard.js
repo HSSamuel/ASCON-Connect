@@ -3,19 +3,17 @@ import "./App.css";
 import NavBar from "./components/NavBar";
 import StatCard from "./components/StatCard";
 
-// ✅ Import ALL Smart Managers
+// ✅ Import ALL Smart Managers including the new DocumentsManager
 import UsersManager from "./pages/UsersManager";
 import EventsManager from "./pages/EventsManager";
 import ProgrammesManager from "./pages/ProgrammesManager";
 import RegistrationsManager from "./pages/RegistrationsManager";
 import JobsManager from "./pages/JobsManager";
 import FacilitiesTab from "./components/FacilitiesTab";
+import DocumentsManager from "./pages/DocumentsManager"; // ✅ NEW IMPORT
 
 import { useAuth } from "./hooks/useAuth";
 import { useStats } from "./hooks/useStats";
-
-const BASE_URL =
-  process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
 
 function AdminDashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
@@ -108,6 +106,15 @@ function AdminDashboard({ token, onLogout }) {
           color="#E6E6FA"
           onClick={() => setActiveTab("registrations")}
         />
+
+        {/* OPTIONAL: Document Stats Card (You can add this if your stats API returns it) */}
+        {/* <StatCard
+          title="Doc Requests"
+          value={stats.documentRequests || 0}
+          icon="📄"
+          color="#f8d7da"
+          onClick={() => setActiveTab("documents")}
+        /> */}
       </div>
 
       <div
@@ -137,6 +144,11 @@ function AdminDashboard({ token, onLogout }) {
 
         {activeTab === "registrations" && (
           <RegistrationsManager token={token} canEdit={canEdit} />
+        )}
+
+        {/* ✅ 5. RENDER DOCUMENTS MANAGER */}
+        {activeTab === "documents" && (
+          <DocumentsManager token={token} canEdit={canEdit} />
         )}
       </div>
     </div>
