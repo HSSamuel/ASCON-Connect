@@ -312,7 +312,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               const SizedBox(height: 12),
 
-              // ✅ NEW: MENTORSHIP TOGGLE UI
+              // ✅ NEW: MENTORSHIP TOGGLE UI (With Visibility Fix)
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
@@ -324,6 +324,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   subtitle: Text("Allow other alumni to contact you for guidance.", style: TextStyle(color: Colors.grey, fontSize: 12)),
                   value: _isOpenToMentorship,
                   activeColor: const Color(0xFFD4AF37), // Gold for Mentors
+                  
+                  // ✅ FIX: Force colors for Inactive State
+                  inactiveThumbColor: Colors.grey, 
+                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
+
                   onChanged: (bool value) {
                     setState(() {
                       _isOpenToMentorship = value;
