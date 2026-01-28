@@ -453,4 +453,106 @@ class DataService {
       return [];
     }
   }
+
+  // ==========================================
+  // 9. MENTORSHIP (Phase 3)
+  // ==========================================
+
+  // A. Check Status with a specific user
+  Future<String> getMentorshipStatus(String targetUserId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/status/$targetUserId');
+      final response = await http.get(url, headers: headers);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['status']; // "Pending", "Accepted", "Rejected", "None"
+      }
+      return "None";
+    } catch (e) {
+      return "None";
+    }
+  }
+
+  // B. Send a Request
+  Future<bool> sendMentorshipRequest(String mentorId, String pitch) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/request');
+      
+      final response = await http.post(
+        url, 
+        headers: headers,
+        body: jsonEncode({'mentorId': mentorId, 'pitch': pitch})
+      );
+
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint("Mentorship Request Error: $e");
+      return false;
+    }
+  }
+
+  // C. Respond to a Request (Accept/Reject)
+  Future<bool> respondToMentorshipRequest(String requestId, String status) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/respond/$requestId');
+      
+      final response = await http.put(
+        url, 
+        headers: headers,
+        body: jsonEncode({'status': status})
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // D. Get Dashboard Data
+  Future<Map<String, dynamic>?> getMentorshipDashboard() async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/dashboard');
+      final response = await http.get(url, headers: headers);
+
+      final data = _handleResponse(response);
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // A. Check Status (Updated to return Map)
+  Future<Map<String, dynamic>> getMentorshipStatusFull(String targetUserId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/status/$targetUserId');
+      final response = await http.get(url, headers: headers);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body); // Returns {status: "Pending", requestId: "..."}
+      }
+      return {'status': "None"};
+    } catch (e) {
+      return {'status': "None"};
+    }
+  }
+
+  // B. Cancel/End Request (Generic Delete)
+  Future<bool> deleteMentorshipInteraction(String requestId, String type) async {
+    // type is either 'cancel' or 'end'
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/$type/$requestId');
+      
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }

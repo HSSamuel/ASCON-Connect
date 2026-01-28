@@ -25,7 +25,6 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
     try {
       final result = await _api.get('/api/documents/my');
       
-      // Handle ApiClient response wrapper
       if (result is Map && result['success'] == true && result['data'] is List) {
          if (mounted) {
           setState(() {
@@ -34,7 +33,6 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
           });
         }
       } else if (result is List) {
-        // Fallback if your API client returns list directly in some versions
         if (mounted) {
           setState(() {
             _requests = result;
@@ -45,6 +43,48 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
     } catch (e) {
       debugPrint("Error fetching docs: $e");
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ DELETE FUNCTION
+  Future<void> _deleteRequest(String id) async {
+    // 1. Confirm Dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete Request?"),
+        content: const Text("Are you sure you want to remove this request? This cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text("Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // 2. Call API
+    try {
+      setState(() => _isLoading = true);
+      // Ensure your ApiClient has a generic delete method, or use http directly if not.
+      // Assuming ApiClient has: Future<dynamic> delete(String endpoint)
+      await _api.delete('/api/documents/$id');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Request deleted successfully"),
+          backgroundColor: Colors.red,
+        ));
+        _fetchRequests(); // Refresh list
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Delete failed: $e")));
+      }
     }
   }
 
@@ -157,6 +197,8 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
                   separatorBuilder: (c, i) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final req = _requests[index];
+                    final String id = req['_id'] ?? req['id']; // Handle ID robustly
+
                     return Card(
                       elevation: 2,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -165,6 +207,7 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Header Row
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -210,13 +253,31 @@ class _DocumentRequestScreenState extends State<DocumentRequestScreen> {
                               ),
                             ],
                             
-                            const SizedBox(height: 6),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                DateFormat('MMM d, yyyy • h:mm a').format(DateTime.parse(req['createdAt']).toLocal()), 
-                                style: TextStyle(fontSize: 11, color: Colors.grey[500])
-                              ),
+                            const SizedBox(height: 10),
+                            
+                            // ✅ FOOTER ROW: Date on Left, Delete on Right
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  DateFormat('MMM d, yyyy • h:mm a').format(DateTime.parse(req['createdAt']).toLocal()), 
+                                  style: TextStyle(fontSize: 11, color: Colors.grey[500])
+                                ),
+                                
+                                // ✅ DELETE BUTTON
+                                InkWell(
+                                  onTap: () => _deleteRequest(id),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withOpacity(0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),

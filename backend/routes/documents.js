@@ -54,7 +54,6 @@ router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
       { new: true },
     );
 
-    // Notify User
     if (doc) {
       await sendPersonalNotification(
         doc.user,
@@ -64,6 +63,30 @@ router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
     }
 
     res.json(doc);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ 5. DELETE REQUEST (User) - NEW ROUTE
+router.delete("/:id", verifyToken, async (req, res) => {
+  try {
+    // Find the doc and ensure it belongs to the requesting user
+    const doc = await DocumentRequest.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
+
+    if (!doc) {
+      return res
+        .status(404)
+        .json({ message: "Request not found or access denied" });
+    }
+
+    // Delete it
+    await DocumentRequest.findByIdAndDelete(req.params.id);
+
+    res.json({ message: "Request deleted successfully" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

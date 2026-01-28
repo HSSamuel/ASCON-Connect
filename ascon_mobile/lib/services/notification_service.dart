@@ -14,6 +14,7 @@ import '../main.dart';
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
 import '../screens/facility_detail_screen.dart'; 
+import '../screens/mentorship_dashboard_screen.dart'; // ✅ Import Mentorship Dashboard
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -116,38 +117,48 @@ class NotificationService {
     final route = data['route'];
     final id = data['id'] ?? data['eventId']; 
 
-    if (route == null || id == null) return;
+    if (route == null) return; // ✅ ID is optional now (for dashboard routes)
 
     debugPrint("🔔 Navigating to $route with ID: $id");
 
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      if (route == 'event_detail') {
+      // ✅ 1. Mentorship Dashboard (No ID needed)
+      if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => EventDetailScreen(
-              eventData: {'_id': id.toString(), 'title': 'Loading details...'}, 
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
         );
-      } else if (route == 'programme_detail') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => ProgrammeDetailScreen(
-              programme: {'_id': id.toString(), 'title': 'Loading details...'},
+        return;
+      }
+
+      // ✅ 2. Detail Routes (Require ID)
+      if (id != null) {
+        if (route == 'event_detail') {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => EventDetailScreen(
+                eventData: {'_id': id.toString(), 'title': 'Loading details...'}, 
+              ),
             ),
-          ),
-        );
-      } 
-      else if (route == 'facility_detail') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (_) => FacilityDetailScreen(
-              facility: {'_id': id.toString(), 'title': 'Loading details...'},
+          );
+        } else if (route == 'programme_detail') {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => ProgrammeDetailScreen(
+                programme: {'_id': id.toString(), 'title': 'Loading details...'},
+              ),
             ),
-          ),
-        );
+          );
+        } else if (route == 'facility_detail') {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => FacilityDetailScreen(
+                facility: {'_id': id.toString(), 'title': 'Loading details...'},
+              ),
+            ),
+          );
+        }
       }
     });
   }

@@ -27,6 +27,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _otherProgrammeController;
 
   String? _selectedProgramme;
+  
+  // ✅ NEW: Mentorship State
+  bool _isOpenToMentorship = false; 
+
   Uint8List? _selectedImageBytes; 
   XFile? _pickedFile; // ✅ We keep this as XFile
   String? _currentUrl;
@@ -56,6 +60,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneController = TextEditingController(text: widget.userData['phoneNumber'] ?? '');
     _yearController = TextEditingController(text: widget.userData['yearOfAttendance']?.toString() ?? '');
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
+
+    // ✅ Initialize Mentorship Status from User Data
+    _isOpenToMentorship = widget.userData['isOpenToMentorship'] == true;
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
 
@@ -114,6 +121,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'linkedin': _linkedinController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
         'yearOfAttendance': _yearController.text.trim(),
+        // ✅ Send Mentorship Status (converted to string for multipart request)
+        'isOpenToMentorship': _isOpenToMentorship.toString(), 
       };
 
       if (_selectedProgramme == "Other") {
@@ -300,6 +309,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 12),
               
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
+
+              const SizedBox(height: 12),
+
+              // ✅ NEW: MENTORSHIP TOGGLE UI
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: SwitchListTile(
+                  title: const Text("Open to Mentorship", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Text("Allow other alumni to contact you for guidance.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  value: _isOpenToMentorship,
+                  activeColor: const Color(0xFFD4AF37), // Gold for Mentors
+                  onChanged: (bool value) {
+                    setState(() {
+                      _isOpenToMentorship = value;
+                    });
+                  },
+                  secondary: Icon(Icons.stars, color: _isOpenToMentorship ? const Color(0xFFD4AF37) : Colors.grey),
+                ),
+              ),
 
               const SizedBox(height: 24),
 

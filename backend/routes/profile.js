@@ -29,6 +29,10 @@ router.put("/update", verifyToken, (req, res) => {
         year = null;
       }
 
+      // ✅ NEW: Handle Mentorship Toggle
+      // Mobile app sends "true" or "false" as string via multipart/form-data
+      const isMentor = req.body.isOpenToMentorship === "true";
+
       const updateData = {
         fullName: req.body.fullName,
         bio: req.body.bio,
@@ -39,6 +43,7 @@ router.put("/update", verifyToken, (req, res) => {
         yearOfAttendance: year,
         programmeTitle: req.body.programmeTitle,
         customProgramme: req.body.customProgramme,
+        isOpenToMentorship: isMentor, // ✅ Saved to DB
       };
 
       // Add Image URL if file exists
@@ -50,7 +55,7 @@ router.put("/update", verifyToken, (req, res) => {
       const updatedUser = await User.findByIdAndUpdate(
         req.user._id,
         { $set: updateData },
-        { new: true, runValidators: true }
+        { new: true, runValidators: true },
       ).select("-password");
 
       // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404

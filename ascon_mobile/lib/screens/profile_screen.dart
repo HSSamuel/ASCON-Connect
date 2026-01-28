@@ -5,7 +5,8 @@ import '../services/auth_service.dart';
 import '../services/data_service.dart'; 
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
-import 'document_request_screen.dart'; // ✅ Import the new screen
+import 'document_request_screen.dart'; 
+import 'mentorship_dashboard_screen.dart'; // ✅ Import Mentorship Dashboard
 
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -269,7 +270,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ✅ NEW: ALUMNI SERVICES SECTION
+                    // ✅ ALUMNI SERVICES SECTION
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16), 
                       decoration: BoxDecoration(
@@ -287,6 +288,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                             child: Text("Alumni Services", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
                           ),
+                          
+                          // 1. Document Request
                           ListTile(
                             leading: Container(
                               padding: const EdgeInsets.all(8),
@@ -300,6 +303,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               Navigator.push(context, MaterialPageRoute(builder: (c) => const DocumentRequestScreen()));
                             },
                           ),
+                          
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16),
+                            child: Divider(height: 1),
+                          ),
+
+                          // ✅ 2. Mentorship Program (NEW)
+                          ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: const Color(0xFFD4AF37).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                              child: const Icon(Icons.school_rounded, color: Color(0xFFD4AF37)), 
+                            ),
+                            title: const Text("Mentorship Program", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                            subtitle: const Text("Manage requests & connections", style: TextStyle(fontSize: 12)),
+                            trailing: _buildNotificationBadge(),
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (c) => const MentorshipDashboardScreen()));
+                            },
+                          ),
+                          
                           const SizedBox(height: 8),
                         ],
                       ),
@@ -377,5 +401,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ],
     );
+  }
+
+  // ✅ Helper for the Red Dot / Arrow
+  Widget _buildNotificationBadge() {
+    return const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey);
   }
 }

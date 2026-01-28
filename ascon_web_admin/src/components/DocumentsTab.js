@@ -68,13 +68,8 @@ function DocumentsTab({
   };
 
   const renderStatusBadge = (status) => {
-    const colors = {
-      Pending: "bg-yellow-100 text-yellow-800",
-      Processing: "bg-blue-100 text-blue-800",
-      Ready: "bg-purple-100 text-purple-800",
-      Delivered: "bg-green-100 text-green-800",
-      Rejected: "bg-red-100 text-red-800",
-    };
+    // ✅ REMOVED UNUSED 'colors' OBJECT HERE
+
     // Tailwind classes map to standard CSS if needed, or use inline styles
     const styleMap = {
       Pending: { backgroundColor: "#fff3cd", color: "#856404" },

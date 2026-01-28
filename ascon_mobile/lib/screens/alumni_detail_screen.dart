@@ -6,11 +6,101 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
 import 'chat_screen.dart'; 
+// ✅ Import DataService for API calls
+import '../services/data_service.dart'; 
 
-class AlumniDetailScreen extends StatelessWidget {
+class AlumniDetailScreen extends StatefulWidget {
   final Map<String, dynamic> alumniData;
 
   const AlumniDetailScreen({super.key, required this.alumniData});
+
+  @override
+  State<AlumniDetailScreen> createState() => _AlumniDetailScreenState();
+}
+
+class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
+  // ✅ State for Mentorship Logic
+  final DataService _dataService = DataService();
+  String _mentorshipStatus = "Loading"; // None, Pending, Accepted, Rejected
+  String? _requestId; // ✅ NEW: Store ID to allow cancellation
+  bool _isLoadingStatus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Only fetch status if they are actually a mentor
+    if (widget.alumniData['isOpenToMentorship'] == true) {
+      _checkStatus();
+    } else {
+      _mentorshipStatus = "None"; 
+    }
+  }
+
+  // ✅ 1. Check current relationship status from Backend
+  Future<void> _checkStatus() async {
+    setState(() => _isLoadingStatus = true);
+    // Uses the new Phase 4 method that returns a Map {status, requestId}
+    final result = await _dataService.getMentorshipStatusFull(widget.alumniData['_id']);
+    if (mounted) {
+      setState(() {
+        _mentorshipStatus = result['status'];
+        _requestId = result['requestId']; // Capture the ID
+        _isLoadingStatus = false;
+      });
+    }
+  }
+
+  // ✅ 2. Handle sending the request with a pitch
+  Future<void> _handleRequest() async {
+    TextEditingController pitchCtrl = TextEditingController();
+    
+    // Show Pitch Dialog
+    final bool? send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("Request Mentorship", style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Write a short note introducing yourself and why you'd like mentorship:"),
+            const SizedBox(height: 10),
+            TextField(
+              controller: pitchCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: "Hi, I admire your work in...",
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), foregroundColor: Colors.white),
+            child: const Text("Send Request"),
+          ),
+        ],
+      ),
+    );
+
+    // If user clicked Send
+    if (send == true) {
+      setState(() => _isLoadingStatus = true);
+      final success = await _dataService.sendMentorshipRequest(widget.alumniData['_id'], pitchCtrl.text);
+      
+      if (mounted) {
+        // Refresh status immediately to get the new Request ID
+        await _checkStatus();
+        
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(success ? "Request Sent Successfully!" : "Failed to send request."),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ));
+      }
+    }
+  }
 
   Future<void> _launchURL(String urlString) async {
     if (urlString.isEmpty) return;
@@ -60,30 +150,114 @@ class AlumniDetailScreen extends StatelessWidget {
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
-    final String fullName = alumniData['fullName'] ?? 'Unknown Alumnus';
-    final String job = alumniData['jobTitle'] ?? '';
-    final String org = alumniData['organization'] ?? '';
+    // ✅ Access via widget.alumniData
+    final String fullName = widget.alumniData['fullName'] ?? 'Unknown Alumnus';
+    final String job = widget.alumniData['jobTitle'] ?? '';
+    final String org = widget.alumniData['organization'] ?? '';
     
-    String rawBio = alumniData['bio'] ?? '';
+    String rawBio = widget.alumniData['bio'] ?? '';
     final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
 
-    final bool showPhone = alumniData['isPhoneVisible'] == true;
-    final bool isMentor = alumniData['isOpenToMentorship'] == true;
+    final bool showPhone = widget.alumniData['isPhoneVisible'] == true;
+    final bool isMentor = widget.alumniData['isOpenToMentorship'] == true;
     
-    final bool isOnline = alumniData['isOnline'] == true;
-    final String statusText = isOnline ? "Active Now" : _formatLastSeen(alumniData['lastSeen']);
+    final bool isOnline = widget.alumniData['isOnline'] == true;
+    final String statusText = isOnline ? "Active Now" : _formatLastSeen(widget.alumniData['lastSeen']);
 
-    final String phone = alumniData['phoneNumber'] ?? '';
-    final String linkedin = alumniData['linkedin'] ?? '';
-    final String email = alumniData['email'] ?? '';
-    final String year = alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
-    final String imageString = alumniData['profilePicture'] ?? '';
+    final String phone = widget.alumniData['phoneNumber'] ?? '';
+    final String linkedin = widget.alumniData['linkedin'] ?? '';
+    final String email = widget.alumniData['email'] ?? '';
+    final String year = widget.alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
+    final String imageString = widget.alumniData['profilePicture'] ?? '';
     
-    final String zoomHeroTag = "zoom_profile_${alumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
+    final String zoomHeroTag = "zoom_profile_${widget.alumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
 
-    final String programme = (alumniData['programmeTitle'] != null && alumniData['programmeTitle'].toString().isNotEmpty) 
-        ? alumniData['programmeTitle'] 
+    final String programme = (widget.alumniData['programmeTitle'] != null && widget.alumniData['programmeTitle'].toString().isNotEmpty) 
+        ? widget.alumniData['programmeTitle'] 
         : 'Not Specified';
+
+    // ✅ 3. Helper to Build the Smart Button
+    Widget buildMentorshipButton() {
+      if (!isMentor) return const SizedBox.shrink();
+
+      if (_isLoadingStatus) {
+        return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
+      }
+
+      String label = "Request Mentorship";
+      Color btnColor = Colors.amber[800]!;
+      VoidCallback? action = _handleRequest;
+      IconData icon = Icons.handshake_rounded;
+
+      // Logic based on API Status
+      if (_mentorshipStatus == "Pending") {
+        label = "Withdraw Request"; // ✅ UPDATED: Cancel Option
+        btnColor = Colors.orange[800]!;
+        icon = Icons.cancel_outlined;
+        
+        // ✅ ADDED: Withdraw Logic
+        action = () async {
+           final confirm = await showDialog(
+             context: context, 
+             builder: (c) => AlertDialog(
+               title: const Text("Withdraw Request?"),
+               content: const Text("Are you sure you want to cancel this mentorship request?"),
+               actions: [
+                 TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("No")),
+                 TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Yes, Withdraw", style: TextStyle(color: Colors.red))),
+               ],
+             )
+           );
+
+           if (confirm == true && _requestId != null) {
+             setState(() => _isLoadingStatus = true);
+             final success = await _dataService.deleteMentorshipInteraction(_requestId!, 'cancel');
+             if (mounted) {
+               await _checkStatus(); // Refresh to "None"
+               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                 content: Text(success ? "Request Withdrawn" : "Failed to withdraw"),
+                 backgroundColor: success ? Colors.grey : Colors.red,
+               ));
+             }
+           }
+        };
+      } else if (_mentorshipStatus == "Accepted") {
+        label = "Message Mentor";
+        btnColor = Colors.green[700]!;
+        icon = Icons.chat;
+        action = () {
+           // Go direct to chat
+           Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
+              receiverId: widget.alumniData['_id'],
+              receiverName: fullName,
+              receiverProfilePic: imageString,
+              isOnline: isOnline,
+           )));
+        };
+      } else if (_mentorshipStatus == "Rejected") {
+        label = "Request Declined";
+        btnColor = Colors.red[300]!;
+        action = null;
+        icon = Icons.block;
+      }
+
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 60, vertical: 10),
+        child: ElevatedButton.icon(
+          onPressed: action,
+          icon: Icon(icon, color: Colors.white, size: 20),
+          label: Text(label, style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: btnColor,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            elevation: 2,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -250,37 +424,8 @@ class AlumniDetailScreen extends StatelessWidget {
               ),
             ),
 
-            // ✅ NEW: REQUEST MENTORSHIP BUTTON (Only if they are a mentor)
-            if (isMentor)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 60, vertical: 10),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          receiverId: alumniData['_id'] ?? '',
-                          receiverName: fullName,
-                          receiverProfilePic: imageString,
-                          isOnline: isOnline,
-                          lastSeen: alumniData['lastSeen'],
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.handshake_rounded, color: Colors.white, size: 20),
-                  label: Text("Request Mentorship", style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.amber[800], // Gold/Amber
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    elevation: 2,
-                  ),
-                ),
-              ),
+            // ✅ SMART MENTORSHIP BUTTON (Replaces static one)
+            buildMentorshipButton(),
 
             const SizedBox(height: 10),
 
@@ -293,11 +438,11 @@ class AlumniDetailScreen extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (_) => ChatScreen(
-                        receiverId: alumniData['_id'] ?? '',
+                        receiverId: widget.alumniData['_id'] ?? '',
                         receiverName: fullName,
                         receiverProfilePic: imageString,
                         isOnline: isOnline,
-                        lastSeen: alumniData['lastSeen'],
+                        lastSeen: widget.alumniData['lastSeen'],
                       ),
                     ),
                   );
@@ -306,7 +451,6 @@ class AlumniDetailScreen extends StatelessWidget {
                 if (linkedin.isNotEmpty)
                   _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
                 
-                // Email is ALWAYS visible now
                 if (email.isNotEmpty)
                   _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
                 

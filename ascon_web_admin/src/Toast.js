@@ -1,4 +1,6 @@
 import React, { useEffect } from "react";
+// ✅ Import professional icons from react-icons (already installed in your package.json)
+import { FiCheckCircle, FiAlertCircle, FiInfo, FiX } from "react-icons/fi";
 import "./Toast.css";
 
 function Toast({ message, type = "success", onClose }) {
@@ -10,28 +12,31 @@ function Toast({ message, type = "success", onClose }) {
     return () => clearTimeout(timer);
   }, [onClose]);
 
-  // Dynamic Icons based on type
-  const getIcon = () => {
+  // Helper to render the correct icon component
+  const renderIcon = () => {
     switch (type) {
       case "success":
-        return "✅";
+        return <FiCheckCircle size={20} />;
       case "error":
-        return "❌";
+        return <FiAlertCircle size={20} />;
       case "info":
-        return "📥"; // Icon for Export
+        return <FiInfo size={20} />;
       default:
-        return "🔔";
+        return <FiInfo size={20} />;
     }
   };
 
   return (
     <div className={`toast-container toast-${type}`}>
-      <div className="toast-icon">{getIcon()}</div>
+      <div className="toast-icon-wrapper">{renderIcon()}</div>
+
       <div className="toast-content">
-        <span className="toast-message">{message}</span>
+        {/* Optional: You could add a title here based on type if needed */}
+        <p className="toast-message">{message}</p>
       </div>
-      <button className="toast-close" onClick={onClose}>
-        &times;
+
+      <button className="toast-close-btn" onClick={onClose} aria-label="Close">
+        <FiX size={18} />
       </button>
     </div>
   );
