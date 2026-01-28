@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import api from "../api";
 import { useAuth } from "../hooks/useAuth";
 import SkeletonTable from "../components/SkeletonTable";
-import Toast from "../Toast"; // ✅ Using your LOCAL Toast component
+import Toast from "../Toast";
 
 const DocumentsManager = () => {
   const { token } = useAuth();
@@ -10,7 +10,9 @@ const DocumentsManager = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
 
-  // ✅ Local Toast State
+  // ✅ 1. ADDED SEARCH STATE
+  const [search, setSearch] = useState("");
+
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = "success") => {
@@ -32,6 +34,56 @@ const DocumentsManager = () => {
   useEffect(() => {
     fetchDocs();
   }, [fetchDocs]);
+
+  // ✅ 2. CLIENT-SIDE FILTERING
+  const filteredDocs = docs.filter(
+    (doc) =>
+      (doc.user?.fullName || "").toLowerCase().includes(search.toLowerCase()) ||
+      (doc.type || "").toLowerCase().includes(search.toLowerCase()) ||
+      (doc.status || "").toLowerCase().includes(search.toLowerCase()),
+  );
+
+  // ✅ 3. EXPORT TO CSV FUNCTION
+  const exportToCSV = () => {
+    if (!filteredDocs || filteredDocs.length === 0) {
+      alert("No data to export.");
+      return;
+    }
+
+    const headers = [
+      "User Name",
+      "Alumni ID",
+      "Document Type",
+      "Details",
+      "Status",
+      "Date Requested",
+      "Admin Note",
+    ];
+
+    const rows = filteredDocs.map((doc) => [
+      `"${doc.user?.fullName || "Unknown"}"`,
+      `"${doc.user?.alumniId || "N/A"}"`,
+      `"${doc.type}"`,
+      `"${doc.details}"`,
+      doc.status,
+      new Date(doc.createdAt).toLocaleDateString(),
+      `"${doc.adminComment || ""}"`,
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ascon_documents_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleStatusUpdate = async (doc, newStatus) => {
     if (!window.confirm(`Mark request as ${newStatus}? User will be notified.`))
@@ -92,19 +144,65 @@ const DocumentsManager = () => {
         />
       )}
 
+      {/* ✅ 4. HEADER: SEARCH & EXPORT UI */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "15px",
+          flexWrap: "wrap",
+          gap: "10px",
+        }}
+      >
+        <input
+          type="text"
+          placeholder="🔍 Search Request, Name, or Status..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            maxWidth: "350px",
+            padding: "10px",
+            border: "1px solid #ccc",
+            borderRadius: "6px",
+          }}
+        />
+
+        <button
+          onClick={exportToCSV}
+          className="approve-btn"
+          style={{
+            backgroundColor: "#1B5E3A",
+            color: "white",
+            padding: "8px 16px",
+            borderRadius: "6px",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            fontWeight: "bold",
+            fontSize: "14px",
+          }}
+        >
+          📥 Export to Excel
+        </button>
+      </div>
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          {/* ✅ ADDED 'admin-table' CLASS FOR CONSISTENT STYLING */}
+          <table className="min-w-full divide-y divide-gray-200 admin-table">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   User
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
+                  Request
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Details
+                  Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -115,25 +213,52 @@ const DocumentsManager = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {docs.map((doc) => (
+              {filteredDocs.map((doc) => (
                 <tr key={doc._id}>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {doc.user?.fullName || "Unknown"}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {doc.user?.alumniId}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{doc.type}</div>
-                    <div className="text-xs text-gray-500">
-                      {new Date(doc.createdAt).toLocaleDateString()}
+                    <div
+                      className="flex items-center"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        className="avatar-placeholder"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          fontSize: "14px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: "#eee",
+                          borderRadius: "50%",
+                        }}
+                      >
+                        {(doc.user?.fullName || "U").charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {doc.user?.fullName || "Unknown"}
+                        </div>
+                        <div
+                          className="text-sm text-gray-500"
+                          style={{ fontSize: "11px" }}
+                        >
+                          {doc.user?.alumniId || "No ID"}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
+                    <div className="text-sm font-bold text-gray-900">
+                      {doc.type}
+                    </div>
                     <div
-                      className="text-sm text-gray-900 max-w-xs truncate"
+                      className="text-xs text-gray-500 truncate"
+                      style={{ maxWidth: "200px" }}
                       title={doc.details}
                     >
                       {doc.details}
@@ -145,6 +270,11 @@ const DocumentsManager = () => {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">
+                      {new Date(doc.createdAt).toLocaleDateString()}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(doc.status)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -153,6 +283,7 @@ const DocumentsManager = () => {
                     ) : (
                       <select
                         className="border border-gray-300 rounded text-sm p-1"
+                        style={{ cursor: "pointer" }}
                         value={doc.status}
                         onChange={(e) =>
                           handleStatusUpdate(doc, e.target.value)
@@ -168,7 +299,7 @@ const DocumentsManager = () => {
                   </td>
                 </tr>
               ))}
-              {docs.length === 0 && (
+              {filteredDocs.length === 0 && (
                 <tr>
                   <td
                     colSpan="5"

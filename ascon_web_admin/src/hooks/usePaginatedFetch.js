@@ -22,7 +22,7 @@ export function usePaginatedFetch(url, token, trigger = 0) {
 
       const responseBody = res.data;
 
-      // ✅ FIX: Added logic to detect 'registrations' key
+      // ✅ FIX: Logic to handle different response structures
       if (responseBody.programmes) {
         setData(responseBody.programmes);
         setTotalPages(responseBody.pages);
@@ -33,8 +33,12 @@ export function usePaginatedFetch(url, token, trigger = 0) {
         setData(responseBody.events);
         setTotalPages(responseBody.pages);
       } else if (responseBody.registrations) {
-        setData(responseBody.registrations); // <--- This fixes your Registration Table!
+        setData(responseBody.registrations);
         setTotalPages(responseBody.pages);
+      } else if (Array.isArray(responseBody)) {
+        // ✅ NEW: Handle direct array responses (like Documents)
+        setData(responseBody);
+        setTotalPages(1); // No pagination metadata from backend yet
       } else if (responseBody.data) {
         setData(Array.isArray(responseBody.data) ? responseBody.data : []);
         setTotalPages(responseBody.pages || 1);
@@ -49,7 +53,7 @@ export function usePaginatedFetch(url, token, trigger = 0) {
     }
   }, [url, token, page, search]);
 
-  // ✅ FIX: Added trigger so the table refreshes when you delete something
+  // Trigger refresh when requested (e.g. after update/delete)
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       fetchData();
