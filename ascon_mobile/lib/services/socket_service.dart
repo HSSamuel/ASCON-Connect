@@ -1,50 +1,83 @@
+import 'package:flutter/material.dart'; // ✅ Required for AppLifecycleState
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../config.dart'; // ✅ Imports AppConfig
+import '../config.dart';
 
-class SocketService {
-  late IO.Socket socket;
+class SocketService with WidgetsBindingObserver {
+  // ✅ Changed from 'late' to nullable to safely check connection status
+  IO.Socket? socket; 
+  
   final _storage = const FlutterSecureStorage();
 
-  // Make this a singleton so we can access it anywhere
+  // Singleton Instance
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
-  SocketService._internal();
+  
+  SocketService._internal() {
+    // ✅ Register observer to listen to App Background/Foreground changes
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // ✅ LIFECYCLE MANAGER: Solves the "Pocket Problem"
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    debugPrint("🔄 App Lifecycle Changed: $state");
+    
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // App is in background or closed -> Disconnect to show "Offline"
+      disconnect();
+    } else if (state == AppLifecycleState.resumed) {
+      // App is in foreground -> Reconnect to show "Online"
+      initSocket();
+    }
+  }
 
   void initSocket() async {
+    // 1. Safety Check: Don't reconnect if already connected
+    if (socket != null && socket!.connected) {
+      debugPrint("⚠️ Socket already connected. Skipping init.");
+      return;
+    }
+
     String? userId = await _storage.read(key: "userId"); 
     
-    // ✅ FIX: Use AppConfig instead of Config
-    // We strip '/api' because Socket.io connects to the root server URL
+    // 2. Setup URL (Strip '/api' because Socket.io connects to root)
     final String socketUrl = AppConfig.baseUrl.replaceAll('/api', '');
 
+    // 3. Initialize Socket
     socket = IO.io(socketUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
     });
 
-    socket.connect();
+    // 4. Connect
+    socket!.connect();
 
-    socket.onConnect((_) {
-      print('✅ Socket Connected');
+    // 5. Event Listeners
+    socket!.onConnect((_) {
+      debugPrint('✅ Socket Connected');
       if (userId != null) {
-        socket.emit("user_connected", userId);
+        socket!.emit("user_connected", userId);
       }
     });
 
-    socket.onDisconnect((_) => print('❌ Socket Disconnected'));
+    socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
+    
+    socket!.onConnectError((data) => debugPrint('⚠️ Socket Error: $data'));
   }
 
   // Call this after Login/Register to connect immediately
   void connectUser(String userId) {
-    if (socket.connected) {
-      socket.emit("user_connected", userId);
+    if (socket != null && socket!.connected) {
+      socket!.emit("user_connected", userId);
     } else {
       initSocket();
     }
   }
 
   void disconnect() {
-    socket.disconnect();
+    if (socket != null) {
+      socket!.disconnect();
+    }
   }
 }

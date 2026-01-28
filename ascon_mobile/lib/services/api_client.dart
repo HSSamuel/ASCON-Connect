@@ -4,6 +4,17 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config.dart';
 
+/// ✅ Custom Exception for typed error handling in ViewModels
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+
+  ApiException(this.message, {this.statusCode});
+
+  @override
+  String toString() => message;
+}
+
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
@@ -105,11 +116,13 @@ class ApiClient {
 
       return _processResponse(response);
     } on TimeoutException {
-      throw Exception('Server is taking too long to respond. Please check your connection.');
+      throw ApiException('Server is taking too long to respond. Please check your connection.', statusCode: 408);
     } on SocketException {
-      throw Exception('No internet connection. Please try again later.');
+      throw ApiException('No internet connection. Please try again later.', statusCode: 0);
+    } on ApiException {
+      rethrow; // Pass through already typed exceptions
     } catch (e) {
-      throw Exception('Connection error: $e');
+      throw ApiException('Connection error: $e');
     }
   }
 
@@ -129,7 +142,9 @@ class ApiClient {
         'data': body
       };
     } else {
-      throw Exception(body['message'] ?? 'Request failed with status ${response.statusCode}');
+      // ✅ IMPROVED: Throw typed exception so UI can handle it specifically
+      final errorMessage = body['message'] ?? 'Request failed with status ${response.statusCode}';
+      throw ApiException(errorMessage, statusCode: response.statusCode);
     }
   }
 }

@@ -555,4 +555,23 @@ class DataService {
       return false;
     }
   }
+
+  // ==========================================
+  // 10. SMART RECOMMENDATIONS
+  // ==========================================
+  Future<Map<String, dynamic>> fetchRecommendations() async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/directory/recommendations');
+      
+      final response = await http.get(url, headers: headers);
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'success': false, 'matches': []};
+    } catch (e) {
+      return {'success': false, 'matches': []};
+    }
+  }
 }

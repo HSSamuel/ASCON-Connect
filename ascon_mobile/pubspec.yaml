@@ -2,7 +2,7 @@ name: ascon_mobile
 description: "ASCON Alumni Connect Mobile App."
 publish_to: "none"
 
-version: 1.1.1+1
+version: 2.0.0+0
 
 environment:
   sdk: ^3.8.1

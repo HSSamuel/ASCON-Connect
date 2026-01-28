@@ -127,7 +127,7 @@ class JobSkeletonList extends StatelessWidget {
   }
 }
 
-// ✅ 3. DIRECTORY SKELETON (ADDED THIS SECTION)
+// ✅ 3. DIRECTORY SKELETON (FIXED CRASH)
 class DirectorySkeletonList extends StatelessWidget {
   const DirectorySkeletonList({super.key});
 
@@ -135,6 +135,8 @@ class DirectorySkeletonList extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView.builder(
       padding: const EdgeInsets.all(12),
+      shrinkWrap: true, // ✅ CRITICAL FIX: Allows nesting in ScrollView
+      physics: const NeverScrollableScrollPhysics(), // ✅ CRITICAL FIX: Prevents scrolling conflicts
       itemCount: 8,
       itemBuilder: (context, index) => Padding(
         padding: const EdgeInsets.only(bottom: 10),

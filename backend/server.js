@@ -119,30 +119,26 @@ app.use(
 app.use(express.json());
 
 // ==========================================
-// ✅ NEW: SOCKET.IO CONFIGURATION
+// ⚡ SOCKET.IO CONFIGURATION (UPDATED)
 // ==========================================
 const io = new Server(server, {
   cors: {
-    origin: "*", // Allow mobile app connections
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
 
-// ✅ MIDDLEWARE: Share Socket.io with REST Routes
-// This allows api/chat.js to use `req.io` to send messages!
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
 
 io.on("connection", (socket) => {
-  // 1. User Joins (App Opens)
+  // 1. User Joins
   socket.on("user_connected", async (userId) => {
     if (!userId) return;
-    socket.userId = userId; // Store ID on socket session
-
-    // ✅ CRITICAL: Join a specific room for Private Messaging
-    socket.join(userId);
+    socket.userId = userId;
+    socket.join(userId); // Join private room
 
     try {
       await User.findByIdAndUpdate(userId, { isOnline: true });
@@ -152,7 +148,27 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 2. User Disconnects (App Closes/Background)
+  // ✅ 2. TYPING EVENTS (NEW)
+  // Client sends: { receiverId, conversationId }
+  socket.on("typing", (data) => {
+    if (data.receiverId) {
+      io.to(data.receiverId).emit("typing_start", {
+        conversationId: data.conversationId,
+        senderId: socket.userId,
+      });
+    }
+  });
+
+  socket.on("stop_typing", (data) => {
+    if (data.receiverId) {
+      io.to(data.receiverId).emit("typing_stop", {
+        conversationId: data.conversationId,
+        senderId: socket.userId,
+      });
+    }
+  });
+
+  // 3. User Disconnects
   socket.on("disconnect", async () => {
     if (socket.userId) {
       try {
@@ -213,11 +229,21 @@ logger.info("⏳ Attempting to connect to MongoDB...");
 
 mongoose
   .connect(process.env.DB_CONNECT)
-  .then(() => {
+  .then(async () => {
+    // ✅ Made async to support await inside
     logger.info("✅ Connected to MongoDB Successfully!");
 
     if (process.env.NODE_ENV === "production") {
       logger.info("🛡️  Production Security Hardening Active");
+    }
+
+    // ✅ FIX: RESET ALL USERS TO OFFLINE ON RESTART
+    // This prevents "Ghost" online users if the server crashed previously.
+    try {
+      await User.updateMany({}, { isOnline: false });
+      logger.info("🧹 Reset all user statuses to Offline");
+    } catch (err) {
+      logger.error("⚠️ Failed to reset user statuses:", err);
     }
 
     // ✅ HEALTH CHECK ROUTE (Keeps the server awake)

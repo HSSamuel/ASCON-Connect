@@ -14,7 +14,8 @@ import '../main.dart';
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
 import '../screens/facility_detail_screen.dart'; 
-import '../screens/mentorship_dashboard_screen.dart'; // ✅ Import Mentorship Dashboard
+import '../screens/mentorship_dashboard_screen.dart'; 
+import '../screens/chat_screen.dart'; // ✅ Added Chat Screen Import
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -115,16 +116,37 @@ class NotificationService {
 
   void _handleNavigation(Map<String, dynamic> data) {
     final route = data['route'];
+    final type = data['type']; // ✅ Check Type
     final id = data['id'] ?? data['eventId']; 
 
-    if (route == null) return; // ✅ ID is optional now (for dashboard routes)
+    // ✅ Allow navigation if it's a chat message OR if route is present
+    if (route == null && type != 'chat_message') return; 
 
-    debugPrint("🔔 Navigating to $route with ID: $id");
+    debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
 
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // ✅ 1. Mentorship Dashboard (No ID needed)
+      // ✅ 1. CHAT NAVIGATION (New)
+      if (type == 'chat_message') {
+        final conversationId = data['conversationId'];
+        final senderId = data['senderId']; 
+        
+        if (conversationId != null && senderId != null) {
+          navigatorKey.currentState?.push(
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(
+                conversationId: conversationId,
+                receiverId: senderId, 
+                receiverName: "Alumni Member", 
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // ✅ 2. Mentorship Dashboard (No ID needed)
       if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
@@ -132,7 +154,7 @@ class NotificationService {
         return;
       }
 
-      // ✅ 2. Detail Routes (Require ID)
+      // ✅ 3. Detail Routes (Require ID)
       if (id != null) {
         if (route == 'event_detail') {
           navigatorKey.currentState?.push(

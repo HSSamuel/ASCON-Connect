@@ -33,7 +33,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       final result = await _api.get('/api/chat');
       
-      // ✅ FIX: Access 'data' and ensure it is a List
       if (mounted && result['success'] == true) {
         final List<dynamic> data = result['data'];
         
@@ -48,6 +47,51 @@ class _ChatListScreenState extends State<ChatListScreen> {
       debugPrint("Error loading chats: $e");
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ✅ NEW: Delete Logic
+  Future<void> _deleteChat(String conversationId) async {
+    // Optimistic Update: Remove from list immediately
+    setState(() {
+      _conversations.removeWhere((c) => c.id == conversationId);
+    });
+
+    try {
+      await _api.delete('/api/chat/$conversationId');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Conversation deleted")),
+        );
+      }
+    } catch (e) {
+      debugPrint("Delete failed: $e");
+      // Optional: Reload chats if delete fails
+      _loadChats(); 
+    }
+  }
+
+  // ✅ NEW: Confirmation Dialog
+  void _confirmDelete(ChatConversation chat) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete Conversation?"),
+        content: Text("Are you sure you want to remove ${chat.otherUserName} from your messages?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteChat(chat.id);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -74,7 +118,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       onTap: () async {
-                        // Navigate to Chat and refresh when back
                         await Navigator.push(
                           context, 
                           MaterialPageRoute(
@@ -85,7 +128,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             )
                           )
                         );
-                        _loadChats(); // Refresh inbox on return
+                        _loadChats(); 
                       },
                       leading: CircleAvatar(
                         radius: 28,
@@ -107,9 +150,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
                       ),
-                      trailing: Text(
-                        DateFormat('MMM d').format(chat.lastMessageTime),
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      // ✅ NEW: Date + Delete Button Row
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            DateFormat('MMM d').format(chat.lastMessageTime),
+                            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                            onPressed: () => _confirmDelete(chat),
+                          ),
+                        ],
                       ),
                     );
                   },

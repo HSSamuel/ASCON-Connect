@@ -94,4 +94,47 @@ router.get("/verify/:id", async (req, res) => {
   }
 });
 
+// =========================================================
+// 3. SMART RECOMMENDATIONS (AI-LITE MATCHING)
+// =========================================================
+// @route   GET /api/directory/recommendations
+router.get("/recommendations", verifyToken, async (req, res) => {
+  try {
+    // 1. Get Current User's Details
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser) return res.status(404).json({ message: "User not found" });
+
+    const { yearOfAttendance, programmeTitle, organization, jobTitle } = currentUser;
+
+    // 2. Find Matches
+    // Priority 1: Same Year + Same Programme (Classmates)
+    // Priority 2: Same Organization (Colleagues)
+    const matches = await User.find({
+      _id: { $ne: currentUser._id }, // Exclude self
+      isVerified: true,
+      $or: [
+        { 
+          yearOfAttendance: yearOfAttendance, 
+          programmeTitle: { $regex: new RegExp(`^${programmeTitle}$`, "i") } // Case insensitive
+        },
+        { 
+          organization: { $regex: new RegExp(`^${organization}$`, "i") },
+          organization: { $ne: "" } // Ignore empty orgs
+        }
+      ]
+    })
+    .select("fullName profilePicture jobTitle organization yearOfAttendance programmeTitle")
+    .limit(10); // Limit to top 10 matches
+
+    res.json({
+      success: true,
+      userYear: yearOfAttendance,
+      matches: matches
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

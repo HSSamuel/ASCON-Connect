@@ -15,8 +15,10 @@ import 'about_screen.dart';
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
+import 'chat_list_screen.dart'; // ✅ IMPORT CHAT LIST
 import '../widgets/digital_id_card.dart';
 import '../viewmodels/dashboard_view_model.dart';
+import '../services/socket_service.dart'; // ✅ IMPORT SOCKET
 
 class HomeScreen extends StatefulWidget {
   final String? userName;
@@ -31,11 +33,21 @@ class _HomeScreenState extends State<HomeScreen> {
   List<int> _tabHistory = [0];
   late List<Widget> _screens;
   String _loadedName = "Alumni";
+  bool _hasUnreadMessages = false; // ✅ NEW: Unread State
 
   @override
   void initState() {
     super.initState();
     _resolveUserName();
+    _listenForMessages(); // ✅ NEW: Listen for incoming chats
+  }
+
+  void _listenForMessages() {
+    // Show Red Dot when a new message arrives
+    // ✅ FIX: Use null-aware operator ?.
+    SocketService().socket?.on('new_message', (data) {
+      if (mounted) setState(() => _hasUnreadMessages = true);
+    });
   }
 
   void _resolveUserName() async {
@@ -84,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final primaryColor = Theme.of(context).primaryColor;
     final navBarColor = Theme.of(context).cardColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
       canPop: _tabHistory.length <= 1,
@@ -95,6 +108,60 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       },
       child: Scaffold(
+        // ✅ NEW: Add Inbox Icon to AppBar if on Dashboard (Index 0)
+        appBar: _currentIndex == 0 
+          ? AppBar(
+              title: Text("Dashboard", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : primaryColor)),
+              backgroundColor: Theme.of(context).cardColor,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              actions: [
+                // 🔔 CHAT ICON WITH BADGE
+                Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
+                      onPressed: () {
+                        setState(() => _hasUnreadMessages = false); // Clear badge on tap
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+                      },
+                    ),
+                    if (_hasUnreadMessages)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                        ),
+                      )
+                  ],
+                ),
+                // ℹ️ INFO ICON
+                IconButton(
+                  icon: Icon(Icons.info_outline, color: isDark ? Colors.white : primaryColor, size: 22),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
+                ),
+                // 🌗 THEME SWITCHER
+                Padding(
+                  padding: const EdgeInsets.only(right: 12.0),
+                  child: IconButton(
+                    tooltip: 'Switch Theme',
+                    icon: ValueListenableBuilder<ThemeMode>(
+                      valueListenable: themeNotifier,
+                      builder: (context, currentMode, _) {
+                        bool isCurrentlyDark = currentMode == ThemeMode.dark || (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
+                        return Icon(isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, color: isDark ? Colors.white : primaryColor, size: 24);
+                      },
+                    ),
+                    onPressed: () => themeNotifier.value = themeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+                  ),
+                ),
+              ],
+            )
+          : null, // Hide AppBar on other tabs
+
         body: _screens[_currentIndex],
         floatingActionButton: SizedBox(
           width: 58,
@@ -246,9 +313,7 @@ class _DashboardViewState extends State<_DashboardView> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
-    final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
@@ -257,54 +322,7 @@ class _DashboardViewState extends State<_DashboardView> {
       builder: (context, child) {
         return Scaffold(
           backgroundColor: scaffoldBg,
-          appBar: AppBar(
-            title: Text(
-              "Dashboard",
-              style: GoogleFonts.lato(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: isDark ? Colors.white : primaryColor),
-            ),
-            backgroundColor: cardColor,
-            elevation: 0,
-            automaticallyImplyLeading: false,
-            actions: [
-              IconButton(
-                icon: Icon(Icons.info_outline,
-                    color: isDark ? Colors.white : primaryColor, size: 22),
-                onPressed: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (context) => const AboutScreen())),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12.0),
-                child: IconButton(
-                  tooltip: 'Switch Theme',
-                  icon: ValueListenableBuilder<ThemeMode>(
-                    valueListenable: themeNotifier,
-                    builder: (context, currentMode, _) {
-                      bool isCurrentlyDark = currentMode == ThemeMode.dark ||
-                          (currentMode == ThemeMode.system &&
-                              MediaQuery.of(context).platformBrightness ==
-                                  Brightness.dark);
-
-                      return Icon(
-                        isCurrentlyDark
-                            ? Icons.light_mode_rounded
-                            : Icons.dark_mode_rounded,
-                        color: isDark ? Colors.white : primaryColor,
-                        size: 24,
-                      );
-                    },
-                  ),
-                  onPressed: () {
-                    themeNotifier.value = themeNotifier.value == ThemeMode.dark
-                        ? ThemeMode.light
-                        : ThemeMode.dark;
-                  },
-                ),
-              ),
-            ],
-          ),
+          // ⚠️ APP BAR REMOVED HERE (MOVED TO PARENT)
           body: SafeArea(
             child: RefreshIndicator(
               onRefresh: () async => await _viewModel.loadData(),

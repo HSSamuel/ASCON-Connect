@@ -16,15 +16,18 @@ class DirectoryScreen extends StatefulWidget {
 
 class _DirectoryScreenState extends State<DirectoryScreen> {
   final ApiClient _api = ApiClient(); 
+  final DataService _dataService = DataService(); 
   
   List<dynamic> _allAlumni = [];
   List<dynamic> _searchResults = [];
   Map<String, List<dynamic>> _groupedAlumni = {};
   
+  // Recommendation State
+  List<dynamic> _recommendedAlumni = [];
+  bool _hasRecommendations = false;
+  
   bool _isLoading = false;
   bool _isSearching = false;
-  
-  // ✅ Mentorship Filter State
   bool _showMentorsOnly = false;
 
   final TextEditingController _searchController = TextEditingController();
@@ -33,12 +36,106 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   void initState() {
     super.initState();
     _loadDirectory();
+    _loadRecommendations(); 
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecommendations() async {
+    final result = await _dataService.fetchRecommendations();
+    if (result['success'] == true && mounted) {
+      setState(() {
+        _recommendedAlumni = result['matches'] ?? [];
+        _hasRecommendations = _recommendedAlumni.isNotEmpty;
+      });
+
+      // Show pop-up if matches found
+      if (_hasRecommendations) {
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) _showSmartMatchPopup();
+        });
+      }
+    }
+  }
+
+  void _showSmartMatchPopup() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: 350,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, color: Color(0xFFD4AF37), size: 28),
+                const SizedBox(width: 10),
+                const Text("We found your classmates!", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "Based on your profile, here are alumni from your Class Year and Programme. Connect with them now!",
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _recommendedAlumni.length,
+                itemBuilder: (context, index) {
+                  final user = _recommendedAlumni[index];
+                  return Container(
+                    width: 90,
+                    margin: const EdgeInsets.only(right: 12),
+                    child: Column(
+                      children: [
+                        _buildAvatar(user['profilePicture'], false),
+                        const SizedBox(height: 8),
+                        Text(
+                          user['fullName'].toString().split(' ')[0], 
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          user['jobTitle'] ?? 'Alumni',
+                          style: const TextStyle(fontSize: 10, color: Colors.grey),
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text("Start Connecting"),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadDirectory({String query = ""}) async {
@@ -50,7 +147,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
 
       final response = await _api.get(endpoint);
 
-      // ✅ FIX: Extract the 'data' list from the response map
       if (response['success'] == true && response['data'] is List) {
         final List<dynamic> data = response['data'];
 
@@ -63,11 +159,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           });
         }
       } else {
-        debugPrint("Unexpected API response format: $response");
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint("Error loading directory: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -103,13 +197,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           final org = (user['organization'] ?? '').toString().toLowerCase();
           final year = (user['yearOfAttendance'] ?? '').toString().toLowerCase();
           final job = (user['jobTitle'] ?? '').toString().toLowerCase();
-          final prog = (user['programmeTitle'] ?? '').toString().toLowerCase();
           
           return name.contains(lowerQuery) || 
                  org.contains(lowerQuery) || 
                  year.contains(lowerQuery) ||
-                 job.contains(lowerQuery) ||
-                 prog.contains(lowerQuery);
+                 job.contains(lowerQuery);
         }).toList();
       }
     });
@@ -156,28 +248,28 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Alumni Directory",
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+        title: const Text("Alumni Directory", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         automaticallyImplyLeading: false,
+        backgroundColor: Theme.of(context).cardColor,
+        elevation: 0,
       ),
+      backgroundColor: bgColor,
       body: Column(
         children: [
-          // --- SEARCH & FILTER AREA ---
+          // --- 1. SEARCH & FILTER ---
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            color: primaryColor, 
+            color: Theme.of(context).cardColor, 
             child: Column(
               children: [
-                // 1. Search Bar
                 Container(
                   height: 45,
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF2C2C2C) : Colors.white,
+                    color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: TextField(
@@ -188,8 +280,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                     decoration: InputDecoration(
                       hintText: 'Search Name, Company, or Year...',
                       hintStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
-                      prefixIcon: Icon(Icons.search,
-                          color: isDark ? Colors.grey : const Color(0xFF1B5E3A), size: 20),
+                      prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey : primaryColor, size: 20),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                       isDense: true,
@@ -197,7 +288,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                   ),
                 ),
                 
-                // ✅ 2. VISIBLE Mentors Filter
                 Padding(
                   padding: const EdgeInsets.only(top: 10.0),
                   child: Row(
@@ -206,32 +296,22 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         label: const Text("Mentors Only"),
                         selected: _showMentorsOnly,
                         showCheckmark: false,
-                        
-                        // Icons
                         avatar: Icon(
                           _showMentorsOnly ? Icons.check : Icons.handshake_outlined,
                           size: 18,
-                          // If selected (Gold bg), White icon. If unselected (White bg), Green icon.
-                          color: _showMentorsOnly ? Colors.white : const Color(0xFF1B5E3A),
+                          color: _showMentorsOnly ? Colors.white : primaryColor,
                         ),
-                        
-                        // Background Colors
-                        backgroundColor: Colors.white, // 🟢 Default: White (Highly Visible)
-                        selectedColor: const Color(0xFFD4AF37), // 🟡 Active: Gold
-                        
-                        // Text Style
+                        backgroundColor: isDark ? Colors.grey[800] : Colors.white,
+                        selectedColor: const Color(0xFFD4AF37),
                         labelStyle: TextStyle(
-                          color: _showMentorsOnly ? Colors.white : const Color(0xFF1B5E3A),
+                          color: _showMentorsOnly ? Colors.white : primaryColor,
                           fontWeight: FontWeight.bold,
                           fontSize: 13
                         ),
-                        
-                        // Border/Shape
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
-                          side: BorderSide.none, 
+                          side: BorderSide(color: isDark ? Colors.transparent : Colors.grey[300]!), 
                         ),
-                        
                         onSelected: (bool selected) {
                           setState(() {
                             _showMentorsOnly = selected;
@@ -246,18 +326,51 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             ),
           ),
 
-          // --- CONTENT AREA ---
+          // --- 2. MAIN LIST ---
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _loadDirectory(), 
+              onRefresh: () async {
+                await _loadDirectory();
+                await _loadRecommendations();
+              }, 
               color: primaryColor,
-              child: _isLoading
-                  ? const DirectorySkeletonList() 
-                  : _allAlumni.isEmpty
-                      ? _buildEmptyState()
-                      : _isSearching
-                          ? _buildSearchResults()
-                          : _buildGroupedList(),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    // ✅ A. RECOMMENDATION SECTION (Top of List)
+                    if (_hasRecommendations && !_isSearching)
+                      _buildRecommendationsSection(),
+
+                    // ✅ B. STANDARD DIRECTORY LIST
+                    if (_isLoading)
+                      const DirectorySkeletonList() 
+                    else if (_allAlumni.isEmpty)
+                      _buildEmptyState()
+                    else if (_isSearching)
+                      // Important: shrinkWrap + physics prevents crash
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) => _buildAlumniCard(_searchResults[index]),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _groupedAlumni.keys.length,
+                        itemBuilder: (context, index) {
+                          String year = _groupedAlumni.keys.elementAt(index);
+                          List<dynamic> classMembers = _groupedAlumni[year]!;
+                          return _buildGroupedTile(year, classMembers);
+                        },
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -265,82 +378,120 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  Widget _buildGroupedList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _groupedAlumni.keys.length,
-      itemBuilder: (context, index) {
-        String year = _groupedAlumni.keys.elementAt(index);
-        List<dynamic> classMembers = _groupedAlumni[year]!;
-
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        final cardColor = Theme.of(context).cardColor;
-        final primaryColor = Theme.of(context).primaryColor;
-        final borderColor = Theme.of(context).dividerColor;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              if (!isDark) 
-                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2)),
+  // ✅ UPDATED WIDGET: Circular Recommendations
+  Widget _buildRecommendationsSection() {
+    final primaryColor = Theme.of(context).primaryColor;
+    
+    return Container(
+      padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.stars, color: Colors.amber[700], size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                "Suggested for You",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.school, color: primaryColor, size: 20),
-              ),
-              title: Text(
-                year == 'Others' ? "Other Alumni" : "Class of $year",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: isDark ? Colors.white : primaryColor, 
-                ),
-              ),
-              subtitle: Text(
-                "${classMembers.length} ${classMembers.length == 1 ? 'Member' : 'Members'}",
-                style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
-              ),
-              childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-              children: classMembers.map((user) => _buildAlumniCard(user)).toList(),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 120, // Height for circle layout
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _recommendedAlumni.length,
+              itemBuilder: (context, index) {
+                final user = _recommendedAlumni[index];
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: user)));
+                  },
+                  child: Container(
+                    width: 80, // Narrower for circle layout
+                    margin: const EdgeInsets.only(right: 16),
+                    child: Column(
+                      children: [
+                        // ✅ CIRCLE AVATAR with Gold Border
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.amber[700]!, width: 2), 
+                          ),
+                          child: SizedBox(
+                            width: 60, height: 60,
+                            child: _buildAvatar(user['profilePicture'], false),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          user['fullName'].toString().split(' ')[0], 
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "Class of ${user['yearOfAttendance']}",
+                          style: TextStyle(fontSize: 10, color: primaryColor, fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        );
-      },
+          const Divider(height: 30),
+        ],
+      ),
     );
   }
 
-  Widget _buildSearchResults() {
-    if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 50, color: Colors.grey.withOpacity(0.5)),
-            const SizedBox(height: 10),
-            const Text("No matching alumni found", style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
+  Widget _buildGroupedTile(String year, List<dynamic> classMembers) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final borderColor = Theme.of(context).dividerColor;
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _searchResults.length,
-      itemBuilder: (context, index) {
-        return _buildAlumniCard(_searchResults[index]);
-      },
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: primaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.school, color: primaryColor, size: 20),
+          ),
+          title: Text(
+            year == 'Others' ? "Other Alumni" : "Class of $year",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : primaryColor),
+          ),
+          subtitle: Text(
+            "${classMembers.length} ${classMembers.length == 1 ? 'Member' : 'Members'}",
+            style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          children: classMembers.map((user) => _buildAlumniCard(user)).toList(),
+        ),
+      ),
     );
   }
 
@@ -348,13 +499,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+        children: const [
+          SizedBox(height: 50),
           Icon(Icons.people_outline, size: 50, color: Colors.grey),
-          const SizedBox(height: 12),
-          const Text(
-            "No alumni found.",
-            style: TextStyle(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold),
-          ),
+          SizedBox(height: 12),
+          Text("No alumni found.", style: TextStyle(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -393,11 +542,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => AlumniDetailScreen(alumniData: user)),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => AlumniDetailScreen(alumniData: user)));
           },
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -405,10 +550,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: borderColor, width: 1),
-                  ),
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: borderColor, width: 1)),
                   child: _buildAvatar(user['profilePicture'], isDark),
                 ),
                 const SizedBox(width: 12),
@@ -425,11 +567,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                                 Flexible(
                                   child: Text(
                                     user['fullName'] ?? 'Unknown',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: textColor, 
-                                    ),
+                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -444,44 +582,23 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                           ),
                           if (yearDisplay.isNotEmpty)
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: primaryColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                               child: Text(
                                 yearDisplay,
-                                style: TextStyle(
-                                  color: isDark ? const Color(0xFF81C784) : primaryColor, 
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 11,
-                                ),
+                                style: TextStyle(color: isDark ? const Color(0xFF81C784) : primaryColor, fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(color: subTextColor, fontSize: 12),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(subtitle, style: TextStyle(color: subTextColor, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Text(
-                            "View Profile",
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? const Color(0xFF81C784) : primaryColor,
-                            ),
-                          ),
+                          Text("View Profile", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFF81C784) : primaryColor)),
                           const SizedBox(width: 4),
-                          Icon(Icons.arrow_forward,
-                              size: 10, color: isDark ? const Color(0xFF81C784) : primaryColor),
+                          Icon(Icons.arrow_forward, size: 10, color: isDark ? const Color(0xFF81C784) : primaryColor),
                         ],
                       ),
                     ],

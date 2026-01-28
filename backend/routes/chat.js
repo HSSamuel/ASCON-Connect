@@ -6,7 +6,7 @@ const verify = require("./verifyToken");
 const cloudinary = require("../config/cloudinary");
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ Import Notification Handler
+const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 // ---------------------------------------------------------
 // 🛠️ SETUP FILE UPLOAD (Multer + Cloudinary)
@@ -15,7 +15,6 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "ascon_chat_files",
-    // resource_type: "auto" allows uploading images, audio, and raw files
     resource_type: "auto",
   },
 });
@@ -30,8 +29,8 @@ router.get("/", verify, async (req, res) => {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
     })
-      .populate("participants", "fullName profilePicture jobTitle") // Get names & pics
-      .sort({ lastMessageAt: -1 }); // Newest first
+      .populate("participants", "fullName profilePicture jobTitle")
+      .sort({ lastMessageAt: -1 });
 
     res.json(chats);
   } catch (err) {
@@ -40,13 +39,12 @@ router.get("/", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. START OR GET CONVERSATION (When clicking "Message" on profile)
+// 2. START OR GET CONVERSATION
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId } = req.body;
 
   try {
-    // Check if chat already exists
     let chat = await Conversation.findOne({
       isGroup: false,
       participants: { $all: [req.user._id, receiverId] },
@@ -56,13 +54,11 @@ router.post("/start", verify, async (req, res) => {
       return res.status(200).json(chat);
     }
 
-    // Create new chat
     const newChat = new Conversation({
       participants: [req.user._id, receiverId],
     });
 
     const savedChat = await newChat.save();
-    // Populate immediately so UI can use it
     const populatedChat = await Conversation.findById(savedChat._id).populate(
       "participants",
       "fullName profilePicture",
@@ -75,24 +71,31 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. GET MESSAGES FOR A CONVERSATION
+// ✅ 3. GET MESSAGES (WITH PAGINATION)
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
-    const messages = await Message.find({
-      conversationId: req.params.conversationId,
-    })
-      .sort({ createdAt: 1 }) // Oldest first (standard chat)
-      .limit(100); // Limit to last 100 for performance
+    const { beforeId } = req.query;
+    const limit = 20;
 
-    res.status(200).json(messages);
+    let query = { conversationId: req.params.conversationId };
+
+    if (beforeId) {
+      query._id = { $lt: beforeId };
+    }
+
+    const messages = await Message.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    res.status(200).json(messages.reverse());
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
 // ---------------------------------------------------------
-// 4. SEND A MESSAGE (Supports Text, Images, Files & Push Notifs)
+// 4. SEND A MESSAGE
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -110,7 +113,7 @@ router.post(
         text: text || "",
         type: type || "text",
         fileUrl: fileUrl,
-        isRead: false, // <--- Default is FALSE
+        isRead: false,
       });
 
       const savedMessage = await newMessage.save();
@@ -129,7 +132,6 @@ router.post(
         { new: true },
       );
 
-      // 1. REAL-TIME: Emit to the Receiver
       const receiverId = conversation.participants.find(
         (id) => id.toString() !== req.user._id,
       );
@@ -141,7 +143,6 @@ router.post(
         });
       }
 
-      // ✅ 2. PUSH NOTIFICATION (If user is offline)
       if (receiverId) {
         const receiver = await User.findById(receiverId);
         const sender = await User.findById(req.user._id);
@@ -149,8 +150,8 @@ router.post(
         if (receiver && !receiver.isOnline) {
           await sendPersonalNotification(
             receiverId.toString(),
-            `Message from ${sender.fullName}`, // Title
-            lastMessagePreview, // Body
+            `Message from ${sender.fullName}`,
+            lastMessagePreview,
             {
               type: "chat_message",
               conversationId: conversation._id.toString(),
@@ -169,21 +170,19 @@ router.post(
 );
 
 // ---------------------------------------------------------
-// ✅ 5. MARK CONVERSATION AS READ
+// 5. MARK CONVERSATION AS READ
 // ---------------------------------------------------------
 router.put("/read/:conversationId", verify, async (req, res) => {
   try {
-    // Update all messages sent by the OTHER user to 'isRead: true'
     await Message.updateMany(
       {
         conversationId: req.params.conversationId,
-        sender: { $ne: req.user._id }, // Not my messages
+        sender: { $ne: req.user._id },
         isRead: false,
       },
       { $set: { isRead: true } },
     );
 
-    // Notify the sender that I read their messages
     const conversation = await Conversation.findById(req.params.conversationId);
     const senderId = conversation.participants.find(
       (id) => id.toString() !== req.user._id,
@@ -202,26 +201,19 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. ✏️ EDIT MESSAGE
+// 6. EDIT MESSAGE
 // ---------------------------------------------------------
 router.put("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
 
-    // Security Check: Ensure user owns the message
     if (msg.sender.toString() !== req.user._id) {
       return res.status(403).json("You can only edit your own messages");
     }
 
     msg.text = req.body.text;
     msg.isEdited = true;
-
-    // ✅ FIX: Originally you had deleteOne() here which destroys the message.
-    // It must be save() to UPDATE it.
     await msg.save();
-
-    // Optional: Emit an 'update_message' event if you want real-time edits
-    // req.io.emit("message_updated", msg);
 
     res.status(200).json(msg);
   } catch (err) {
@@ -230,24 +222,57 @@ router.put("/message/:id", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 7. 🗑️ DELETE MESSAGE
+// 7. HARD DELETE MESSAGE
 // ---------------------------------------------------------
 router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
 
-    // Security Check
     if (!msg) return res.status(404).json("Message not found");
     if (msg.sender.toString() !== req.user._id) {
       return res.status(403).json("You can only delete your own messages");
     }
 
-    // ✅ HARD DELETE: Permanently remove from Database
     await Message.findByIdAndDelete(req.params.id);
+
+    const conversation = await Conversation.findById(msg.conversationId);
+    if (conversation) {
+      conversation.participants.forEach((userId) => {
+        if (userId.toString() !== req.user._id) {
+          req.io
+            .to(userId.toString())
+            .emit("message_deleted", { messageId: msg._id });
+        }
+      });
+    }
 
     res
       .status(200)
       .json({ message: "Message permanently deleted", id: req.params.id });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// ---------------------------------------------------------
+// ✅ 8. DELETE CONVERSATION (Removes User from Chat)
+// ---------------------------------------------------------
+router.delete("/:conversationId", verify, async (req, res) => {
+  try {
+    // Remove the current user from the participants list
+    const conversation = await Conversation.findByIdAndUpdate(
+      req.params.conversationId,
+      { $pull: { participants: req.user._id } },
+      { new: true },
+    );
+
+    // If NO participants are left, delete the conversation and all messages forever
+    if (conversation && conversation.participants.length === 0) {
+      await Conversation.findByIdAndDelete(req.params.conversationId);
+      await Message.deleteMany({ conversationId: req.params.conversationId });
+    }
+
+    res.status(200).json({ message: "Conversation deleted from your list" });
   } catch (err) {
     res.status(500).json(err);
   }

@@ -3,25 +3,26 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:image_picker/image_picker.dart'; // ✅ For Camera/Gallery
-import 'package:file_picker/file_picker.dart';   // ✅ For Files
+import 'package:image_picker/image_picker.dart'; 
+import 'package:file_picker/file_picker.dart';   
 import 'dart:convert';
+import 'dart:async'; // For Timer
 import 'dart:io';
-import 'package:http/http.dart' as http; // For Multipart Request
+import 'package:http/http.dart' as http; 
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/api_client.dart';
 import '../services/socket_service.dart';
 import '../models/chat_objects.dart';
-import '../config.dart'; // To access Base URL
+import '../config.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
   final String receiverId;
   final String receiverName;
-  final String? receiverProfilePic; // ✅ UI: Avatar
-  final bool isOnline;              // ✅ Status: Initial State
-  final String? lastSeen;           // ✅ Status: Initial Time
+  final String? receiverProfilePic;
+  final bool isOnline;              
+  final String? lastSeen;           
 
   const ChatScreen({
     super.key,
@@ -48,9 +49,14 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _activeConversationId;
   String? _myUserId;
   bool _isLoading = true;
-  bool _isSending = false;
+  
+  // ✅ VERSION 2.0: Pagination & Typing Variables
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = true;
+  bool _isTyping = false;
+  Timer? _typingDebounce;
+  bool _isPeerTyping = false;
 
-  // ✅ REAL-TIME STATUS STATE
   late bool _isPeerOnline;
   String? _peerLastSeen;
 
@@ -58,78 +64,126 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _activeConversationId = widget.conversationId;
-    
-    // Initialize Status
     _isPeerOnline = widget.isOnline;
     _peerLastSeen = widget.lastSeen;
 
     _initializeChat();
-    
-    // 1. LISTEN FOR NEW MESSAGES
-    SocketService().socket.on('new_message', (data) {
+    _setupScrollListener();
+    _setupSocketListeners();
+  }
+
+  void _setupScrollListener() {
+    _scrollController.addListener(() {
+      // Trigger pagination when reaching the top of the list
+      if (_scrollController.hasClients && _scrollController.position.pixels == 0) { 
+         _loadMoreMessages();
+      }
+    });
+  }
+
+  void _setupSocketListeners() {
+    final socket = SocketService().socket;
+
+    // 1. New Messages
+    socket?.on('new_message', (data) { // ✅ FIX: Added ?.
       if (!mounted) return;
       if (data['conversationId'] == _activeConversationId) {
         setState(() {
            try {
              _messages.add(ChatMessage.fromJson(data['message']));
-             _scrollToBottom();
-             // ✅ If I am viewing the chat, mark this new message as read immediately
-             _markMessagesAsRead();
+             _isPeerTyping = false; // Hide typing indicator if message arrives
            } catch (e) {
              debugPrint("Error parsing incoming message: $e");
            }
         });
+        _scrollToBottom();
+        _markMessagesAsRead();
+        _cacheMessages(); // Update local cache
       }
     });
 
-    // 2. LISTEN FOR STATUS UPDATES (Online/Offline)
-    SocketService().socket.on('user_status_update', (data) {
-      if (!mounted) return;
-      if (data['userId'] == widget.receiverId) {
+    // 2. Status Updates (Online/Offline)
+    socket?.on('user_status_update', (data) { // ✅ FIX: Added ?.
+      if (mounted && data['userId'] == widget.receiverId) {
         setState(() {
           _isPeerOnline = data['isOnline'];
-          // Update last seen only if they went offline
           if (!_isPeerOnline) {
-             _peerLastSeen = data['lastSeen'] ?? DateTime.now().toIso8601String();
+             _peerLastSeen = data['lastSeen'];
           }
         });
       }
     });
 
-    // ✅ 3. LISTEN FOR "READ RECEIPT" EVENTS
-    SocketService().socket.on('messages_read', (data) {
-      if (!mounted) return;
-      if (data['conversationId'] == _activeConversationId) {
+    // 3. Read Receipts
+    socket?.on('messages_read', (data) { // ✅ FIX: Added ?.
+      if (mounted && data['conversationId'] == _activeConversationId) {
         setState(() {
-          // Mark all my messages as read in the UI
           for (var msg in _messages) {
             if (msg.senderId == _myUserId) {
               msg.isRead = true;
             }
           }
         });
+        _cacheMessages();
+      }
+    });
+
+    // 4. Message Deleted (Real-time Sync)
+    socket?.on('message_deleted', (data) { // ✅ FIX: Added ?.
+      if (mounted) {
+        setState(() {
+          _messages.removeWhere((m) => m.id == data['messageId']);
+        });
+        _cacheMessages();
+      }
+    });
+
+    // ✅ 5. Typing Indicators
+    socket?.on('typing_start', (data) { // ✅ FIX: Added ?.
+      if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
+        setState(() => _isPeerTyping = true);
+      }
+    });
+
+    socket?.on('typing_stop', (data) { // ✅ FIX: Added ?.
+      if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
+        setState(() => _isPeerTyping = false);
       }
     });
   }
 
   @override
   void dispose() {
-    SocketService().socket.off('new_message'); 
-    SocketService().socket.off('user_status_update');
-    SocketService().socket.off('messages_read'); // ✅ Cleanup
     _textController.dispose();
     _scrollController.dispose();
+    _typingDebounce?.cancel();
+    
+    // Stop typing notification on exit
+    if (_isTyping && _activeConversationId != null) {
+       SocketService().socket?.emit('stop_typing', { // ✅ FIX: Added ?.
+        'receiverId': widget.receiverId,
+        'conversationId': _activeConversationId
+      });
+    }
+
+    // Remove listeners to prevent memory leaks
+    SocketService().socket?.off('new_message'); // ✅ FIX: Added ?.
+    SocketService().socket?.off('user_status_update'); // ✅ FIX: Added ?.
+    SocketService().socket?.off('messages_read'); // ✅ FIX: Added ?.
+    SocketService().socket?.off('message_deleted'); // ✅ FIX: Added ?.
+    SocketService().socket?.off('typing_start'); // ✅ FIX: Added ?.
+    SocketService().socket?.off('typing_stop'); // ✅ FIX: Added ?.
+
     super.dispose();
   }
 
   // --------------------------------------------------------
-  // 🛠️ DATA INIT & HELPERS
+  // 🛠️ DATA INIT, CACHING & PAGINATION
   // --------------------------------------------------------
 
   Future<void> _initializeChat() async {
-    // 1. Get User ID (Secure Storage -> SharedPrefs Fallback)
+    // 1. Get User ID
     _myUserId = await _storage.read(key: 'userId');
-    
     if (_myUserId == null) {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('cached_user');
@@ -142,20 +196,112 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
 
+    // ✅ 2. LOAD CACHE FIRST (Instant UI)
     if (_activeConversationId != null) {
-      await _loadMessages();
+      await _loadCachedMessages();
+    }
+
+    // 3. FETCH FROM NETWORK
+    if (_activeConversationId != null) {
+      await _loadMessages(initial: true);
     } else {
       await _findOrCreateConversation();
     }
   }
 
-  // ✅ NEW: Mark messages as read on server
-  Future<void> _markMessagesAsRead() async {
+  // ✅ LOCAL CACHE: Save last 50 messages to SharedPrefs
+  Future<void> _cacheMessages() async {
+    if (_activeConversationId == null || _messages.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Cache only the latest 50 messages to keep storage light
+      final messagesToCache = _messages.length > 50 
+          ? _messages.sublist(_messages.length - 50) 
+          : _messages;
+          
+      final String jsonString = jsonEncode(messagesToCache.map((m) => m.toJson()).toList());
+      await prefs.setString('chat_cache_$_activeConversationId', jsonString);
+    } catch (e) {
+      debugPrint("Caching error: $e");
+    }
+  }
+
+  Future<void> _loadCachedMessages() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonString = prefs.getString('chat_cache_$_activeConversationId');
+      
+      if (jsonString != null && mounted) {
+        final List<dynamic> data = jsonDecode(jsonString);
+        setState(() {
+          _messages = data.map((m) => ChatMessage.fromJson(m)).toList();
+          _isLoading = false; 
+        });
+        // Scroll to bottom after build
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      }
+    } catch (e) {
+      debugPrint("Cache load error: $e");
+    }
+  }
+
+  Future<void> _loadMessages({bool initial = false}) async {
     if (_activeConversationId == null) return;
     try {
-      await _api.put('/api/chat/read/$_activeConversationId', {});
+      final result = await _api.get('/api/chat/$_activeConversationId');
+      
+      if (mounted && result['success'] == true) {
+        final List<dynamic> data = result['data'];
+        final newMessages = data.map((m) => ChatMessage.fromJson(m)).toList();
+
+        setState(() {
+          _messages = newMessages; 
+          _isLoading = false;
+          // If less than 20 messages returned, we assume we reached the start
+          _hasMoreMessages = newMessages.length >= 20; 
+        });
+        
+        if (initial) {
+          _scrollToBottom();
+          _markMessagesAsRead(); 
+        }
+        _cacheMessages(); // Sync cache with fresh data
+      }
     } catch (e) {
-      // Fail silently
+      debugPrint("Network load error: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ PAGINATION: Load older messages
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages || _messages.isEmpty) return;
+
+    setState(() => _isLoadingMore = true);
+    
+    // Use ID of the top-most message for pagination cursor
+    String oldestId = _messages.first.id;
+
+    try {
+      final result = await _api.get('/api/chat/$_activeConversationId?beforeId=$oldestId');
+      
+      if (mounted && result['success'] == true) {
+        final List<dynamic> data = result['data'];
+        final olderMessages = data.map((m) => ChatMessage.fromJson(m)).toList();
+
+        if (olderMessages.isEmpty) {
+          setState(() => _hasMoreMessages = false);
+        } else {
+          setState(() {
+            _messages.insertAll(0, olderMessages); // Prepend to top
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Pagination error: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingMore = false);
     }
   }
 
@@ -167,7 +313,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _activeConversationId = result['data']['_id'];
         });
-        await _loadMessages();
+        await _loadMessages(initial: true);
       }
     } catch (e) {
       debugPrint("Error finding chat: $e");
@@ -175,24 +321,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _loadMessages() async {
+  Future<void> _markMessagesAsRead() async {
     if (_activeConversationId == null) return;
     try {
-      final result = await _api.get('/api/chat/$_activeConversationId');
-      
-      if (mounted && result['success'] == true) {
-        final List<dynamic> data = result['data'];
-        setState(() {
-          _messages = data.map((m) => ChatMessage.fromJson(m)).toList();
-          _isLoading = false;
-        });
-        _scrollToBottom();
-        _markMessagesAsRead(); // ✅ Mark as read when loaded
-      }
-    } catch (e) {
-      debugPrint("Error loading messages: $e");
-      setState(() => _isLoading = false);
-    }
+      await _api.put('/api/chat/read/$_activeConversationId', {});
+    } catch (e) { /* Fail silently */ }
   }
 
   void _scrollToBottom() {
@@ -207,10 +340,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ✅ Helper: Authentic Status Text
+  // ✅ DYNAMIC STATUS TEXT
   String _getStatusText() {
+    if (_isPeerTyping) return "Typing..."; 
     if (_isPeerOnline) return "Active Now";
-    
     if (_peerLastSeen == null) return "Offline";
 
     try {
@@ -233,15 +366,34 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 🚀 SENDING LOGIC (Text & Files)
+  // 🚀 SENDING & OPTIMISTIC UI
   // --------------------------------------------------------
 
   Future<void> _sendMessage({String? text, File? file, String type = 'text'}) async {
     if ((text == null || text.trim().isEmpty) && file == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
 
-    setState(() => _isSending = true);
+    // 1. Create Temporary Message (Optimistic)
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final tempMessage = ChatMessage(
+      id: tempId,
+      senderId: _myUserId!,
+      text: text ?? "",
+      type: type,
+      fileUrl: file?.path, // Store local path for immediate display
+      createdAt: DateTime.now(),
+      status: MessageStatus.sending, // ✅ Shows Clock Icon
+    );
 
+    // 2. Update UI Immediately
+    setState(() {
+      _messages.add(tempMessage);
+      _textController.clear();
+      _isTyping = false; // Reset typing logic
+    });
+    _scrollToBottom();
+
+    // 3. Send to API
     try {
       var request = http.MultipartRequest(
         'POST', 
@@ -263,18 +415,53 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        final realMessage = ChatMessage.fromJson(data);
+        
         setState(() {
-          _messages.add(ChatMessage.fromJson(data));
-          _textController.clear();
+          // Replace temp message with real one from server
+          final index = _messages.indexWhere((m) => m.id == tempId);
+          if (index != -1) {
+            _messages[index] = realMessage; 
+          }
         });
-        _scrollToBottom();
+        _cacheMessages(); // Update cache with confirmed message
+      } else {
+        throw Exception("Failed to send");
       }
     } catch (e) {
-      debugPrint("Upload failed: $e");
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to send message")));
-    } finally {
-      setState(() => _isSending = false);
+      debugPrint("Send failed: $e");
+      setState(() {
+        // Mark as error in UI
+        final index = _messages.indexWhere((m) => m.id == tempId);
+        if (index != -1) {
+          _messages[index].status = MessageStatus.error;
+        }
+      });
     }
+  }
+
+  // ✅ TYPING HANDLER
+  void _onTextChanged(String value) {
+    if (_activeConversationId == null) return;
+
+    if (!_isTyping) {
+      _isTyping = true;
+      // ✅ FIX: Safe access with ?.
+      SocketService().socket?.emit('typing', {
+        'receiverId': widget.receiverId,
+        'conversationId': _activeConversationId
+      });
+    }
+
+    _typingDebounce?.cancel();
+    _typingDebounce = Timer(const Duration(seconds: 2), () {
+      _isTyping = false;
+      // ✅ FIX: Safe access with ?.
+      SocketService().socket?.emit('stop_typing', {
+        'receiverId': widget.receiverId,
+        'conversationId': _activeConversationId
+      });
+    });
   }
 
   // --------------------------------------------------------
@@ -313,15 +500,17 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteMessage(ChatMessage msg) async {
-    // ✅ HARD DELETE: Remove from list immediately
+    // Optimistic UI Update
     setState(() {
       _messages.removeWhere((m) => m.id == msg.id);
     });
+    _cacheMessages();
 
     try {
       await _api.delete('/api/chat/message/${msg.id}'); 
     } catch (e) {
       debugPrint("Delete failed on server: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to delete message")));
     }
   }
 
@@ -341,6 +530,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 msg.text = editCtrl.text;
                 msg.isEdited = true;
               });
+              _cacheMessages();
               await _api.put('/api/chat/message/${msg.id}', {'text': editCtrl.text});
             },
             child: const Text("Save"),
@@ -437,13 +627,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   widget.receiverName,
                   style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                // ✅ DYNAMIC STATUS (Socket Powered)
+                // ✅ DYNAMIC STATUS
                 Text(
                   _getStatusText(), 
                   style: TextStyle(
                     fontSize: 11, 
-                    color: _isPeerOnline ? Colors.greenAccent : Colors.white70,
-                    fontWeight: _isPeerOnline ? FontWeight.w600 : FontWeight.normal
+                    color: _isPeerTyping ? Colors.white : (_isPeerOnline ? Colors.greenAccent : Colors.white70),
+                    fontWeight: (_isPeerTyping || _isPeerOnline) ? FontWeight.w600 : FontWeight.normal
                   ),
                 ),
               ],
@@ -455,6 +645,13 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          // Loading Indicator for Pagination
+          if (_isLoadingMore) 
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -463,13 +660,23 @@ class _ChatScreenState extends State<ChatScreen> {
               itemBuilder: (context, index) {
                 final msg = _messages[index];
                 return GestureDetector(
-                  onLongPress: () => _showMessageOptions(msg), // ✅ Long press to Edit/Delete
+                  onLongPress: () => _showMessageOptions(msg), 
                   child: _buildMessageBubble(msg, msg.senderId == _myUserId, isDark, primaryColor),
                 );
               },
             ),
           ),
-          if (_isSending) const LinearProgressIndicator(minHeight: 2),
+          
+          // Typing Indicator at bottom left
+          if (_isPeerTyping) 
+             Padding(
+               padding: const EdgeInsets.only(left: 16, bottom: 4),
+               child: Align(
+                 alignment: Alignment.centerLeft, 
+                 child: Text("Typing...", style: TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic))
+               ),
+             ),
+             
           _buildInputArea(isDark, primaryColor),
         ],
       ),
@@ -481,28 +688,33 @@ class _ChatScreenState extends State<ChatScreen> {
   // --------------------------------------------------------
 
   Widget _buildMessageBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
-    // 1. DELETED MESSAGE (Return Empty SizedBox to hide completely)
+    // 1. DELETED MESSAGE (Return Empty SizedBox to hide completely since we use Hard Delete)
     if (msg.isDeleted) return const SizedBox.shrink();
 
     // 2. CONTENT BUILDER
     Widget content;
     if (msg.type == 'image') {
+      // ✅ Handle Local File (Optimistic) vs Network Image
+      bool isLocal = msg.fileUrl != null && !msg.fileUrl!.startsWith('http');
+      
       content = GestureDetector(
         onTap: () {
           // Future: Open Full Screen
         },
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: CachedNetworkImage(
-            imageUrl: msg.fileUrl ?? "",
-            placeholder: (c, u) => Container(
-              height: 150, width: 200, 
-              color: Colors.black12, 
-              child: const Center(child: CircularProgressIndicator())
-            ),
-            errorWidget: (c, u, e) => const Icon(Icons.broken_image, size: 50, color: Colors.grey),
-            height: 200, fit: BoxFit.cover,
-          ),
+          child: isLocal 
+            ? Image.file(File(msg.fileUrl!), height: 200, width: 200, fit: BoxFit.cover)
+            : CachedNetworkImage(
+                imageUrl: msg.fileUrl ?? "",
+                placeholder: (c, u) => Container(
+                  height: 150, width: 200, 
+                  color: Colors.black12, 
+                  child: const Center(child: CircularProgressIndicator())
+                ),
+                errorWidget: (c, u, e) => const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                height: 200, fit: BoxFit.cover,
+              ),
         ),
       );
     } else if (msg.type == 'file') {
@@ -557,14 +769,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   DateFormat('h:mm a').format(msg.createdAt), 
                   style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)
                 ),
-                // ✅ AUTHENTIC TICKS LOGIC
+                // ✅ OPTIMISTIC STATUS ICONS
                 if (isMe) ...[
                    const SizedBox(width: 4),
-                   Icon(
-                     msg.isRead ? Icons.done_all : Icons.check, // ✅ Check vs Done All
-                     size: 14, 
-                     color: msg.isRead ? Colors.lightBlueAccent : Colors.white70 // ✅ Blue if read
-                   ),
+                   _buildStatusIcon(msg),
                 ]
               ],
             )
@@ -572,6 +780,34 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon(ChatMessage msg) {
+    IconData icon;
+    Color color;
+
+    switch (msg.status) {
+      case MessageStatus.sending:
+        icon = Icons.access_time;
+        color = Colors.white70;
+        break;
+      case MessageStatus.error:
+        icon = Icons.error_outline;
+        color = Colors.redAccent;
+        break;
+      case MessageStatus.read:
+        icon = Icons.done_all;
+        color = Colors.lightBlueAccent;
+        break;
+      case MessageStatus.delivered:
+      case MessageStatus.sent:
+      default:
+        icon = msg.isRead ? Icons.done_all : Icons.check;
+        color = msg.isRead ? Colors.lightBlueAccent : Colors.white70;
+        break;
+    }
+
+    return Icon(icon, size: 14, color: color);
   }
 
   Widget _buildInputArea(bool isDark, Color primary) {
@@ -596,6 +832,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _textController,
                   maxLines: 4,
                   minLines: 1,
+                  onChanged: _onTextChanged, // ✅ Detect typing
                   decoration: const InputDecoration(
                     hintText: "Message...",
                     border: InputBorder.none,

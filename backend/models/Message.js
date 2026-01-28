@@ -21,10 +21,14 @@ const messageSchema = new mongoose.Schema(
     isDeleted: { type: Boolean, default: false },
     isEdited: { type: Boolean, default: false },
 
-    // ✅ NEW: Read Status
     isRead: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
+
+// ✅ CRITICAL PERFORMANCE FIX:
+// Create a compound index so MongoDB can instantly find
+// messages for a conversation and sort them by time.
+messageSchema.index({ conversationId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Message", messageSchema);
