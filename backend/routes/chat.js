@@ -17,9 +17,19 @@ const { sendPersonalNotification } = require("../utils/notificationHandler");
 // ---------------------------------------------------------
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: "ascon_chat_files",
-    resource_type: "auto", // ✅ IMPORTANT: Allows Audio/Video/Images
+  params: async (req, file) => {
+    // ✅ FIX: Force 'raw' for PDFs to prevent 401 Errors on Image Delivery
+    let resourceType = "auto";
+    if (file.mimetype === "application/pdf") {
+      resourceType = "raw";
+    }
+
+    return {
+      folder: "ascon_chat_files",
+      resource_type: resourceType,
+      // ✅ FIX: Add a unique public_id based on original name to prevent random naming
+      public_id: file.originalname.replace(/\.[^/.]+$/, "") + "-" + Date.now(),
+    };
   },
 });
 

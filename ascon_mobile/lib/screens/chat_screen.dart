@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // For Clipboard
+import 'package:flutter/services.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,7 +12,6 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 
-// ✅ NEW IMPORTS for Audio/Selection/Zoom/PDF
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
@@ -59,8 +59,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> _messages = [];
   String? _activeConversationId;
   String? _myUserId;
-  bool _isLoading = true;
-
+  
   bool _isLoadingMore = false;
   bool _hasMoreMessages = true;
   bool _isTyping = false;
@@ -70,22 +69,23 @@ class _ChatScreenState extends State<ChatScreen> {
   late bool _isPeerOnline;
   String? _peerLastSeen;
 
-  // ✅ SELECTION MODE VARIABLES
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
-  // ✅ AUDIO RECORDING VARIABLES
+  // Audio Recording
   late AudioRecorder _audioRecorder;
   bool _isRecording = false;
-  String? _recordedPath;
   int _recordDuration = 0;
   Timer? _recordTimer;
 
-  // ✅ AUDIO PLAYING VARIABLES
+  // Audio Playing
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _playingMessageId; 
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
+
+  // ✅ Track downloading file
+  String? _downloadingFileId;
 
   @override
   void initState() {
@@ -256,7 +256,6 @@ class _ChatScreenState extends State<ChatScreen> {
         final List<dynamic> data = jsonDecode(jsonString);
         setState(() {
           _messages = data.map((m) => ChatMessage.fromJson(m)).toList();
-          _isLoading = false;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
@@ -274,7 +273,6 @@ class _ChatScreenState extends State<ChatScreen> {
         final newMessages = data.map((m) => ChatMessage.fromJson(m)).toList();
         setState(() {
           _messages = newMessages;
-          _isLoading = false;
           _hasMoreMessages = newMessages.length >= 20;
         });
         if (initial) {
@@ -283,7 +281,9 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         _cacheMessages();
       }
-    } catch (e) { setState(() => _isLoading = false); }
+    } catch (e) { 
+      debugPrint("Load error: $e");
+    }
   }
 
   Future<void> _loadMoreMessages() async {
@@ -352,6 +352,11 @@ class _ChatScreenState extends State<ChatScreen> {
   // 🎤 RECORDING LOGIC
   // --------------------------------------------------------
   Future<void> _startRecording() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice recording not supported on Web yet.")));
+      return;
+    }
+
     if (await Permission.microphone.request().isGranted) {
       try {
         if (await Vibration.hasVibrator() ?? false) Vibration.vibrate(duration: 50);
@@ -363,7 +368,6 @@ class _ChatScreenState extends State<ChatScreen> {
         
         setState(() {
           _isRecording = true;
-          _recordedPath = path;
           _recordDuration = 0;
         });
 
@@ -383,7 +387,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() => _isRecording = false);
 
     if (send && path != null) {
-      _sendMessage(file: File(path), type: 'audio');
+      _sendMessage(filePath: path, type: 'audio');
     }
   }
 
@@ -392,10 +396,60 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 📨 SEND LOGIC (Hardened)
+  // 📂 DOWNLOAD & OPEN HELPER (New)
   // --------------------------------------------------------
-  Future<void> _sendMessage({String? text, File? file, String type = 'text'}) async {
-    if ((text == null || text.trim().isEmpty) && file == null) return;
+  Future<void> _downloadAndOpenWith(String url, String fileName, String messageId) async {
+    // 1. Web: Just launch URL (Browser handles it best)
+    if (kIsWeb) {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    // 2. Mobile: Download & Share/Open
+    setState(() => _downloadingFileId = messageId);
+    
+    try {
+      final response = await http.get(Uri.parse(url));
+      
+      // ✅ Handle 401 (Restricted) or 404 (Not Found)
+      if (response.statusCode != 200) {
+        throw Exception("Server Error ${response.statusCode}: Access Denied");
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      // Ensure fileName is safe
+      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.]'), '_'); 
+      final file = File('${tempDir.path}/$safeName');
+      
+      await file.writeAsBytes(response.bodyBytes);
+
+      if (mounted) {
+        setState(() => _downloadingFileId = null);
+        // ✅ Open Share Sheet: This lets the user choose "Drive", "Adobe", "Save to Files", etc.
+        await Share.shareXFiles([XFile(file.path)], text: 'Open $fileName');
+      }
+    } catch (e) {
+      debugPrint("Download Error: $e");
+      if (mounted) {
+        setState(() => _downloadingFileId = null);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not download file: ${e.toString().split(':').last.trim()}")));
+      }
+    }
+  }
+
+  // --------------------------------------------------------
+  // 📨 SEND LOGIC
+  // --------------------------------------------------------
+  Future<void> _sendMessage({
+    String? text, 
+    String? filePath, 
+    Uint8List? fileBytes, 
+    String? fileName, 
+    String type = 'text'
+  }) async {
+    if ((text == null || text.trim().isEmpty) && filePath == null && fileBytes == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
 
     String? token = await _storage.read(key: 'auth_token');
@@ -406,14 +460,16 @@ class _ChatScreenState extends State<ChatScreen> {
        return;
     }
 
+    // Optimistic UI
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final tempMessage = ChatMessage(
       id: tempId,
       senderId: _myUserId!,
       text: text ?? "",
       type: type,
-      fileUrl: file?.path, 
-      fileName: file?.path.split('/').last,
+      fileUrl: filePath, 
+      fileName: fileName ?? (filePath != null ? filePath.split('/').last : "File"),
+      localBytes: fileBytes, 
       createdAt: DateTime.now(),
       status: MessageStatus.sending,
     );
@@ -440,19 +496,17 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       request.fields['type'] = type;
 
-      if (file != null) {
-        if (!file.existsSync()) {
+      if (fileBytes != null) {
+        request.files.add(http.MultipartFile.fromBytes(
+          'file', 
+          fileBytes, 
+          filename: fileName ?? 'upload'
+        ));
+      } else if (filePath != null) {
+        if (!File(filePath).existsSync()) {
           throw Exception("File does not exist locally.");
         }
-        var stream = http.ByteStream(file.openRead());
-        var length = await file.length();
-        var multipartFile = http.MultipartFile(
-          'file',
-          stream,
-          length,
-          filename: file.path.split('/').last,
-        );
-        request.files.add(multipartFile);
+        request.files.add(await http.MultipartFile.fromPath('file', filePath));
       }
 
       var streamedResponse = await request.send();
@@ -492,6 +546,38 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
+  // ✅ ATTACHMENT PICKERS
+  // --------------------------------------------------------
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
+    if (image != null) {
+      if (kIsWeb) {
+        final bytes = await image.readAsBytes();
+        _sendMessage(fileBytes: bytes, fileName: image.name, type: 'image');
+      } else {
+        _sendMessage(filePath: image.path, type: 'image');
+      }
+    }
+  }
+
+  Future<void> _pickFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(withData: true);
+    
+    if (result != null) {
+      if (kIsWeb) {
+        PlatformFile file = result.files.first;
+        if (file.bytes != null) {
+          _sendMessage(fileBytes: file.bytes, fileName: file.name, type: 'file');
+        }
+      } else {
+        if (result.files.single.path != null) {
+          _sendMessage(filePath: result.files.single.path!, type: 'file');
+        }
+      }
+    }
+  }
+
+  // --------------------------------------------------------
   // ✅ SELECTION & BULK ACTIONS
   // --------------------------------------------------------
   void _toggleSelection(String messageId) {
@@ -508,13 +594,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
-    
     setState(() {
       _messages.removeWhere((m) => idsToDelete.contains(m.id));
       _isSelectionMode = false;
       _selectedMessageIds.clear();
     });
-
     try {
       await _api.post('/api/chat/delete-multiple', {'messageIds': idsToDelete});
     } catch (e) {
@@ -540,6 +624,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _shareSelectedMessages() {
+    if (kIsWeb) {
+       _copySelectedMessages(); 
+       return;
+    }
     final selectedMsgs = _messages.where((m) => _selectedMessageIds.contains(m.id)).toList();
     final textToShare = selectedMsgs
         .where((m) => m.type == 'text')
@@ -701,23 +789,36 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // 1. IMAGE
     if (msg.type == 'image') {
-      bool isLocal = msg.fileUrl != null && !msg.fileUrl!.startsWith('http');
-      content = GestureDetector(
-        onTap: () {
-           if (msg.fileUrl != null) {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id)));
-           }
-        },
-        child: Hero(
-          tag: msg.id,
-          child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: isLocal 
-                ? Image.file(File(msg.fileUrl!), height: 200, width: 200, fit: BoxFit.cover)
-                : CachedNetworkImage(imageUrl: msg.fileUrl!, height: 200, fit: BoxFit.cover),
+      if (msg.localBytes != null) {
+        content = ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(msg.localBytes!, height: 200, width: 200, fit: BoxFit.cover)
+        );
+      } else if (msg.fileUrl != null && !msg.fileUrl!.startsWith('http')) {
+        if (!kIsWeb) {
+          content = ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(File(msg.fileUrl!), height: 200, width: 200, fit: BoxFit.cover)
+          );
+        } else {
+          content = const Icon(Icons.image_not_supported);
+        }
+      } else {
+        content = GestureDetector(
+          onTap: () {
+             if (msg.fileUrl != null) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id)));
+             }
+          },
+          child: Hero(
+            tag: msg.id,
+            child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(imageUrl: msg.fileUrl!, height: 200, fit: BoxFit.cover),
+            ),
           ),
-        ),
-      );
+        );
+      }
     
     // 2. AUDIO
     } else if (msg.type == 'audio') {
@@ -759,33 +860,19 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
 
-    // 3. ✅ FILE / PDF (VIEWER FIX)
+    // 3. ✅ FILE / PDF (DOWNLOAD & OPEN WITH)
     } else if (msg.type == 'file') {
-      bool isLocal = msg.fileUrl != null && !msg.fileUrl!.startsWith('http');
-      String displayName = msg.fileName ?? "Document (PDF)"; 
-      
-      content = GestureDetector(
-        onTap: () async {
-          if (!isLocal && msg.fileUrl != null) {
-             Uri url = Uri.parse(msg.fileUrl!);
-             
-             // ✅ CRITICAL FIX: Android WebView cannot render PDFs directly.
-             // We route it through Google Docs Viewer so it "Views" instead of "Downloads".
-             if (Platform.isAndroid && (msg.fileUrl!.toLowerCase().endsWith('.pdf') || displayName.toLowerCase().endsWith('.pdf'))) {
-                url = Uri.parse("https://docs.google.com/viewer?url=${msg.fileUrl}&embedded=true");
-             }
+      String displayName = msg.fileName ?? "Document"; 
+      bool isDownloading = _downloadingFileId == msg.id;
 
-             if (await canLaunchUrl(url)) {
-               // ✅ LaunchMode.inAppWebView keeps user IN the app (No redirect feel)
-               if (!await launchUrl(url, mode: LaunchMode.inAppWebView)) {
-                  // Fallback if WebView fails
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-               }
-             } else {
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open file.")));
-             }
-          } else if (isLocal) {
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File is uploading...")));
+      content = GestureDetector(
+        onTap: () {
+          if (isDownloading) return;
+          if (msg.fileUrl != null && msg.fileUrl!.startsWith('http')) {
+             // ✅ Call the new Helper
+             _downloadAndOpenWith(msg.fileUrl!, displayName, msg.id);
+          } else {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File is local or uploading...")));
           }
         },
         child: Container(
@@ -814,12 +901,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Text(isLocal ? "Uploading..." : "Tap to view", 
+                    Text(
+                      isDownloading ? "Downloading..." : "Tap to open", 
                       style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)
                     ),
                   ],
                 ),
-              )
+              ),
+              if (isDownloading)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                )
             ],
           ),
         ),
@@ -918,16 +1011,9 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+  
   Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
     return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
-  }
-  Future<void> _pickImage(ImageSource source) async {
-    final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
-    if (image != null) _sendMessage(file: File(image.path), type: 'image');
-  }
-  Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result != null && result.files.single.path != null) _sendMessage(file: File(result.files.single.path!), type: 'file');
   }
   
   Widget _buildInputArea(bool isDark, Color primary) {
@@ -937,9 +1023,14 @@ class _ChatScreenState extends State<ChatScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            if (!_isRecording)
+            // ✅ Only show Mic if NOT on web
+            if (!_isRecording && !kIsWeb)
               IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
             
+            // On web, just show attachment button always
+            if (kIsWeb)
+               IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
+
             Expanded(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -981,7 +1072,7 @@ class _ChatScreenState extends State<ChatScreen> {
               backgroundColor: primary,
               child: IconButton(
                 icon: Icon(
-                  (_textController.text.trim().isNotEmpty || _isRecording) ? Icons.send : Icons.mic, 
+                  (_textController.text.trim().isNotEmpty || _isRecording || kIsWeb) ? Icons.send : Icons.mic, 
                   color: Colors.white, size: 20
                 ),
                 onPressed: () {
@@ -989,7 +1080,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     _stopRecording(send: true);
                   } else if (_textController.text.trim().isNotEmpty) {
                     _sendMessage(text: _textController.text);
-                  } else {
+                  } else if (!kIsWeb) {
                     _startRecording();
                   }
                 },

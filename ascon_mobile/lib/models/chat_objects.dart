@@ -1,4 +1,5 @@
-// ✅ Enum for Optimistic UI
+import 'dart:typed_data'; // ✅ Needed for Uint8List
+
 enum MessageStatus { sending, sent, delivered, read, error }
 
 class ChatMessage {
@@ -10,11 +11,13 @@ class ChatMessage {
   final String type; // 'text', 'image', 'audio', 'file'
   final String? fileUrl;
   final String? fileName;
-
+  
+  // ✅ NEW: Store file bytes for Web support
+  final Uint8List? localBytes; 
+  
   bool isDeleted;
   bool isEdited;
   bool isRead; 
-  
   MessageStatus status; 
 
   ChatMessage({
@@ -25,6 +28,7 @@ class ChatMessage {
     this.type = 'text',
     this.fileUrl,
     this.fileName,
+    this.localBytes, // ✅ Initialize
     this.isDeleted = false,
     this.isEdited = false,
     this.isRead = false,
@@ -33,7 +37,7 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
-      id: json['_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(), // Fallback for temp IDs
+      id: json['_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
       senderId: json['sender'] ?? '',
       text: json['text'] ?? '',
       createdAt: DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now(),
@@ -47,7 +51,6 @@ class ChatMessage {
     );
   }
 
-  // ✅ For Local Caching (SharedPrefs)
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
@@ -60,6 +63,7 @@ class ChatMessage {
       'isDeleted': isDeleted,
       'isEdited': isEdited,
       'isRead': isRead,
+      // Note: We do NOT save localBytes to cache/JSON
     };
   }
 }
@@ -84,18 +88,15 @@ class ChatConversation {
   factory ChatConversation.fromJson(Map<String, dynamic> json, String myUserId) {
     final participants = (json['participants'] as List).toList();
     
-    // ✅ FIX: Improved Logic to find the "Other" user
     var otherUser = participants.firstWhere(
-      (user) => user['_id'].toString() != myUserId, // Convert to string for safe comparison
+      (user) => user['_id'].toString() != myUserId, 
       orElse: () => null,
     );
 
-    // ✅ FALLBACK: If we couldn't find an "other" user (e.g. self-chat), use the first participant
     if (otherUser == null && participants.isNotEmpty) {
       otherUser = participants[0];
     }
 
-    // ✅ FINAL SAFETY CHECK: Ensure we don't display "Unknown" if data is missing
     final String name = otherUser?['fullName'] ?? 'Alumni Member';
     final String? image = otherUser?['profilePicture'];
     final String? uid = otherUser?['_id'];
