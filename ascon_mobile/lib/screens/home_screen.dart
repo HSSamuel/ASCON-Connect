@@ -46,29 +46,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _listenForMessages(); 
   }
 
-  // ✅ FIX: Robust Type Checking to prevent 'String is not subtype of Int' crash
   Future<void> _checkUnreadStatus() async {
     try {
       final result = await _api.get('/api/chat/unread-status');
       if (mounted && result['success'] == true) {
-        final rawData = result['data']['hasUnread'];
-        bool isUnread = false;
-
-        // Safely parse whatever the backend sends
-        if (rawData is bool) {
-          isUnread = rawData;
-        } else if (rawData is String) {
-          isUnread = rawData.toLowerCase() == 'true';
-        } else if (rawData is int) {
-          isUnread = rawData > 0;
-        }
+        // Robustly handle the boolean from backend
+        final rawData = result['data']?['hasUnread'];
+        final bool isUnread = rawData.toString().toLowerCase() == 'true';
 
         setState(() {
           _hasUnreadMessages = isUnread;
         });
       }
     } catch (e) {
-      debugPrint("Failed to check unread status: $e");
+      // Fail silently in production or log to crash reporting
+      debugPrint("Check status error: $e");
     }
   }
 

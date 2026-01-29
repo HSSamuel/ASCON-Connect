@@ -21,8 +21,37 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
+// =========================================================
+// ✅ MOVED TO TOP: SPECIFIC ROUTES FIRST!
+// =========================================================
+
 // ---------------------------------------------------------
-// 1. GET ALL CONVERSATIONS (Inbox)
+// 1. CHECK UNREAD STATUS (Moved here to avoid wildcard collision)
+// ---------------------------------------------------------
+router.get("/unread-status", verify, async (req, res) => {
+  try {
+    // Find active conversations for this user
+    const conversations = await Conversation.find({
+      participants: req.user._id,
+    }).select("_id");
+    const conversationIds = conversations.map((c) => c._id);
+
+    // Check if there is ANY unread message in those conversations sent by someone else
+    const hasUnread = await Message.exists({
+      conversationId: { $in: conversationIds },
+      sender: { $ne: req.user._id },
+      isRead: false,
+    });
+
+    // ✅ FORCE BOOLEAN: Ensure we return true/false
+    res.status(200).json({ hasUnread: !!hasUnread });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// ---------------------------------------------------------
+// 2. GET ALL CONVERSATIONS (Inbox)
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
@@ -39,7 +68,7 @@ router.get("/", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. START OR GET CONVERSATION
+// 3. START OR GET CONVERSATION
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId } = req.body;
@@ -67,7 +96,45 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. GET MESSAGES
+// 4. BULK DELETE MESSAGES
+// ---------------------------------------------------------
+router.post("/delete-multiple", verify, async (req, res) => {
+  try {
+    const { messageIds } = req.body;
+    if (!messageIds || messageIds.length === 0)
+      return res.status(400).json("No IDs provided");
+
+    // 1. Find messages that belong to this user
+    const messages = await Message.find({
+      _id: { $in: messageIds },
+      sender: req.user._id,
+    });
+
+    if (messages.length === 0)
+      return res.status(200).json({ message: "No messages to delete" });
+
+    const validIds = messages.map((m) => m._id);
+    const conversationId = messages[0].conversationId; // Assume all from same chat for simplicity
+
+    // 2. Delete them
+    await Message.deleteMany({ _id: { $in: validIds } });
+
+    // 3. Emit Real-time Event
+    _emitDeleteEvent(req, conversationId, validIds);
+
+    res.status(200).json({ success: true, deletedIds: validIds });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json(err);
+  }
+});
+
+// =========================================================
+// ⚠️ DANGER ZONE: WILDCARD ROUTES (:id) MUST BE LAST
+// =========================================================
+
+// ---------------------------------------------------------
+// 5. GET MESSAGES (Wildcard route)
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
@@ -88,7 +155,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. SEND A MESSAGE (Updated for Audio)
+// 6. SEND A MESSAGE (Updated for Audio)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -166,7 +233,7 @@ router.post(
 );
 
 // ---------------------------------------------------------
-// 5. READ RECEIPT
+// 7. READ RECEIPT
 // ---------------------------------------------------------
 router.put("/read/:conversationId", verify, async (req, res) => {
   try {
@@ -196,93 +263,7 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. EDIT MESSAGE
-// ---------------------------------------------------------
-router.put("/message/:id", verify, async (req, res) => {
-  try {
-    const msg = await Message.findById(req.params.id);
-    if (msg.sender.toString() !== req.user._id) {
-      return res.status(403).json("Unauthorized");
-    }
-    msg.text = req.body.text;
-    msg.isEdited = true;
-    await msg.save();
-    res.status(200).json(msg);
-  } catch (err) {
-    res.status(500).json(err);
-  }
-});
-
-// ---------------------------------------------------------
-// 7. DELETE SINGLE MESSAGE
-// ---------------------------------------------------------
-router.delete("/message/:id", verify, async (req, res) => {
-  try {
-    const msg = await Message.findById(req.params.id);
-    if (!msg) return res.status(404).json("Not found");
-    if (msg.sender.toString() !== req.user._id)
-      return res.status(403).json("Unauthorized");
-
-    await Message.findByIdAndDelete(req.params.id);
-    _emitDeleteEvent(req, msg.conversationId, [msg._id]);
-
-    res.status(200).json({ message: "Deleted" });
-  } catch (err) {
-    res.status(500).json(err);
-  }
-});
-
-// ---------------------------------------------------------
-// ✅ 8. BULK DELETE MESSAGES (New)
-// ---------------------------------------------------------
-router.post("/delete-multiple", verify, async (req, res) => {
-  try {
-    const { messageIds } = req.body;
-    if (!messageIds || messageIds.length === 0)
-      return res.status(400).json("No IDs provided");
-
-    // 1. Find messages that belong to this user
-    const messages = await Message.find({
-      _id: { $in: messageIds },
-      sender: req.user._id,
-    });
-
-    if (messages.length === 0)
-      return res.status(200).json({ message: "No messages to delete" });
-
-    const validIds = messages.map((m) => m._id);
-    const conversationId = messages[0].conversationId; // Assume all from same chat for simplicity
-
-    // 2. Delete them
-    await Message.deleteMany({ _id: { $in: validIds } });
-
-    // 3. Emit Real-time Event
-    _emitDeleteEvent(req, conversationId, validIds);
-
-    res.status(200).json({ success: true, deletedIds: validIds });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json(err);
-  }
-});
-
-// Helper to emit delete events
-async function _emitDeleteEvent(req, conversationId, messageIds) {
-  const conversation = await Conversation.findById(conversationId);
-  if (conversation) {
-    conversation.participants.forEach((userId) => {
-      if (userId.toString() !== req.user._id) {
-        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
-          conversationId,
-          messageIds,
-        });
-      }
-    });
-  }
-}
-
-// ---------------------------------------------------------
-// ✅ 9. DELETE CONVERSATION (Removes User from Chat)
+// 8. DELETE CONVERSATION (Removes User from Chat)
 // ---------------------------------------------------------
 router.delete("/:conversationId", verify, async (req, res) => {
   try {
@@ -306,28 +287,55 @@ router.delete("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// ✅ 10. CHECK UNREAD STATUS (New)
+// 9. EDIT MESSAGE
 // ---------------------------------------------------------
-router.get("/unread-status", verify, async (req, res) => {
+router.put("/message/:id", verify, async (req, res) => {
   try {
-    // Find active conversations for this user
-    const conversations = await Conversation.find({
-      participants: req.user._id,
-    }).select("_id");
-    const conversationIds = conversations.map((c) => c._id);
-
-    // Check if there is ANY unread message in those conversations sent by someone else
-    const hasUnread = await Message.exists({
-      conversationId: { $in: conversationIds },
-      sender: { $ne: req.user._id },
-      isRead: false,
-    });
-
-    // ✅ FORCE BOOLEAN: Ensure we return true/false, not an object or null
-    res.status(200).json({ hasUnread: !!hasUnread });
+    const msg = await Message.findById(req.params.id);
+    if (msg.sender.toString() !== req.user._id) {
+      return res.status(403).json("Unauthorized");
+    }
+    msg.text = req.body.text;
+    msg.isEdited = true;
+    await msg.save();
+    res.status(200).json(msg);
   } catch (err) {
     res.status(500).json(err);
   }
 });
+
+// ---------------------------------------------------------
+// 10. DELETE SINGLE MESSAGE
+// ---------------------------------------------------------
+router.delete("/message/:id", verify, async (req, res) => {
+  try {
+    const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json("Not found");
+    if (msg.sender.toString() !== req.user._id)
+      return res.status(403).json("Unauthorized");
+
+    await Message.findByIdAndDelete(req.params.id);
+    _emitDeleteEvent(req, msg.conversationId, [msg._id]);
+
+    res.status(200).json({ message: "Deleted" });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// Helper to emit delete events
+async function _emitDeleteEvent(req, conversationId, messageIds) {
+  const conversation = await Conversation.findById(conversationId);
+  if (conversation) {
+    conversation.participants.forEach((userId) => {
+      if (userId.toString() !== req.user._id) {
+        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
+          conversationId,
+          messageIds,
+        });
+      }
+    });
+  }
+}
 
 module.exports = router;

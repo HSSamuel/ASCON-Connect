@@ -181,7 +181,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            DateFormat('MMM d').format(chat.lastMessageTime),
+                            // ✅ FIXED: Convert UTC to Local Time for display
+                            DateFormat('MMM d').format(chat.lastMessageTime.toLocal()),
                             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                           ),
                           // Optional: Add Unread Count Badge here later

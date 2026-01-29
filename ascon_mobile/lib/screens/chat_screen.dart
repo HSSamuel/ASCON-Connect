@@ -161,12 +161,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       if (data['conversationId'] == _activeConversationId) {
         setState(() {
-           try {
-             _messages.add(ChatMessage.fromJson(data['message']));
-             _isPeerTyping = false;
-           } catch (e) {
-             debugPrint("Error parsing incoming message: $e");
-           }
+            try {
+              _messages.add(ChatMessage.fromJson(data['message']));
+              _isPeerTyping = false;
+            } catch (e) {
+              debugPrint("Error parsing incoming message: $e");
+            }
         });
         _scrollToBottom();
         _markMessagesAsRead();
@@ -764,7 +764,7 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (msg.isEdited) const Text("edited • ", style: TextStyle(fontSize: 10, color: Colors.white70)),
-                Text(DateFormat('h:mm a').format(msg.createdAt), style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                Text(DateFormat('h:mm a').format(msg.createdAt.toLocal()), style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
                 if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg)],
               ],
             )

@@ -258,3 +258,8 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-29 03:07:35"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-01-29 03:07:37"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-29 03:07:37"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-01-29 03:53:06"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-01-29 03:53:07"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-01-29 03:53:10"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-01-29 03:53:12"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-01-29 03:53:12"}
