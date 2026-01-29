@@ -17,6 +17,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:open_file_plus/open_file_plus.dart';
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
@@ -396,10 +397,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 📂 DOWNLOAD & OPEN HELPER (New)
+  // 📂 DOWNLOAD & OPEN HELPER (ENHANCED)
   // --------------------------------------------------------
   Future<void> _downloadAndOpenWith(String url, String fileName, String messageId) async {
-    // 1. Web: Just launch URL (Browser handles it best)
+    // 1. Web: Launch URL (Browser is the best PDF viewer for Web)
     if (kIsWeb) {
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -407,34 +408,55 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // 2. Mobile: Download & Share/Open
+    // 2. Mobile: Download & Open Native Viewer
     setState(() => _downloadingFileId = messageId);
-    
+
     try {
       final response = await http.get(Uri.parse(url));
-      
-      // ✅ Handle 401 (Restricted) or 404 (Not Found)
+
+      // ✅ Handle Server Errors
       if (response.statusCode != 200) {
         throw Exception("Server Error ${response.statusCode}: Access Denied");
       }
 
+      // ✅ Get Temp Directory
       final tempDir = await getTemporaryDirectory();
-      // Ensure fileName is safe
-      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.]'), '_'); 
-      final file = File('${tempDir.path}/$safeName');
       
+      // ✅ Sanitize Filename (Ensure it keeps the extension like .pdf)
+      // If the filename from server doesn't have an extension, you might need to append it based on mime-type,
+      // but usually, the fileName stored in ChatMessage includes it.
+      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_'); 
+      final file = File('${tempDir.path}/$safeName');
+
+      // ✅ Write File
       await file.writeAsBytes(response.bodyBytes);
 
       if (mounted) {
         setState(() => _downloadingFileId = null);
-        // ✅ Open Share Sheet: This lets the user choose "Drive", "Adobe", "Save to Files", etc.
-        await Share.shareXFiles([XFile(file.path)], text: 'Open $fileName');
+
+        // ✅ ATTEMPT 1: Open with native viewer (PDF Reader, Word, etc.)
+        final result = await OpenFile.open(file.path);
+
+        if (result.type != ResultType.done) {
+          // ✅ ATTEMPT 2: Fallback to Share Sheet if viewing fails
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("No app found to open this file. Sharing instead..."))
+            );
+            await Share.shareXFiles([XFile(file.path)], text: 'Open $fileName');
+          }
+        }
       }
     } catch (e) {
-      debugPrint("Download Error: $e");
+      debugPrint("Download/Open Error: $e");
       if (mounted) {
         setState(() => _downloadingFileId = null);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not download file: ${e.toString().split(':').last.trim()}")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Could not open file: ${e.toString().split(':').last.trim()}"),
+            backgroundColor: Colors.red,
+          )
+        );
       }
     }
   }

@@ -17,7 +17,6 @@ router.post("/request", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "You cannot mentor yourself." });
     }
 
-    // 1. Check if Mentor exists and is OPEN to mentorship
     const mentor = await User.findById(mentorId);
     if (!mentor || !mentor.isOpenToMentorship) {
       return res
@@ -25,7 +24,6 @@ router.post("/request", verifyToken, async (req, res) => {
         .json({ message: "This user is not accepting mentorship requests." });
     }
 
-    // 2. Check for existing request
     const existing = await MentorshipRequest.findOne({
       mentor: mentorId,
       mentee: req.user._id,
@@ -44,7 +42,6 @@ router.post("/request", verifyToken, async (req, res) => {
           .json({ message: "Your previous request was declined." });
     }
 
-    // 3. Create Request
     const newRequest = new MentorshipRequest({
       mentor: mentorId,
       mentee: req.user._id,
@@ -53,7 +50,7 @@ router.post("/request", verifyToken, async (req, res) => {
 
     await newRequest.save();
 
-    // 4. Notify Mentor
+    // ✅ NOTIFY MENTOR (ALWAYS)
     await sendPersonalNotification(
       mentorId,
       "New Mentorship Request 🎓",
@@ -72,14 +69,13 @@ router.post("/request", verifyToken, async (req, res) => {
 // ==========================================
 router.put("/respond/:id", verifyToken, async (req, res) => {
   try {
-    const { status } = req.body; // "Accepted" or "Rejected"
+    const { status } = req.body;
     const request = await MentorshipRequest.findById(req.params.id).populate(
       "mentee",
     );
 
     if (!request) return res.status(404).json({ message: "Request not found" });
 
-    // Security Check: Only the designated mentor can respond
     if (request.mentor.toString() !== req.user._id) {
       return res.status(403).json({ message: "Access Denied" });
     }
@@ -88,41 +84,52 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
     await request.save();
 
     if (status === "Accepted") {
-      // ✅ AUTO-START CONVERSATION
       // 1. Find/Create Chat
       let conversation = await Conversation.findOne({
-        members: { $all: [request.mentor, request.mentee] },
+        participants: { $all: [request.mentor, request.mentee._id] }, // ✅ Fixed field name to 'participants' to match schema
       });
 
       if (!conversation) {
         conversation = new Conversation({
-          members: [request.mentor, request.mentee],
+          participants: [request.mentor, request.mentee._id],
         });
         await conversation.save();
       }
 
-      // 2. Send System Message
+      // 2. Create System Message
       const systemMsg = new Message({
         conversationId: conversation._id,
-        sender: request.mentor, // Comes from Mentor
+        sender: request.mentor,
         text: "🎉 I have accepted your mentorship request! Let's connect.",
+        isRead: false,
       });
       await systemMsg.save();
 
-      // 3. Notify Mentee
+      // 3. Update Conversation Last Message
+      conversation.lastMessage = "🎉 Mentorship Accepted";
+      conversation.lastMessageAt = Date.now();
+      await conversation.save();
+
+      // 4. ✅ EMIT SOCKET EVENT (So chat appears instantly for Mentee)
+      if (req.io) {
+        req.io.to(request.mentee._id.toString()).emit("new_message", {
+          message: systemMsg,
+          conversationId: conversation._id,
+        });
+      }
+
+      // 5. ✅ NOTIFY MENTEE (ALWAYS)
       await sendPersonalNotification(
-        request.mentee._id,
+        request.mentee._id.toString(),
         "Mentorship Accepted! 🎉",
         "Your mentor has accepted your request. Chat now!",
-        { route: "chat_screen", id: conversation._id.toString() }, // Deep link to chat
+        { route: "chat_screen", id: conversation._id.toString() },
       );
-    } else {
-      // Notify Rejection (Optional - maybe silent rejection is better?)
-      // For now, let's keep it silent or minimal to be polite.
     }
 
     res.json(request);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -171,38 +178,39 @@ router.get("/dashboard", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 4. CHECK STATUS (UPDATED)
+// 4. CHECK STATUS
 // ==========================================
 router.get("/status/:targetUserId", verifyToken, async (req, res) => {
   try {
     const targetId = req.params.targetUserId;
-    
+
     const request = await MentorshipRequest.findOne({
       $or: [
         { mentor: targetId, mentee: req.user._id },
-        { mentor: req.user._id, mentee: targetId }
-      ]
+        { mentor: req.user._id, mentee: targetId },
+      ],
     });
 
     if (!request) return res.json({ status: "None", requestId: null });
-    
-    // Return ID so we can cancel/end it later
-    res.json({ status: request.status, requestId: request._id }); 
+
+    res.json({ status: request.status, requestId: request._id });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 // ==========================================
-// 5. CANCEL REQUEST (Withdraw Pending)
+// 5. CANCEL REQUEST
 // ==========================================
 router.delete("/cancel/:id", verifyToken, async (req, res) => {
   try {
     const request = await MentorshipRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Request not found" });
 
-    // Allow Sender to Cancel
-    if (request.mentee.toString() !== req.user._id && request.mentor.toString() !== req.user._id) {
+    if (
+      request.mentee.toString() !== req.user._id &&
+      request.mentor.toString() !== req.user._id
+    ) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -214,22 +222,22 @@ router.delete("/cancel/:id", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 6. END MENTORSHIP (Terminate Accepted)
+// 6. END MENTORSHIP
 // ==========================================
 router.delete("/end/:id", verifyToken, async (req, res) => {
   try {
     const request = await MentorshipRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Mentorship not found" });
+    if (!request)
+      return res.status(404).json({ message: "Mentorship not found" });
 
-    // Allow either party to end it
-    if (request.mentee.toString() !== req.user._id && request.mentor.toString() !== req.user._id) {
+    if (
+      request.mentee.toString() !== req.user._id &&
+      request.mentor.toString() !== req.user._id
+    ) {
       return res.status(403).json({ message: "Access denied" });
     }
 
     await MentorshipRequest.findByIdAndDelete(req.params.id);
-    
-    // Optional: Notify the other party that it ended
-
     res.json({ message: "Mentorship ended." });
   } catch (err) {
     res.status(500).json({ message: err.message });

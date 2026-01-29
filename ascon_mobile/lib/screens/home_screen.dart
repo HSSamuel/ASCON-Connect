@@ -29,7 +29,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   List<int> _tabHistory = [0];
   late List<Widget> _screens;
@@ -41,7 +41,33 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ 1. Register Observer for App Resume/Pause
+    WidgetsBinding.instance.addObserver(this);
+    
     _resolveUserName();
+    _refreshUnreadState();
+  }
+
+  @override
+  void dispose() {
+    // ✅ 2. Clean up Observer
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // ✅ 3. Handle App Lifecycle (Resume from Background)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Give SocketService a moment to re-initialize its connection
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) _refreshUnreadState();
+      });
+    }
+  }
+
+  // ✅ 4. Centralized Refresh Logic
+  void _refreshUnreadState() {
     _checkUnreadStatus(); 
     _listenForMessages(); 
   }
@@ -59,16 +85,33 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     } catch (e) {
-      // Fail silently in production or log to crash reporting
+      // Fail silently in production
       debugPrint("Check status error: $e");
     }
   }
 
   void _listenForMessages() {
-    SocketService().socket?.on('new_message', (data) {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    // ✅ 5. Remove previous listeners to prevent duplicates (Crucial on Resume)
+    try {
+      socket.off('new_message');
+      socket.off('connect');
+    } catch (_) {}
+
+    // ✅ 6. Listen for New Messages (Real-time)
+    socket.on('new_message', (data) {
       if (mounted) {
         setState(() => _hasUnreadMessages = true);
       }
+    });
+
+    // ✅ 7. Listen for Reconnection (Offline -> Online transition)
+    // If the internet cuts out and comes back, this triggers a check.
+    socket.on('connect', (_) {
+      debugPrint("📡 Socket Reconnected: Checking Unread Status...");
+      _checkUnreadStatus();
     });
   }
 
@@ -141,11 +184,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     IconButton(
                       icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
                       onPressed: () async {
+                        // Optimistically clear badge on entry
                         setState(() => _hasUnreadMessages = false); 
+                        
                         await Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+                        
+                        // Check again on return (in case they didn't read everything)
                         _checkUnreadStatus();
                       },
                     ),
+                    // ✅ 8. Badge Indicator
                     if (_hasUnreadMessages)
                       Positioned(
                         right: 8,

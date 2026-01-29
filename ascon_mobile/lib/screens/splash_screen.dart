@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart'; 
+import 'package:firebase_messaging/firebase_messaging.dart'; // ✅ Added for Deep Linking
+
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/socket_service.dart';
 import '../config/storage_config.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
+import 'chat_screen.dart'; // ✅ Added for Navigation
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -44,29 +48,26 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _checkSessionAndNavigate() async {
-    // Wait 3 seconds so the user sees the branding
-    await Future.delayed(const Duration(seconds: 3));
+    // Wait 2 seconds (reduced slightly) so the user sees the branding but app feels faster
+    await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
-    // 1. Check Session Validity (Uses Auth Service which now uses StorageConfig)
+    // 1. Check Session Validity
     final bool isValid = await _authService.isSessionValid();
     
-    // 2. Get User Name from Standard Preferences (Safe for non-sensitive UI data)
+    // 2. Get User Name from Standard Preferences
     final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('user_name');
+    final userName = prefs.getString('user_name') ?? "Alumnus";
 
     if (!mounted) return;
 
     if (isValid) {
       // ✅ FIX: Reconnect Socket immediately on Auto-Login
-      // This ensures the user shows as "Online" without needing to re-login manually.
       try {
-        String? userId = await StorageConfig.storage.read(key: 'userId');
-        if (userId != null) {
-          SocketService().connectUser(userId);
-          debugPrint("🔌 Socket Reconnected from Splash Screen");
-        }
+        // Just call initSocket(), it handles the connection logic internally
+        SocketService().initSocket();
+        debugPrint("🔌 Socket Initialized from Splash");
       } catch (e) {
         debugPrint("⚠️ Failed to reconnect socket on splash: $e");
       }
@@ -74,22 +75,68 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       // 3. Initialize Notifications (Mobile Only)
       if (!kIsWeb) {
          try {
+           // We don't necessarily need to re-init here if main.dart did it, 
+           // but it's safe to ensure permission/channels are ready.
            await NotificationService().init();
-           debugPrint("🔔 Notification Service Started from Splash");
          } catch (e) {
            debugPrint("Error starting notifications: $e");
          }
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomeScreen(userName: userName ?? "Alumnus")),
-      );
+      // ✅ 4. Check for Notification Launch (Deep Link)
+      RemoteMessage? initialMessage =
+          await FirebaseMessaging.instance.getInitialMessage();
+
+      if (initialMessage != null && _isChatMessage(initialMessage)) {
+        _navigateToChat(initialMessage, userName);
+      } else {
+        // Normal Navigation
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => HomeScreen(userName: userName)),
+        );
+      }
     } else {
+      // No Session -> Login
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
+    }
+  }
+
+  // ✅ Helper: Check if notification is for chat
+  bool _isChatMessage(RemoteMessage message) {
+    return message.data['type'] == 'chat_message' ||
+           message.data['route'] == 'chat_screen';
+  }
+
+  // ✅ Helper: Navigate to Home then Chat
+  void _navigateToChat(RemoteMessage message, String userName) {
+    final data = message.data;
+    
+    // 1. Go to Home first (so the user has a "Back" button context)
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => HomeScreen(userName: userName)),
+    );
+    
+    // 2. Then push Chat Screen on top
+    if (data['conversationId'] != null) {
+      // Small delay to ensure Home is mounted
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              conversationId: data['conversationId'],
+              receiverId: data['senderId'] ?? '',
+              receiverName: data['senderName'] ?? 'Alumni',
+              receiverProfilePic: data['senderProfilePic'],
+            ),
+          ),
+        );
+      });
     }
   }
 

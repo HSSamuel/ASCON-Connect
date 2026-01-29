@@ -58,6 +58,15 @@
   width: 100%;
 }
 
+/* ✅ Enhanced Textarea Styling */
+.form-grid textarea {
+  resize: vertical; /* Allows manual vertical dragging */
+  overflow-y: hidden; /* Hides scrollbar during auto-expand */
+  min-height: 100px;  /* Decent starting height */
+  line-height: 1.5;
+  transition: border-color 0.2s; /* Smooth focus effect */
+}
+
 /* Form Actions */
 .form-actions {
   display: flex;

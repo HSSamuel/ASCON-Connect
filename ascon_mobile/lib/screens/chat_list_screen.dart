@@ -4,11 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart'; // Added for fallback
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../services/api_client.dart';
 import '../models/chat_objects.dart';
-import '../config/storage_config.dart'; // ✅ NEW: Import Storage Config
+import '../config/storage_config.dart';
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -20,8 +20,6 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   final ApiClient _api = ApiClient();
-  
-  // ✅ FIX: Use Centralized Storage to ensure we can read the User ID
   final _storage = StorageConfig.storage;
   
   List<ChatConversation> _conversations = [];
@@ -61,6 +59,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
         setState(() {
           _conversations = data
               .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
+              // ✅ FIX: Filter out conversations where 'otherUserId' is ME.
+              // This happens if the other person deleted the chat and I am the only participant left.
+              .where((chat) => chat.otherUserId != _myUserId) 
               .toList();
           _isLoading = false;
         });
@@ -87,7 +88,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
       }
     } catch (e) {
       debugPrint("Delete failed: $e");
-      // Optional: Reload chats if delete fails
       _loadChats(); 
     }
   }
@@ -146,12 +146,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             builder: (_) => ChatScreen(
                               conversationId: chat.id,
                               receiverName: chat.otherUserName,
-                              receiverId: chat.otherUserId ?? '', // Safe unwrap
-                              receiverProfilePic: chat.otherUserImage, // ✅ Pass Profile Pic
+                              receiverId: chat.otherUserId ?? '', 
+                              receiverProfilePic: chat.otherUserImage, 
                             )
                           )
                         );
-                        _loadChats(); // Refresh list on return (update last message)
+                        _loadChats(); 
                       },
                       leading: CircleAvatar(
                         radius: 28,
@@ -181,14 +181,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            // ✅ FIXED: Convert UTC to Local Time for display
                             DateFormat('MMM d').format(chat.lastMessageTime.toLocal()),
                             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                           ),
-                          // Optional: Add Unread Count Badge here later
                         ],
                       ),
-                      // Allow deleting via Long Press or Swipe action in future
                       onLongPress: () => _confirmDelete(chat),
                     );
                   },

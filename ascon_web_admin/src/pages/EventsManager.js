@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import api from "../api"; // ✅ Import centralized API
+import React, { useState, useEffect, useCallback, useRef } from "react"; // ✅ Import useRef
+import api from "../api";
 import {
   FaTrash,
   FaEdit,
@@ -26,6 +26,9 @@ function EventsManager({ canEdit }) {
 
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
+
+  // ✅ Create a Ref for the description textarea
+  const descriptionRef = useRef(null);
 
   const [eventForm, setEventForm] = useState({
     title: "",
@@ -57,8 +60,26 @@ function EventsManager({ canEdit }) {
     fetchEvents();
   }, [fetchEvents]);
 
-  const handleInputChange = (e) =>
-    setEventForm({ ...eventForm, [e.target.name]: e.target.value });
+  // ✅ Auto-Resize Logic inside Input Change
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setEventForm({ ...eventForm, [name]: value });
+
+    // If typing in Description, auto-adjust height
+    if (name === "description" && e.target) {
+      e.target.style.height = "auto"; // Reset to calculate shrink
+      e.target.style.height = e.target.scrollHeight + "px"; // Set to scroll height
+    }
+  };
+
+  // ✅ Effect to Resize Textarea on Form Open / Data Load
+  useEffect(() => {
+    if (showForm && descriptionRef.current) {
+      descriptionRef.current.style.height = "auto";
+      descriptionRef.current.style.height =
+        descriptionRef.current.scrollHeight + "px";
+    }
+  }, [showForm, eventForm.description]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -74,6 +95,7 @@ function EventsManager({ canEdit }) {
     });
   };
 
+  // ... (Keep handleEdit, handleSubmit, handleDelete, exportToExcel exactly the same) ...
   const handleEdit = (event) => {
     setEditingId(event._id);
     setEventForm({
@@ -247,7 +269,9 @@ function EventsManager({ canEdit }) {
                 onChange={handleInputChange}
                 style={{ gridColumn: "1 / -1" }}
               />
+              {/* ✅ UPDATED TEXTAREA */}
               <textarea
+                ref={descriptionRef}
                 name="description"
                 placeholder="Description"
                 value={eventForm.description}
@@ -286,6 +310,7 @@ function EventsManager({ canEdit }) {
         </div>
       )}
 
+      {/* Table Section Remains Same */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>

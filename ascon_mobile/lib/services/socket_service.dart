@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import '../config.dart';
-import '../config/storage_config.dart'; // ✅ Uses Central Config
+import '../config/storage_config.dart'; 
 
 class SocketService with WidgetsBindingObserver {
   IO.Socket? socket; 
@@ -16,23 +16,20 @@ class SocketService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    debugPrint("🔄 App Lifecycle Changed: $state");
-    
-    // ✅ Logic Updated:
     // If we go to background, we disconnect to save battery.
-    // The backend now has a 5-second "Grace Period". 
-    // If the user quickly switches back (within 5s), the 'Offline' status will NEVER fire.
-    
+    // The backend now has a 1-second "Grace Period". 
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       disconnect();
     } else if (state == AppLifecycleState.resumed) {
       // Force reconnect immediately on resume
-      initSocket(forceNew: true);
+      initSocket();
     }
   }
 
   void initSocket({bool forceNew = false}) async {
-    if (!forceNew && socket != null && socket!.connected) {
+    // 1. Check if already connected (Avoid unnecessary reconnection)
+    if (socket != null && socket!.connected) {
+      debugPrint("🟢 Socket is already connected.");
       return; 
     }
 
@@ -47,39 +44,54 @@ class SocketService with WidgetsBindingObserver {
       socketUrl = socketUrl.replaceAll('/api', '');
     }
 
-    debugPrint("🔌 Socket Connecting to: $socketUrl");
+    // Only print this once to reduce noise
+    if (socket == null) debugPrint("🔌 Socket Connecting to: $socketUrl");
 
     try {
-      socket = IO.io(socketUrl, <String, dynamic>{
-        'transports': ['websocket'],
-        'autoConnect': false,
-        'forceNew': true, // ✅ Ensure fresh connection logic
-        'reconnection': true,
-        'reconnectionDelay': 1000,
-        'reconnectionDelayMax': 5000,
-        'reconnectionAttempts': 99999,
-      });
+      // 2. Create Socket if it doesn't exist
+      if (socket == null) {
+        socket = IO.io(socketUrl, <String, dynamic>{
+          'transports': ['websocket'], // Force WebSocket for better performance
+          'autoConnect': false,
+          'timeout': 30000,            // ✅ INCREASED: 30s timeout (was default 20s)
+          // 'forceNew': true,         // ❌ REMOVED: Caused thrashing/timeouts
+          'reconnection': true,
+          'reconnectionDelay': 2000,   // ✅ INCREASED: Wait 2s before retrying (was 1s)
+          'reconnectionDelayMax': 10000,
+          'reconnectionAttempts': 99999,
+        });
 
-      socket!.connect();
+        // --- EVENT LISTENERS ---
+        socket!.onConnect((_) {
+          debugPrint('✅ Socket Connected');
+          if (userId != null) {
+            socket!.emit("user_connected", userId);
+          }
+        });
 
-      socket!.onConnect((_) {
-        debugPrint('✅ Socket Connected');
-        if (userId != null) {
-          // Re-announce presence immediately
-          socket!.emit("user_connected", userId);
-        }
-      });
+        socket!.onReconnect((_) {
+           debugPrint('🔄 Socket Reconnected');
+           if (userId != null) {
+            socket!.emit("user_connected", userId);
+          }
+        });
 
-      // Handle Reconnect explicitly
-      socket!.onReconnect((_) {
-         debugPrint('🔄 Socket Reconnected');
-         if (userId != null) {
-          socket!.emit("user_connected", userId);
-        }
-      });
+        socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
+        
+        // ✅ Refined Error Handling: Ignore "timeout" noise
+        socket!.onConnectError((data) {
+          if (data.toString().contains("timeout")) {
+            // calculated silence: do not log standard timeouts
+          } else {
+            debugPrint('⚠️ Socket Error: $data');
+          }
+        });
+      }
 
-      socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
-      socket!.onConnectError((data) => debugPrint('⚠️ Socket Error: $data'));
+      // 3. Connect!
+      if (!socket!.connected) {
+        socket!.connect();
+      }
 
     } catch (e) {
       debugPrint("❌ CRITICAL SOCKET EXCEPTION: $e");

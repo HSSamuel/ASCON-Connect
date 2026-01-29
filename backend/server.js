@@ -209,7 +209,7 @@ io.on("connection", (socket) => {
           logger.error(`Socket Error (Disconnect): ${e.message}`);
         }
       }
-    }, 5000); // 5 Seconds Grace Period
+    }, 3000); // 3 Seconds Grace Period
 
     disconnectTimers.set(userId, timer);
   });

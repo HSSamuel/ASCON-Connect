@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
-import api from "../api"; // ✅ Import the centralized API
+import React, { useState, useEffect, useCallback, useRef } from "react"; // ✅ Import useRef
+import api from "../api";
 import {
   FaTrash,
   FaEdit,
@@ -14,7 +14,6 @@ import ConfirmModal from "../ConfirmModal";
 import SkeletonTable from "../components/SkeletonTable";
 
 function JobsManager({ canEdit }) {
-  // Token prop is no longer needed for API calls!
   const [jobs, setJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -23,6 +22,9 @@ function JobsManager({ canEdit }) {
 
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
+
+  // ✅ Create a Ref for the description textarea
+  const descriptionRef = useRef(null);
 
   const [jobForm, setJobForm] = useState({
     title: "",
@@ -38,7 +40,6 @@ function JobsManager({ canEdit }) {
 
   const fetchJobs = useCallback(async () => {
     try {
-      // ✅ CLEANER: No BASE_URL, no headers needed
       const res = await api.get("/api/jobs");
       setJobs(res.data);
       setIsLoading(false);
@@ -52,9 +53,26 @@ function JobsManager({ canEdit }) {
     fetchJobs();
   }, [fetchJobs]);
 
+  // ✅ Auto-Resize Logic inside Input Change
   const handleInputChange = (e) => {
-    setJobForm({ ...jobForm, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setJobForm({ ...jobForm, [name]: value });
+
+    // If typing in Description, auto-adjust height
+    if (name === "description" && e.target) {
+      e.target.style.height = "auto";
+      e.target.style.height = e.target.scrollHeight + "px";
+    }
   };
+
+  // ✅ Effect to Resize Textarea on Form Open / Data Load
+  useEffect(() => {
+    if (showForm && descriptionRef.current) {
+      descriptionRef.current.style.height = "auto";
+      descriptionRef.current.style.height =
+        descriptionRef.current.scrollHeight + "px";
+    }
+  }, [showForm, jobForm.description]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -91,11 +109,9 @@ function JobsManager({ canEdit }) {
 
     try {
       if (editingId) {
-        // ✅ CLEANER PUT
         await api.put(`/api/jobs/${editingId}`, jobForm);
         showToast("Job updated successfully");
       } else {
-        // ✅ CLEANER POST
         await api.post("/api/jobs", jobForm);
         showToast("Job posted successfully");
       }
@@ -111,7 +127,6 @@ function JobsManager({ canEdit }) {
   const handleDelete = async () => {
     setIsSubmitting(true);
     try {
-      // ✅ CLEANER DELETE
       await api.delete(`/api/jobs/${deleteModal.id}`);
       showToast("Job deleted successfully");
       fetchJobs();
@@ -220,7 +235,9 @@ function JobsManager({ canEdit }) {
                 onChange={handleInputChange}
                 required
               />
+              {/* ✅ UPDATED TEXTAREA */}
               <textarea
+                ref={descriptionRef}
                 name="description"
                 placeholder="Job Description"
                 value={jobForm.description}
@@ -259,6 +276,7 @@ function JobsManager({ canEdit }) {
         </div>
       )}
 
+      {/* Table Section Remains Same */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>

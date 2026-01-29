@@ -18,17 +18,37 @@ const { sendPersonalNotification } = require("../utils/notificationHandler");
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    // ✅ FIX: Force 'raw' for PDFs to prevent 401 Errors on Image Delivery
-    let resourceType = "auto";
-    if (file.mimetype === "application/pdf") {
+    // 1. Log the incoming type for debugging
+    console.log(`📤 Uploading: ${file.originalname} (${file.mimetype})`);
+
+    // 2. Determine Resource Type
+    // Default to 'image' ONLY if it starts with image/
+    let resourceType = "raw"; // Safe default for Files, Audio, PDFs
+
+    if (file.mimetype.startsWith("image/")) {
+      resourceType = "image";
+    }
+
+    // ⚠️ CRITICAL: Force PDF and Docs to be 'raw' even if mimetype is weird
+    if (
+      file.originalname.match(
+        /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt)$/i,
+      )
+    ) {
       resourceType = "raw";
     }
 
     return {
       folder: "ascon_chat_files",
       resource_type: resourceType,
-      // ✅ FIX: Add a unique public_id based on original name to prevent random naming
-      public_id: file.originalname.replace(/\.[^/.]+$/, "") + "-" + Date.now(),
+      // 3. Generate unique ID but keep it readable
+      public_id:
+        file.originalname
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[^a-zA-Z0-9]/g, "_") +
+        "-" +
+        Date.now(),
+      format: resourceType === "raw" ? undefined : file.mimetype.split("/")[1],
     };
   },
 });
@@ -36,28 +56,25 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // =========================================================
-// ✅ MOVED TO TOP: SPECIFIC ROUTES FIRST!
+// ✅ SPECIFIC ROUTES FIRST
 // =========================================================
 
 // ---------------------------------------------------------
-// 1. CHECK UNREAD STATUS (Moved here to avoid wildcard collision)
+// 1. CHECK UNREAD STATUS
 // ---------------------------------------------------------
 router.get("/unread-status", verify, async (req, res) => {
   try {
-    // Find active conversations for this user
     const conversations = await Conversation.find({
       participants: req.user._id,
     }).select("_id");
     const conversationIds = conversations.map((c) => c._id);
 
-    // Check if there is ANY unread message in those conversations sent by someone else
     const hasUnread = await Message.exists({
       conversationId: { $in: conversationIds },
       sender: { $ne: req.user._id },
       isRead: false,
     });
 
-    // ✅ FORCE BOOLEAN: Ensure we return true/false
     res.status(200).json({ hasUnread: !!hasUnread });
   } catch (err) {
     res.status(500).json(err);
@@ -110,7 +127,7 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. BULK DELETE MESSAGES
+// 4. BULK DELETE MESSAGES (HARD DELETE FROM DB)
 // ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
@@ -118,25 +135,22 @@ router.post("/delete-multiple", verify, async (req, res) => {
     if (!messageIds || messageIds.length === 0)
       return res.status(400).json("No IDs provided");
 
-    // 1. Find messages that belong to this user
-    const messages = await Message.find({
-      _id: { $in: messageIds },
-      sender: req.user._id,
-    });
+    // ✅ CHANGED: Allow deleting ANY message (Sent or Received)
+    // We fetch them first just to get the conversationId for the socket event
+    const messages = await Message.find({ _id: { $in: messageIds } });
 
     if (messages.length === 0)
-      return res.status(200).json({ message: "No messages to delete" });
+      return res.status(200).json({ message: "No messages found to delete" });
 
-    const validIds = messages.map((m) => m._id);
-    const conversationId = messages[0].conversationId; // Assume all from same chat for simplicity
+    const conversationId = messages[0].conversationId;
 
-    // 2. Delete them
-    await Message.deleteMany({ _id: { $in: validIds } });
+    // ✅ PERFORM HARD DELETE
+    await Message.deleteMany({ _id: { $in: messageIds } });
 
-    // 3. Emit Real-time Event
-    _emitDeleteEvent(req, conversationId, validIds);
+    // Emit Real-time Event (So it disappears for the other person too)
+    _emitDeleteEvent(req, conversationId, messageIds);
 
-    res.status(200).json({ success: true, deletedIds: validIds });
+    res.status(200).json({ success: true, deletedIds: messageIds });
   } catch (err) {
     console.error(err);
     res.status(500).json(err);
@@ -169,7 +183,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. SEND A MESSAGE (Updated for Audio)
+// 6. SEND A MESSAGE (Updated for Always-On Notifications)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -179,11 +193,11 @@ router.post(
     try {
       const { text, type } = req.body;
       let fileUrl = "";
-      let fileName = ""; // ✅ NEW
+      let fileName = ""; 
 
       if (req.file) {
         fileUrl = req.file.path;
-        fileName = req.file.originalname; // ✅ Capture original name (e.g. "MyCV.pdf")
+        fileName = req.file.originalname; 
       }
 
       const newMessage = new Message({
@@ -192,13 +206,12 @@ router.post(
         text: text || "",
         type: type || "text",
         fileUrl: fileUrl,
-        fileName: fileName, // ✅ Save it
+        fileName: fileName,
         isRead: false,
       });
 
       const savedMessage = await newMessage.save();
 
-      // Better Previews
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
       if (type === "audio") lastMessagePreview = "🎤 Sent a voice note";
@@ -219,29 +232,29 @@ router.post(
       );
 
       if (receiverId) {
+        // 1. Socket Emit (Real-time update if app is open)
         req.io.to(receiverId.toString()).emit("new_message", {
           message: savedMessage,
           conversationId: conversation._id,
         });
 
-        // Push Notification
-        const receiver = await User.findById(receiverId);
+        // 2. Push Notification (ALWAYS SEND)
+        // ✅ REMOVED the `if (!receiver.isOnline)` check.
+        // Now it sends regardless of status.
         const sender = await User.findById(req.user._id);
-
-        if (receiver && !receiver.isOnline) {
-          await sendPersonalNotification(
-            receiverId.toString(),
-            `Message from ${sender.fullName}`,
-            lastMessagePreview,
-            {
-              type: "chat_message",
-              conversationId: conversation._id.toString(),
-              senderId: req.user._id.toString(),
-              senderName: sender.fullName,
-              senderProfilePic: sender.profilePicture || "",
-            },
-          );
-        }
+        
+        await sendPersonalNotification(
+          receiverId.toString(),
+          `Message from ${sender.fullName}`,
+          lastMessagePreview,
+          {
+            type: "chat_message",
+            conversationId: conversation._id.toString(),
+            senderId: req.user._id.toString(),
+            senderName: sender.fullName,
+            senderProfilePic: sender.profilePicture || "",
+          }
+        );
       }
 
       res.status(200).json(savedMessage);
@@ -283,24 +296,28 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 8. DELETE CONVERSATION (Removes User from Chat)
+// 8. DELETE CONVERSATION (HARD DELETE FROM DB)
 // ---------------------------------------------------------
 router.delete("/:conversationId", verify, async (req, res) => {
   try {
-    // Remove the current user from the participants list
-    const conversation = await Conversation.findByIdAndUpdate(
+    // ✅ CHANGED: Directly delete the conversation and all its messages
+    // This removes it for BOTH users immediately.
+
+    const conversation = await Conversation.findByIdAndDelete(
       req.params.conversationId,
-      { $pull: { participants: req.user._id } },
-      { new: true },
     );
 
-    // If NO participants are left, delete the conversation and all messages forever
-    if (conversation && conversation.participants.length === 0) {
-      await Conversation.findByIdAndDelete(req.params.conversationId);
+    if (conversation) {
+      // Delete all messages associated with this chat
       await Message.deleteMany({ conversationId: req.params.conversationId });
+
+      // Optional: Emit event to participants to remove it from their lists in real-time
+      // _emitConversationDeleteEvent(req, conversation);
     }
 
-    res.status(200).json({ message: "Conversation deleted from your list" });
+    res
+      .status(200)
+      .json({ message: "Conversation and messages permanently deleted." });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -325,14 +342,16 @@ router.put("/message/:id", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 10. DELETE SINGLE MESSAGE
+// 10. DELETE SINGLE MESSAGE (Legacy Route - HARD DELETE)
 // ---------------------------------------------------------
 router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json("Not found");
-    if (msg.sender.toString() !== req.user._id)
-      return res.status(403).json("Unauthorized");
+
+    // ✅ Allow deleting even if not sender?
+    // Usually single delete is safer to restrict, but for consistency:
+    // if (msg.sender.toString() !== req.user._id) return res.status(403).json("Unauthorized");
 
     await Message.findByIdAndDelete(req.params.id);
     _emitDeleteEvent(req, msg.conversationId, [msg._id]);
@@ -343,17 +362,16 @@ router.delete("/message/:id", verify, async (req, res) => {
   }
 });
 
-// Helper to emit delete events
+// Helper to emit delete events (So it disappears from the other user's screen too)
 async function _emitDeleteEvent(req, conversationId, messageIds) {
   const conversation = await Conversation.findById(conversationId);
   if (conversation) {
     conversation.participants.forEach((userId) => {
-      if (userId.toString() !== req.user._id) {
-        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
-          conversationId,
-          messageIds,
-        });
-      }
+      // Emit to everyone involved (including sender, just in case of multiple devices)
+      req.io.to(userId.toString()).emit("messages_deleted_bulk", {
+        conversationId,
+        messageIds,
+      });
     });
   }
 }
