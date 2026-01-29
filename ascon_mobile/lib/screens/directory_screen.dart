@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'package:google_fonts/google_fonts.dart'; // ✅ Added for Lato font
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../services/data_service.dart';
 import '../services/api_client.dart'; 
@@ -45,6 +46,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     super.dispose();
   }
 
+  // ---------------------------------------------------------
+  // 🧠 SMART RECOMMENDATIONS
+  // ---------------------------------------------------------
   Future<void> _loadRecommendations() async {
     final result = await _dataService.fetchRecommendations();
     if (result['success'] == true && mounted) {
@@ -62,7 +66,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     }
   }
 
-  // ✅ UPDATED: Now supports Dark Mode
   void _showSmartMatchPopup() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = Theme.of(context).cardColor;
@@ -75,7 +78,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       builder: (context) => Container(
         height: 350,
         decoration: BoxDecoration(
-          color: backgroundColor, // ✅ Uses Theme Card Color
+          color: backgroundColor,
           borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(24),
@@ -88,10 +91,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                 const SizedBox(width: 10),
                 Text(
                   "We found your classmates!", 
-                  style: TextStyle(
+                  style: GoogleFonts.lato(
                     fontSize: 20, 
                     fontWeight: FontWeight.bold, 
-                    color: textColor // ✅ Adaptive Text Color
+                    color: textColor
                   )
                 ),
               ],
@@ -99,8 +102,8 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             const SizedBox(height: 12),
             Text(
               "Based on your profile, here are alumni from your Class Year and Programme. Connect with them now!",
-              style: TextStyle(
-                color: isDark ? Colors.grey[400] : Colors.grey[600], // ✅ Adaptive Grey
+              style: GoogleFonts.lato(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
                 fontSize: 14
               ),
             ),
@@ -116,21 +119,21 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                     margin: const EdgeInsets.only(right: 12),
                     child: Column(
                       children: [
-                        _buildAvatar(user['profilePicture'], isDark), // ✅ Pass isDark
+                        _buildAvatar(user['profilePicture'], isDark),
                         const SizedBox(height: 8),
                         Text(
                           user['fullName'].toString().split(' ')[0], 
-                          style: TextStyle(
+                          style: GoogleFonts.lato(
                             fontWeight: FontWeight.bold,
-                            color: textColor // ✅ Adaptive Name Color
+                            color: textColor
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           user['jobTitle'] ?? 'Alumni',
-                          style: TextStyle(
+                          style: GoogleFonts.lato(
                             fontSize: 10, 
-                            color: isDark ? Colors.grey[400] : Colors.grey // ✅ Adaptive Subtext
+                            color: isDark ? Colors.grey[400] : Colors.grey
                           ),
                           overflow: TextOverflow.ellipsis,
                         )
@@ -159,6 +162,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
+  // ---------------------------------------------------------
+  // 📂 DIRECTORY LOGIC
+  // ---------------------------------------------------------
   Future<void> _loadDirectory({String query = ""}) async {
     setState(() => _isLoading = true);
     
@@ -228,6 +234,9 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     });
   }
 
+  // ---------------------------------------------------------
+  // 🎨 WIDGETS
+  // ---------------------------------------------------------
   Widget _buildAvatar(String? imagePath, bool isDark) {
     if (imagePath == null || imagePath.isEmpty || imagePath.contains('profile/picture/0')) { 
       return _buildPlaceholder(isDark);
@@ -272,10 +281,15 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     
     return Scaffold(
+      // ✅ UPDATED APP BAR: Matches Events Screen (Green + White Text)
       appBar: AppBar(
-        title: const Text("Alumni Directory", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Text(
+          "Alumni Directory", 
+          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+        ),
         automaticallyImplyLeading: false,
-        backgroundColor: Theme.of(context).cardColor,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
         elevation: 0,
       ),
       backgroundColor: bgColor,
@@ -324,7 +338,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         ),
                         backgroundColor: isDark ? Colors.grey[800] : Colors.white,
                         selectedColor: const Color(0xFFD4AF37),
-                        labelStyle: TextStyle(
+                        labelStyle: GoogleFonts.lato(
                           color: _showMentorsOnly ? Colors.white : primaryColor,
                           fontWeight: FontWeight.bold,
                           fontSize: 13
@@ -359,17 +373,16 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
-                    // ✅ A. RECOMMENDATION SECTION (Top of List)
+                    // A. RECOMMENDATION SECTION
                     if (_hasRecommendations && !_isSearching)
                       _buildRecommendationsSection(),
 
-                    // ✅ B. STANDARD DIRECTORY LIST
+                    // B. STANDARD LIST
                     if (_isLoading)
                       const DirectorySkeletonList() 
                     else if (_allAlumni.isEmpty)
                       _buildEmptyState()
                     else if (_isSearching)
-                      // Important: shrinkWrap + physics prevents crash
                       ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -399,7 +412,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  // ✅ WIDGET: Recommender Carousel (UPDATED: Circles instead of Squares)
+  // ✅ WIDGET: Smart Recommendations Carousel
   Widget _buildRecommendationsSection() {
     final primaryColor = Theme.of(context).primaryColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -413,15 +426,15 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             children: [
               Icon(Icons.stars, color: Colors.amber[700], size: 20),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 "Suggested for You",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 16),
           SizedBox(
-            height: 120, // Height for circle layout
+            height: 120, 
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: _recommendedAlumni.length,
@@ -432,11 +445,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: user)));
                   },
                   child: Container(
-                    width: 80, // Narrower for circle layout
+                    width: 80, 
                     margin: const EdgeInsets.only(right: 16),
                     child: Column(
                       children: [
-                        // ✅ CIRCLE AVATAR with Gold Border
                         Container(
                           padding: const EdgeInsets.all(2),
                           decoration: BoxDecoration(
@@ -445,20 +457,20 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                           ),
                           child: SizedBox(
                             width: 60, height: 60,
-                            child: _buildAvatar(user['profilePicture'], isDark), // ✅ Pass isDark
+                            child: _buildAvatar(user['profilePicture'], isDark), 
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           user['fullName'].toString().split(' ')[0], 
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 12),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           "Class of ${user['yearOfAttendance']}",
-                          style: TextStyle(fontSize: 10, color: primaryColor, fontWeight: FontWeight.w600),
+                          style: GoogleFonts.lato(fontSize: 10, color: primaryColor, fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                         )
@@ -504,11 +516,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           ),
           title: Text(
             year == 'Others' ? "Other Alumni" : "Class of $year",
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : primaryColor),
+            style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : primaryColor),
           ),
           subtitle: Text(
             "${classMembers.length} ${classMembers.length == 1 ? 'Member' : 'Members'}",
-            style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
+            style: GoogleFonts.lato(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
           ),
           childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
           children: classMembers.map((user) => _buildAlumniCard(user)).toList(),
@@ -521,11 +533,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          SizedBox(height: 50),
-          Icon(Icons.people_outline, size: 50, color: Colors.grey),
-          SizedBox(height: 12),
-          Text("No alumni found.", style: TextStyle(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold)),
+        children: [
+          const SizedBox(height: 50),
+          const Icon(Icons.people_outline, size: 50, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text("No alumni found.", style: GoogleFonts.lato(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -589,7 +601,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                                 Flexible(
                                   child: Text(
                                     user['fullName'] ?? 'Unknown',
-                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
+                                    style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: textColor),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -608,17 +620,17 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                               decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
                               child: Text(
                                 yearDisplay,
-                                style: TextStyle(color: isDark ? const Color(0xFF81C784) : primaryColor, fontWeight: FontWeight.bold, fontSize: 11),
+                                style: GoogleFonts.lato(color: isDark ? const Color(0xFF81C784) : primaryColor, fontWeight: FontWeight.bold, fontSize: 11),
                               ),
                             ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text(subtitle, style: TextStyle(color: subTextColor, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(subtitle, style: GoogleFonts.lato(color: subTextColor, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Text("View Profile", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFF81C784) : primaryColor)),
+                          Text("View Profile", style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w600, color: isDark ? const Color(0xFF81C784) : primaryColor)),
                           const SizedBox(width: 4),
                           Icon(Icons.arrow_forward, size: 10, color: isDark ? const Color(0xFF81C784) : primaryColor),
                         ],

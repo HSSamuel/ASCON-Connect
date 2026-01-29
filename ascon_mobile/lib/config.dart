@@ -6,14 +6,22 @@ class AppConfig {
   // 🌍 BASE URL (Dynamic)
   // =========================================================
   static String get baseUrl {
-    final String? url = dotenv.env['API_URL'];
+    String? url = dotenv.env['API_URL'];
 
     if (url == null || url.isEmpty) {
       // ⛔ FATAL ERROR: Fail loudly if env is missing.
-      // This prevents the app from silently connecting to production
-      // when you intend to be on localhost.
       throw Exception("⛔ FATAL ERROR: API_URL not found in .env file.");
     }
+
+    // ✅ FIX: Automatically swap 'localhost' for '10.0.2.2' on Android Emulator
+    // This allows you to use one .env file for both Web and Android.
+    if (kDebugMode && defaultTargetPlatform == TargetPlatform.android) {
+      if (url.contains('localhost')) {
+        url = url.replaceAll('localhost', '10.0.2.2');
+        debugPrint("🤖 Android Emulator Detected: Switched API URL to $url");
+      }
+    }
+
     return url;
   }
 

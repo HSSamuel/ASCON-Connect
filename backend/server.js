@@ -9,41 +9,32 @@ const rateLimit = require("express-rate-limit");
 const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
-const http = require("http"); // ✅ NEW: Import HTTP
-const { Server } = require("socket.io"); // ✅ NEW: Import Socket.io
-const User = require("./models/User"); // ✅ NEW: Import User Model
+const http = require("http");
+const { Server } = require("socket.io");
+const User = require("./models/User");
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
 
 // 1. Initialize the App
 const app = express();
-const server = http.createServer(app); // ✅ NEW: Wrap Express with HTTP Server
+const server = http.createServer(app);
 
-// ✅ FIX: TELL EXPRESS TO TRUST RENDER'S PROXY
 app.set("trust proxy", 1);
-
 dotenv.config();
 validateEnv();
 
 // ==========================================
-// 🛡️ MIDDLEWARE: SECURITY & PERFORMANCE
+// 🛡️ MIDDLEWARE
 // ==========================================
-
-// ✅ A. COMPRESSION
 app.use(compression());
-
-// ✅ B. HELMET
 app.use(helmet());
-
-// ✅ C. MORGAN (Stream logs to Winston)
 app.use(
   morgan("combined", {
     stream: { write: (message) => logger.info(message.trim()) },
   }),
 );
 
-// ✅ D. RATE LIMITER
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -55,11 +46,10 @@ const limiter = rateLimit({
       "Too many requests from this IP, please try again after 15 minutes.",
   },
 });
-
 app.use("/api", limiter);
 
 // ==========================================
-// 📖 API DOCUMENTATION (SWAGGER)
+// 📖 API DOCUMENTATION
 // ==========================================
 const swaggerOptions = {
   swaggerDefinition: {
@@ -80,33 +70,23 @@ const swaggerOptions = {
   },
   apis: [path.join(__dirname, "routes", "*.js")],
 };
-
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // ==========================================
-// 2. CONFIGURATION (CORS & JSON)
+// 2. CONFIGURATION
 // ==========================================
-
-// ✅ FIX: STRICT ORIGINS FOR PRODUCTION
 const allowedOrigins =
   process.env.NODE_ENV === "production"
-    ? [
-        "https://asconadmin.netlify.app",
-        "https://ascon-st50.onrender.com",
-        // Add your custom domain here if you have one
-      ]
+    ? ["https://asconadmin.netlify.app", "https://ascon-st50.onrender.com"]
     : ["http://localhost:3000", "http://localhost:5000"];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
       if (allowedOrigins.indexOf(origin) === -1) {
-        const msg =
-          "The CORS policy for this site does not allow access from the specified Origin.";
-        return callback(new Error(msg), false);
+        return callback(new Error("CORS policy violation"), false);
       }
       return callback(null, true);
     },
@@ -119,14 +99,20 @@ app.use(
 app.use(express.json());
 
 // ==========================================
-// ⚡ SOCKET.IO CONFIGURATION (UPDATED)
+// ⚡ SOCKET.IO SMART PRESENCE SYSTEM
 // ==========================================
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: "*", // Allow mobile/web connections
     methods: ["GET", "POST"],
   },
+  pingTimeout: 60000, // Wait 60s before assuming dead connection
+  pingInterval: 25000, // Send heartbeat every 25s
 });
+
+// 🧠 IN-MEMORY STATE (The "Brain" of the Presence System)
+const onlineUsers = new Map(); // Stores userId -> Set<socketId>
+const disconnectTimers = new Map(); // Stores userId -> TimeoutID (for debouncing)
 
 app.use((req, res, next) => {
   req.io = io;
@@ -134,22 +120,41 @@ app.use((req, res, next) => {
 });
 
 io.on("connection", (socket) => {
-  // 1. User Joins
+  // 1. User Connects
   socket.on("user_connected", async (userId) => {
     if (!userId) return;
-    socket.userId = userId;
-    socket.join(userId); // Join private room
 
-    try {
-      await User.findByIdAndUpdate(userId, { isOnline: true });
-      io.emit("user_status_update", { userId, isOnline: true });
-    } catch (e) {
-      logger.error(`Socket Error (Connect): ${e.message}`);
+    socket.userId = userId;
+    socket.join(userId);
+
+    // 🛑 STOP the "Offline" Timer if it exists (User reconnected quickly!)
+    if (disconnectTimers.has(userId)) {
+      clearTimeout(disconnectTimers.get(userId));
+      disconnectTimers.delete(userId);
+      // No need to emit "Online" because they never officially went offline
+      return;
+    }
+
+    // Add socket to user's active set
+    if (!onlineUsers.has(userId)) {
+      onlineUsers.set(userId, new Set());
+    }
+    const previousSocketCount = onlineUsers.get(userId).size;
+    onlineUsers.get(userId).add(socket.id);
+
+    // ✅ ONLY update DB and Emit if this is the FIRST connection
+    if (previousSocketCount === 0) {
+      try {
+        await User.findByIdAndUpdate(userId, { isOnline: true });
+        io.emit("user_status_update", { userId, isOnline: true });
+        logger.info(`🟢 User ${userId} is now Online`);
+      } catch (e) {
+        logger.error(`Socket Error (Connect): ${e.message}`);
+      }
     }
   });
 
-  // ✅ 2. TYPING EVENTS (NEW)
-  // Client sends: { receiverId, conversationId }
+  // 2. Typing Events
   socket.on("typing", (data) => {
     if (data.receiverId) {
       io.to(data.receiverId).emit("typing_start", {
@@ -168,23 +173,45 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 3. User Disconnects
-  socket.on("disconnect", async () => {
-    if (socket.userId) {
-      try {
-        await User.findByIdAndUpdate(socket.userId, {
-          isOnline: false,
-          lastSeen: new Date(),
-        });
-        io.emit("user_status_update", {
-          userId: socket.userId,
-          isOnline: false,
-          lastSeen: new Date(),
-        });
-      } catch (e) {
-        logger.error(`Socket Error (Disconnect): ${e.message}`);
+  // 3. User Disconnects (With Grace Period)
+  socket.on("disconnect", () => {
+    const userId = socket.userId;
+    if (!userId || !onlineUsers.has(userId)) return;
+
+    const userSockets = onlineUsers.get(userId);
+    userSockets.delete(socket.id); // Remove this specific socket
+
+    // If user still has OTHER active sockets (e.g. Web + Mobile), DO NOTHING.
+    if (userSockets.size > 0) return;
+
+    // ⏳ If NO sockets left, start the "Grace Period" (5 seconds)
+    // This prevents flickering if the user just switched apps or refreshed.
+    const timer = setTimeout(async () => {
+      // Double check: Are they still gone?
+      if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
+        try {
+          onlineUsers.delete(userId); // Cleanup memory
+          disconnectTimers.delete(userId);
+
+          const lastSeen = new Date();
+          await User.findByIdAndUpdate(userId, {
+            isOnline: false,
+            lastSeen: lastSeen,
+          });
+
+          io.emit("user_status_update", {
+            userId: userId,
+            isOnline: false,
+            lastSeen: lastSeen,
+          });
+          logger.info(`🔴 User ${userId} went Offline`);
+        } catch (e) {
+          logger.error(`Socket Error (Disconnect): ${e.message}`);
+        }
       }
-    }
+    }, 5000); // 5 Seconds Grace Period
+
+    disconnectTimers.set(userId, timer);
   });
 });
 
@@ -217,11 +244,10 @@ app.use("/api/chat", chatRoute);
 app.use("/api/documents", documentRoute);
 app.use("/api/mentorship", mentorshipRoute);
 
-// ✅ CENTRALIZED ERROR HANDLER
 app.use(errorHandler);
 
 // ==========================================
-// 4. DATABASE & SERVER START
+// 4. SERVER START
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
@@ -230,15 +256,9 @@ logger.info("⏳ Attempting to connect to MongoDB...");
 mongoose
   .connect(process.env.DB_CONNECT)
   .then(async () => {
-    // ✅ Made async to support await inside
     logger.info("✅ Connected to MongoDB Successfully!");
 
-    if (process.env.NODE_ENV === "production") {
-      logger.info("🛡️  Production Security Hardening Active");
-    }
-
-    // ✅ FIX: RESET ALL USERS TO OFFLINE ON RESTART
-    // This prevents "Ghost" online users if the server crashed previously.
+    // ✅ Reset all users to offline on server restart (Cleanup)
     try {
       await User.updateMany({}, { isOnline: false });
       logger.info("🧹 Reset all user statuses to Offline");
@@ -246,22 +266,12 @@ mongoose
       logger.error("⚠️ Failed to reset user statuses:", err);
     }
 
-    // ✅ HEALTH CHECK ROUTE (Keeps the server awake)
-    // This defines the homepage route so UptimeRobot has something to ping.
     app.get("/", (req, res) => {
       res.status(200).send("ASCON Server is Awake! 🚀");
     });
 
-    // ✅ UPDATED: Use server.listen instead of app.listen for Socket.io
     server.listen(PORT, () => {
       logger.info(`🚀 Server is running on port ${PORT}`);
-
-      const docsUrl =
-        process.env.NODE_ENV === "production"
-          ? "https://ascon-st50.onrender.com/api-docs"
-          : `http://localhost:${PORT}/api-docs`;
-
-      logger.info(`📖 API Docs available at ${docsUrl}`);
     });
   })
   .catch((err) => {

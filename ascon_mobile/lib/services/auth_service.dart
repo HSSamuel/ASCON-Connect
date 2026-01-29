@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config.dart'; 
+import '../config/storage_config.dart';
 import '../main.dart'; 
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -20,11 +21,7 @@ class AuthService {
   
   static String? _tokenCache; 
   
-  final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
-  );
+  final _storage = StorageConfig.storage;
 
   AuthService() {
     _api.onTokenRefresh = _performSilentRefresh;

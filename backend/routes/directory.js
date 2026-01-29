@@ -8,12 +8,12 @@ const verifyToken = require("./verifyToken"); // ✅ Protected Route
 // @route   GET /api/directory
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const { search, mentorship } = req.query; // ✅ Accept mentorship param
+    const { search, mentorship } = req.query;
 
     let query = { isVerified: true };
 
     // 1. Filter by Mentorship Status
-    if (mentorship === 'true') {
+    if (mentorship === "true") {
       query.isOpenToMentorship = true;
     }
 
@@ -28,8 +28,9 @@ router.get("/", verifyToken, async (req, res) => {
       }
     }
 
+    // ✅ SORTING UPDATE: Show Online & Mentors first
     const alumniList = await User.find(query)
-      .sort({ yearOfAttendance: -1 })
+      .sort({ isOnline: -1, isOpenToMentorship: -1, yearOfAttendance: -1 })
       .limit(50);
 
     const safeList = alumniList.map((user) => ({
@@ -47,7 +48,7 @@ router.get("/", verifyToken, async (req, res) => {
       email: user.email,
       isOnline: user.isOnline,
       lastSeen: user.lastSeen,
-      isOpenToMentorship: user.isOpenToMentorship, // ✅ Ensure this is sent
+      isOpenToMentorship: user.isOpenToMentorship,
     }));
 
     res.json(safeList);
@@ -59,11 +60,9 @@ router.get("/", verifyToken, async (req, res) => {
 // =========================================================
 // 2. VERIFICATION ENDPOINT (PUBLIC)
 // =========================================================
-// This remains public so Security Guards/HR can scan QR codes
 router.get("/verify/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    // Handle cases where slashes might be URL-encoded or replaced
     const formattedId = id.replace(/-/g, "/");
 
     const user = await User.findOne({ alumniId: formattedId });
@@ -75,7 +74,6 @@ router.get("/verify/:id", async (req, res) => {
     let status = "Active";
     if (!user.isVerified) status = "Pending";
 
-    // ✅ Minimal Public Profile (No Phone/Email for privacy)
     const publicProfile = {
       fullName: user.fullName,
       profilePicture: user.profilePicture,
@@ -95,46 +93,116 @@ router.get("/verify/:id", async (req, res) => {
 });
 
 // =========================================================
-// 3. SMART RECOMMENDATIONS (AI-LITE MATCHING)
+// 3. SMART RECOMMENDATIONS (AI-LITE V2.0)
 // =========================================================
 // @route   GET /api/directory/recommendations
 router.get("/recommendations", verifyToken, async (req, res) => {
   try {
     // 1. Get Current User's Details
     const currentUser = await User.findById(req.user._id);
-    if (!currentUser) return res.status(404).json({ message: "User not found" });
+    if (!currentUser)
+      return res.status(404).json({ message: "User not found" });
 
-    const { yearOfAttendance, programmeTitle, organization, jobTitle } = currentUser;
+    const { yearOfAttendance, programmeTitle, organization } = currentUser;
 
-    // 2. Find Matches
-    // Priority 1: Same Year + Same Programme (Classmates)
-    // Priority 2: Same Organization (Colleagues)
-    const matches = await User.find({
-      _id: { $ne: currentUser._id }, // Exclude self
+    let matches = [];
+    // Keep track of IDs we already found to avoid duplicates
+    let excludedIds = [currentUser._id];
+
+    // --- 🕵️ STRATEGY 1: HIGH RELEVANCE (The "Perfect" Matches) ---
+    // Finds active colleagues or classmates with "Fuzzy" text matching.
+    // e.g. "Chevron" matches "Chevron Nigeria Limited"
+
+    const highQualityMatches = await User.find({
+      _id: { $nin: excludedIds },
       isVerified: true,
       $or: [
-        { 
-          yearOfAttendance: yearOfAttendance, 
-          programmeTitle: { $regex: new RegExp(`^${programmeTitle}$`, "i") } // Case insensitive
-        },
-        { 
-          organization: { $regex: new RegExp(`^${organization}$`, "i") },
-          organization: { $ne: "" } // Ignore empty orgs
-        }
-      ]
+        // A. Colleagues (Fuzzy Organization Match)
+        organization && organization.length > 3
+          ? {
+              organization: {
+                $regex: new RegExp(escapeRegex(organization), "i"),
+              },
+            }
+          : null,
+
+        // B. Classmates (Exact Year + Fuzzy Programme)
+        yearOfAttendance && programmeTitle
+          ? {
+              yearOfAttendance: yearOfAttendance,
+              programmeTitle: {
+                $regex: new RegExp(escapeRegex(programmeTitle), "i"),
+              },
+            }
+          : null,
+      ].filter(Boolean), // Filter out nulls if user profile is incomplete
     })
-    .select("fullName profilePicture jobTitle organization yearOfAttendance programmeTitle")
-    .limit(10); // Limit to top 10 matches
+      .sort({ isOnline: -1, lastSeen: -1 }) // ✅ Prioritize Active Users
+      .limit(10)
+      .select(
+        "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
+      );
+
+    matches = [...highQualityMatches];
+    matches.forEach((m) => excludedIds.push(m._id));
+
+    // --- 🕵️ STRATEGY 2: FALLBACK (The "Cohort" Matches) ---
+    // If Strategy 1 found fewer than 10 people, fill the rest with Classmates (Same Year).
+    // This ensures the list is rarely empty.
+
+    if (matches.length < 10 && yearOfAttendance) {
+      const limit = 10 - matches.length;
+
+      const cohortMatches = await User.find({
+        _id: { $nin: excludedIds },
+        isVerified: true,
+        yearOfAttendance: yearOfAttendance,
+      })
+        .sort({ isOnline: -1, lastSeen: -1 }) // Show online classmates first
+        .limit(limit)
+        .select(
+          "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
+        );
+
+      matches = [...matches, ...cohortMatches];
+      cohortMatches.forEach((m) => excludedIds.push(m._id));
+    }
+
+    // --- 🕵️ STRATEGY 3: LAST RESORT (Broad Interest Match) ---
+    // If still empty (e.g. user from unique year), find people with same Programme from ANY year.
+
+    if (matches.length < 5 && programmeTitle) {
+      const limit = 10 - matches.length;
+
+      const progMatches = await User.find({
+        _id: { $nin: excludedIds },
+        isVerified: true,
+        programmeTitle: {
+          $regex: new RegExp(escapeRegex(programmeTitle), "i"),
+        },
+      })
+        .sort({ yearOfAttendance: -1 }) // Recent grads first
+        .limit(limit)
+        .select(
+          "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
+        );
+
+      matches = [...matches, ...progMatches];
+    }
 
     res.json({
       success: true,
       userYear: yearOfAttendance,
-      matches: matches
+      matches: matches,
     });
-
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+
+// ✅ Helper: Safely escape characters for Regex (prevents crashes with special chars)
+function escapeRegex(text) {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+}
 
 module.exports = router;

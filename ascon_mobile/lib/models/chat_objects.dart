@@ -13,7 +13,7 @@ class ChatMessage {
   bool isEdited;
   bool isRead; 
   
-  // ✅ NEW: Status for UI feedback
+  // ✅ Status for UI feedback
   MessageStatus status; 
 
   ChatMessage({
@@ -44,7 +44,7 @@ class ChatMessage {
     );
   }
 
-  // ✅ NEW: For Local Caching (SharedPrefs)
+  // ✅ For Local Caching (SharedPrefs)
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
@@ -79,16 +79,28 @@ class ChatConversation {
 
   factory ChatConversation.fromJson(Map<String, dynamic> json, String myUserId) {
     final participants = (json['participants'] as List).toList();
-    final otherUser = participants.firstWhere(
-      (user) => user['_id'] != myUserId,
-      orElse: () => {'fullName': 'Unknown', 'profilePicture': null, '_id': null},
+    
+    // ✅ FIX: Improved Logic to find the "Other" user
+    var otherUser = participants.firstWhere(
+      (user) => user['_id'].toString() != myUserId, // Convert to string for safe comparison
+      orElse: () => null,
     );
+
+    // ✅ FALLBACK: If we couldn't find an "other" user (e.g. self-chat), use the first participant
+    if (otherUser == null && participants.isNotEmpty) {
+      otherUser = participants[0];
+    }
+
+    // ✅ FINAL SAFETY CHECK: Ensure we don't display "Unknown" if data is missing
+    final String name = otherUser?['fullName'] ?? 'Alumni Member';
+    final String? image = otherUser?['profilePicture'];
+    final String? uid = otherUser?['_id'];
 
     return ChatConversation(
       id: json['_id'] ?? '',
-      otherUserName: otherUser['fullName'] ?? 'Alumni Member',
-      otherUserImage: otherUser['profilePicture'],
-      otherUserId: otherUser['_id'],
+      otherUserName: name,
+      otherUserImage: image,
+      otherUserId: uid,
       lastMessage: json['lastMessage'] ?? 'Start a conversation',
       lastMessageTime: DateTime.parse(json['lastMessageAt'] ?? DateTime.now().toIso8601String()),
     );

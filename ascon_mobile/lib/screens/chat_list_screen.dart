@@ -3,8 +3,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart'; // Added for fallback
+
 import '../services/api_client.dart';
 import '../models/chat_objects.dart';
+import '../config/storage_config.dart'; // ✅ NEW: Import Storage Config
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -16,7 +20,9 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   final ApiClient _api = ApiClient();
-  final _storage = const FlutterSecureStorage();
+  
+  // ✅ FIX: Use Centralized Storage to ensure we can read the User ID
+  final _storage = StorageConfig.storage;
   
   List<ChatConversation> _conversations = [];
   bool _isLoading = true;
@@ -29,7 +35,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _loadChats() async {
+    // 1. Get User ID (Critical for identifying "Other" user)
     _myUserId = await _storage.read(key: 'userId');
+    
+    // Fallback if not in secure storage
+    if (_myUserId == null) {
+      final prefs = await SharedPreferences.getInstance();
+      final userString = prefs.getString('cached_user');
+      if (userString != null) {
+        final userData = jsonDecode(userString);
+        _myUserId = userData['id'] ?? userData['_id'];
+      }
+    }
+
+    if (_myUserId == null) {
+      debugPrint("⚠️ Warning: Could not find My User ID. Chat names might be wrong.");
+    }
+
     try {
       final result = await _api.get('/api/chat');
       
@@ -38,7 +60,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         
         setState(() {
           _conversations = data
-              .map((data) => ChatConversation.fromJson(data, _myUserId!))
+              .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
               .toList();
           _isLoading = false;
         });
@@ -49,7 +71,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  // ✅ NEW: Delete Logic
+  // Delete Logic
   Future<void> _deleteChat(String conversationId) async {
     // Optimistic Update: Remove from list immediately
     setState(() {
@@ -70,7 +92,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  // ✅ NEW: Confirmation Dialog
+  // Confirmation Dialog
   void _confirmDelete(ChatConversation chat) {
     showDialog(
       context: context,
@@ -124,11 +146,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             builder: (_) => ChatScreen(
                               conversationId: chat.id,
                               receiverName: chat.otherUserName,
-                              receiverId: chat.otherUserId!,
+                              receiverId: chat.otherUserId ?? '', // Safe unwrap
+                              receiverProfilePic: chat.otherUserImage, // ✅ Pass Profile Pic
                             )
                           )
                         );
-                        _loadChats(); 
+                        _loadChats(); // Refresh list on return (update last message)
                       },
                       leading: CircleAvatar(
                         radius: 28,
@@ -136,8 +159,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         backgroundImage: (chat.otherUserImage != null && chat.otherUserImage!.startsWith('http'))
                             ? CachedNetworkImageProvider(chat.otherUserImage!)
                             : null,
-                        child: chat.otherUserImage == null 
-                            ? Text(chat.otherUserName[0], style: const TextStyle(fontWeight: FontWeight.bold))
+                        child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
+                            ? Text(
+                                chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
+                                style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
+                              )
                             : null,
                       ),
                       title: Text(
@@ -150,21 +176,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
                       ),
-                      // ✅ NEW: Date + Delete Button Row
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             DateFormat('MMM d').format(chat.lastMessageTime),
                             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                           ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                            onPressed: () => _confirmDelete(chat),
-                          ),
+                          // Optional: Add Unread Count Badge here later
                         ],
                       ),
+                      // Allow deleting via Long Press or Swipe action in future
+                      onLongPress: () => _confirmDelete(chat),
                     );
                   },
                 ),

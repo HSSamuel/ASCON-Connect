@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // ✅ Added for robust images
+import 'package:cached_network_image/cached_network_image.dart'; 
 
 import '../main.dart';
 import 'directory_screen.dart';
@@ -15,10 +15,11 @@ import 'about_screen.dart';
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
-import 'chat_list_screen.dart'; // ✅ IMPORT CHAT LIST
+import 'chat_list_screen.dart'; 
 import '../widgets/digital_id_card.dart';
 import '../viewmodels/dashboard_view_model.dart';
-import '../services/socket_service.dart'; // ✅ IMPORT SOCKET
+import '../services/socket_service.dart'; 
+import '../services/api_client.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String? userName;
@@ -33,20 +34,49 @@ class _HomeScreenState extends State<HomeScreen> {
   List<int> _tabHistory = [0];
   late List<Widget> _screens;
   String _loadedName = "Alumni";
-  bool _hasUnreadMessages = false; // ✅ NEW: Unread State
+  
+  bool _hasUnreadMessages = false; 
+  final ApiClient _api = ApiClient();
 
   @override
   void initState() {
     super.initState();
     _resolveUserName();
-    _listenForMessages(); // ✅ NEW: Listen for incoming chats
+    _checkUnreadStatus(); 
+    _listenForMessages(); 
+  }
+
+  // ✅ FIX: Robust Type Checking to prevent 'String is not subtype of Int' crash
+  Future<void> _checkUnreadStatus() async {
+    try {
+      final result = await _api.get('/api/chat/unread-status');
+      if (mounted && result['success'] == true) {
+        final rawData = result['data']['hasUnread'];
+        bool isUnread = false;
+
+        // Safely parse whatever the backend sends
+        if (rawData is bool) {
+          isUnread = rawData;
+        } else if (rawData is String) {
+          isUnread = rawData.toLowerCase() == 'true';
+        } else if (rawData is int) {
+          isUnread = rawData > 0;
+        }
+
+        setState(() {
+          _hasUnreadMessages = isUnread;
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to check unread status: $e");
+    }
   }
 
   void _listenForMessages() {
-    // Show Red Dot when a new message arrives
-    // ✅ FIX: Use null-aware operator ?.
     SocketService().socket?.on('new_message', (data) {
-      if (mounted) setState(() => _hasUnreadMessages = true);
+      if (mounted) {
+        setState(() => _hasUnreadMessages = true);
+      }
     });
   }
 
@@ -55,9 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => _loadedName = widget.userName!);
     } else {
       final prefs = await SharedPreferences.getInstance();
-
       if (!mounted) return;
-
       final savedName = prefs.getString('user_name');
       if (savedName != null) {
         setState(() => _loadedName = savedName);
@@ -108,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       },
       child: Scaffold(
-        // ✅ NEW: Add Inbox Icon to AppBar if on Dashboard (Index 0)
         appBar: _currentIndex == 0 
           ? AppBar(
               title: Text("Dashboard", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : primaryColor)),
@@ -116,15 +143,15 @@ class _HomeScreenState extends State<HomeScreen> {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
-                // 🔔 CHAT ICON WITH BADGE
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
                     IconButton(
                       icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
-                      onPressed: () {
-                        setState(() => _hasUnreadMessages = false); // Clear badge on tap
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+                      onPressed: () async {
+                        setState(() => _hasUnreadMessages = false); 
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatListScreen()));
+                        _checkUnreadStatus();
                       },
                     ),
                     if (_hasUnreadMessages)
@@ -132,18 +159,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         right: 8,
                         top: 8,
                         child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.red, 
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Theme.of(context).cardColor, width: 1.5)
+                          ),
                         ),
                       )
                   ],
                 ),
-                // ℹ️ INFO ICON
                 IconButton(
                   icon: Icon(Icons.info_outline, color: isDark ? Colors.white : primaryColor, size: 22),
                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AboutScreen())),
                 ),
-                // 🌗 THEME SWITCHER
                 Padding(
                   padding: const EdgeInsets.only(right: 12.0),
                   child: IconButton(
@@ -160,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             )
-          : null, // Hide AppBar on other tabs
+          : null, 
 
         body: _screens[_currentIndex],
         floatingActionButton: SizedBox(
@@ -263,11 +293,9 @@ class _DashboardViewState extends State<_DashboardView> {
     _viewModel.loadData();
   }
 
-  // ✅ UPDATED: Robust Image Builder (Fixes Google Avatars)
   Widget _buildSafeImage(String? imageUrl,
       {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
     
-    // 1. Empty Check
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
         color: Colors.grey[200],
@@ -275,7 +303,6 @@ class _DashboardViewState extends State<_DashboardView> {
       );
     }
 
-    // 2. Google Default/Broken Check (CRITICAL FIX)
     if (imageUrl.contains('googleusercontent.com/profile/picture/0')) {
        return Container(
         color: Colors.grey[200],
@@ -283,7 +310,6 @@ class _DashboardViewState extends State<_DashboardView> {
       );
     }
 
-    // 3. Network Image (Cached)
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
@@ -294,7 +320,6 @@ class _DashboardViewState extends State<_DashboardView> {
       );
     }
 
-    // 4. Base64 Image
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -322,7 +347,6 @@ class _DashboardViewState extends State<_DashboardView> {
       builder: (context, child) {
         return Scaffold(
           backgroundColor: scaffoldBg,
-          // ⚠️ APP BAR REMOVED HERE (MOVED TO PARENT)
           body: SafeArea(
             child: RefreshIndicator(
               onRefresh: () async => await _viewModel.loadData(),
@@ -334,9 +358,7 @@ class _DashboardViewState extends State<_DashboardView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ------------------------------------------------
                     // 0️⃣ MAIN HEADER (ID CARD)
-                    // ------------------------------------------------
                     DigitalIDCard(
                       userName: widget.userName,
                       programme: _viewModel.programme,
@@ -347,9 +369,7 @@ class _DashboardViewState extends State<_DashboardView> {
 
                     const SizedBox(height: 20),
 
-                    // ------------------------------------------------
                     // 1️⃣ ALUMNI NETWORK
-                    // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text("Alumni Network",
@@ -405,7 +425,6 @@ class _DashboardViewState extends State<_DashboardView> {
                                         child: ClipOval(
                                           child: SizedBox(
                                             width: 56, height: 56,
-                                            // ✅ Uses new Robust Image Builder
                                             child: _buildSafeImage(img, fallbackIcon: Icons.person),
                                           ),
                                         ),
@@ -430,9 +449,7 @@ class _DashboardViewState extends State<_DashboardView> {
                     
                     const SizedBox(height: 25),
 
-                    // ------------------------------------------------
                     // 2️⃣ UPCOMING EVENTS
-                    // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -443,13 +460,13 @@ class _DashboardViewState extends State<_DashboardView> {
                                   fontSize: 18,
                                   fontWeight: FontWeight.w900,
                                   color: textColor)),
-                          // Green Dots Indicator
+                          // Green Dots
                           Row(
                             children: [
                               Container(
                                 width: 6, height: 6,
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFF4CAF50), // Green
+                                  color: Color(0xFF4CAF50), 
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -486,9 +503,7 @@ class _DashboardViewState extends State<_DashboardView> {
 
                     const SizedBox(height: 25),
 
-                    // ------------------------------------------------
                     // 3️⃣ NEWS & UPDATES
-                    // ------------------------------------------------
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -499,13 +514,13 @@ class _DashboardViewState extends State<_DashboardView> {
                                   fontSize: 18,
                                   fontWeight: FontWeight.w900,
                                   color: textColor)),
-                          // Grey/Blue Dots Indicator
+                          // Grey Dots
                           Row(
                             children: [
                               Container(
                                 width: 6, height: 6,
                                 decoration: const BoxDecoration(
-                                  color: Color(0xFF607D8B), // Blue Grey
+                                  color: Color(0xFF607D8B),
                                   shape: BoxShape.circle,
                                 ),
                               ),
@@ -799,7 +814,6 @@ class _DashboardViewState extends State<_DashboardView> {
             children: [
               // 1. Background Image
               Positioned.fill(
-                // ✅ Uses new Robust Image Builder
                 child: _buildSafeImage(imageUrl, fallbackIcon: Icons.business, fit: BoxFit.cover),
               ),
               

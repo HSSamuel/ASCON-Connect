@@ -34,6 +34,7 @@ dependencies:
   record: ^6.0.0           # For Voice Notes
   audioplayers: ^6.0.0     # For Playing Voice Notes
   permission_handler: ^11.3.0
+  vibration: ^1.9.0
   flutter_secure_storage: ^9.0.0
   shimmer: ^3.0.0
   socket_io_client: ^3.1.4

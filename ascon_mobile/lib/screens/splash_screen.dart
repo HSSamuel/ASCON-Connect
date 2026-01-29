@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart'; // ✅ Added for kIsWeb check
+import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
-import '../services/notification_service.dart'; // ✅ Added Notification Service
+import '../services/notification_service.dart';
+import '../services/socket_service.dart';
+import '../config/storage_config.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -47,24 +49,35 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     if (!mounted) return;
 
-    // ✅ FIX: Use AuthService to check validity (It checks Secure Storage)
+    // 1. Check Session Validity (Uses Auth Service which now uses StorageConfig)
     final bool isValid = await _authService.isSessionValid();
     
-    // We still need Prefs to get the User Name for the UI
+    // 2. Get User Name from Standard Preferences (Safe for non-sensitive UI data)
     final prefs = await SharedPreferences.getInstance();
     final userName = prefs.getString('user_name');
 
     if (!mounted) return;
 
-    // ✅ LOGIC UPDATED: Rely on the result from AuthService
     if (isValid) {
-      // ✅ NEW: Initialize Notification Service for returning users
+      // ✅ FIX: Reconnect Socket immediately on Auto-Login
+      // This ensures the user shows as "Online" without needing to re-login manually.
+      try {
+        String? userId = await StorageConfig.storage.read(key: 'userId');
+        if (userId != null) {
+          SocketService().connectUser(userId);
+          debugPrint("🔌 Socket Reconnected from Splash Screen");
+        }
+      } catch (e) {
+        debugPrint("⚠️ Failed to reconnect socket on splash: $e");
+      }
+
+      // 3. Initialize Notifications (Mobile Only)
       if (!kIsWeb) {
          try {
            await NotificationService().init();
-           print("🔔 Notification Service Started from Splash");
+           debugPrint("🔔 Notification Service Started from Splash");
          } catch (e) {
-           print("Error starting notifications: $e");
+           debugPrint("Error starting notifications: $e");
          }
       }
 

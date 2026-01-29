@@ -15,7 +15,7 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "ascon_chat_files",
-    resource_type: "auto",
+    resource_type: "auto", // ✅ IMPORTANT: Allows Audio/Video/Images
   },
 });
 
@@ -43,16 +43,13 @@ router.get("/", verify, async (req, res) => {
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId } = req.body;
-
   try {
     let chat = await Conversation.findOne({
       isGroup: false,
       participants: { $all: [req.user._id, receiverId] },
     });
 
-    if (chat) {
-      return res.status(200).json(chat);
-    }
+    if (chat) return res.status(200).json(chat);
 
     const newChat = new Conversation({
       participants: [req.user._id, receiverId],
@@ -63,7 +60,6 @@ router.post("/start", verify, async (req, res) => {
       "participants",
       "fullName profilePicture",
     );
-
     res.status(200).json(populatedChat);
   } catch (err) {
     res.status(500).json(err);
@@ -71,18 +67,15 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// ✅ 3. GET MESSAGES (WITH PAGINATION)
+// 3. GET MESSAGES
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
     const { beforeId } = req.query;
     const limit = 20;
-
     let query = { conversationId: req.params.conversationId };
 
-    if (beforeId) {
-      query._id = { $lt: beforeId };
-    }
+    if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
       .sort({ createdAt: -1 })
@@ -95,7 +88,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. SEND A MESSAGE
+// 4. SEND A MESSAGE (Updated for Audio)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -118,8 +111,10 @@ router.post(
 
       const savedMessage = await newMessage.save();
 
+      // ✅ FIX: Better Previews for Audio/Images
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
+      if (type === "audio") lastMessagePreview = "🎤 Sent a voice note";
       if (type === "file") lastMessagePreview = "📎 Sent an attachment";
 
       const conversation = await Conversation.findByIdAndUpdate(
@@ -141,9 +136,8 @@ router.post(
           message: savedMessage,
           conversationId: conversation._id,
         });
-      }
 
-      if (receiverId) {
+        // Push Notification
         const receiver = await User.findById(receiverId);
         const sender = await User.findById(req.user._id);
 
@@ -155,7 +149,9 @@ router.post(
             {
               type: "chat_message",
               conversationId: conversation._id.toString(),
-              senderId: req.user._id,
+              senderId: req.user._id.toString(),
+              senderName: sender.fullName,
+              senderProfilePic: sender.profilePicture || "",
             },
           );
         }
@@ -170,7 +166,7 @@ router.post(
 );
 
 // ---------------------------------------------------------
-// 5. MARK CONVERSATION AS READ
+// 5. READ RECEIPT
 // ---------------------------------------------------------
 router.put("/read/:conversationId", verify, async (req, res) => {
   try {
@@ -193,7 +189,6 @@ router.put("/read/:conversationId", verify, async (req, res) => {
         conversationId: req.params.conversationId,
       });
     }
-
     res.status(200).json({ success: true });
   } catch (err) {
     res.status(500).json(err);
@@ -206,15 +201,12 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 router.put("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
-
     if (msg.sender.toString() !== req.user._id) {
-      return res.status(403).json("You can only edit your own messages");
+      return res.status(403).json("Unauthorized");
     }
-
     msg.text = req.body.text;
     msg.isEdited = true;
     await msg.save();
-
     res.status(200).json(msg);
   } catch (err) {
     res.status(500).json(err);
@@ -222,40 +214,75 @@ router.put("/message/:id", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 7. HARD DELETE MESSAGE
+// 7. DELETE SINGLE MESSAGE
 // ---------------------------------------------------------
 router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
-
-    if (!msg) return res.status(404).json("Message not found");
-    if (msg.sender.toString() !== req.user._id) {
-      return res.status(403).json("You can only delete your own messages");
-    }
+    if (!msg) return res.status(404).json("Not found");
+    if (msg.sender.toString() !== req.user._id)
+      return res.status(403).json("Unauthorized");
 
     await Message.findByIdAndDelete(req.params.id);
+    _emitDeleteEvent(req, msg.conversationId, [msg._id]);
 
-    const conversation = await Conversation.findById(msg.conversationId);
-    if (conversation) {
-      conversation.participants.forEach((userId) => {
-        if (userId.toString() !== req.user._id) {
-          req.io
-            .to(userId.toString())
-            .emit("message_deleted", { messageId: msg._id });
-        }
-      });
-    }
-
-    res
-      .status(200)
-      .json({ message: "Message permanently deleted", id: req.params.id });
+    res.status(200).json({ message: "Deleted" });
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
 // ---------------------------------------------------------
-// ✅ 8. DELETE CONVERSATION (Removes User from Chat)
+// ✅ 8. BULK DELETE MESSAGES (New)
+// ---------------------------------------------------------
+router.post("/delete-multiple", verify, async (req, res) => {
+  try {
+    const { messageIds } = req.body;
+    if (!messageIds || messageIds.length === 0)
+      return res.status(400).json("No IDs provided");
+
+    // 1. Find messages that belong to this user
+    const messages = await Message.find({
+      _id: { $in: messageIds },
+      sender: req.user._id,
+    });
+
+    if (messages.length === 0)
+      return res.status(200).json({ message: "No messages to delete" });
+
+    const validIds = messages.map((m) => m._id);
+    const conversationId = messages[0].conversationId; // Assume all from same chat for simplicity
+
+    // 2. Delete them
+    await Message.deleteMany({ _id: { $in: validIds } });
+
+    // 3. Emit Real-time Event
+    _emitDeleteEvent(req, conversationId, validIds);
+
+    res.status(200).json({ success: true, deletedIds: validIds });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json(err);
+  }
+});
+
+// Helper to emit delete events
+async function _emitDeleteEvent(req, conversationId, messageIds) {
+  const conversation = await Conversation.findById(conversationId);
+  if (conversation) {
+    conversation.participants.forEach((userId) => {
+      if (userId.toString() !== req.user._id) {
+        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
+          conversationId,
+          messageIds,
+        });
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------
+// ✅ 9. DELETE CONVERSATION (Removes User from Chat)
 // ---------------------------------------------------------
 router.delete("/:conversationId", verify, async (req, res) => {
   try {
@@ -273,6 +300,31 @@ router.delete("/:conversationId", verify, async (req, res) => {
     }
 
     res.status(200).json({ message: "Conversation deleted from your list" });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// ---------------------------------------------------------
+// ✅ 10. CHECK UNREAD STATUS (New)
+// ---------------------------------------------------------
+router.get("/unread-status", verify, async (req, res) => {
+  try {
+    // Find active conversations for this user
+    const conversations = await Conversation.find({
+      participants: req.user._id,
+    }).select("_id");
+    const conversationIds = conversations.map((c) => c._id);
+
+    // Check if there is ANY unread message in those conversations sent by someone else
+    const hasUnread = await Message.exists({
+      conversationId: { $in: conversationIds },
+      sender: { $ne: req.user._id },
+      isRead: false,
+    });
+
+    // ✅ FORCE BOOLEAN: Ensure we return true/false, not an object or null
+    res.status(200).json({ hasUnread: !!hasUnread });
   } catch (err) {
     res.status(500).json(err);
   }

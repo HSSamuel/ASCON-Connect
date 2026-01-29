@@ -116,10 +116,9 @@ class NotificationService {
 
   void _handleNavigation(Map<String, dynamic> data) {
     final route = data['route'];
-    final type = data['type']; // ✅ Check Type
+    final type = data['type']; 
     final id = data['id'] ?? data['eventId']; 
 
-    // ✅ Allow navigation if it's a chat message OR if route is present
     if (route == null && type != 'chat_message') return; 
 
     debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
@@ -127,18 +126,22 @@ class NotificationService {
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // ✅ 1. CHAT NAVIGATION (New)
+      // ✅ 1. CHAT NAVIGATION (Updated)
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
-        
+        // ✅ Read Name and Pic from payload (Default to "Alumni Member" if missing)
+        final senderName = data['senderName'] ?? "Alumni Member";
+        final senderProfilePic = data['senderProfilePic'];
+
         if (conversationId != null && senderId != null) {
           navigatorKey.currentState?.push(
             MaterialPageRoute(
               builder: (_) => ChatScreen(
                 conversationId: conversationId,
                 receiverId: senderId, 
-                receiverName: "Alumni Member", 
+                receiverName: senderName, // ✅ Pass dynamic name
+                receiverProfilePic: senderProfilePic, // ✅ Pass dynamic pic
               ),
             ),
           );

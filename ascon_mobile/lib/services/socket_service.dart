@@ -1,75 +1,91 @@
-import 'package:flutter/material.dart'; // ✅ Required for AppLifecycleState
+import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
+import '../config/storage_config.dart'; // ✅ Uses Central Config
 
 class SocketService with WidgetsBindingObserver {
-  // ✅ Changed from 'late' to nullable to safely check connection status
   IO.Socket? socket; 
-  
-  final _storage = const FlutterSecureStorage();
+  final _storage = StorageConfig.storage;
 
-  // Singleton Instance
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
   
   SocketService._internal() {
-    // ✅ Register observer to listen to App Background/Foreground changes
     WidgetsBinding.instance.addObserver(this);
   }
 
-  // ✅ LIFECYCLE MANAGER: Solves the "Pocket Problem"
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     debugPrint("🔄 App Lifecycle Changed: $state");
     
+    // ✅ Logic Updated:
+    // If we go to background, we disconnect to save battery.
+    // The backend now has a 5-second "Grace Period". 
+    // If the user quickly switches back (within 5s), the 'Offline' status will NEVER fire.
+    
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
-      // App is in background or closed -> Disconnect to show "Offline"
       disconnect();
     } else if (state == AppLifecycleState.resumed) {
-      // App is in foreground -> Reconnect to show "Online"
-      initSocket();
+      // Force reconnect immediately on resume
+      initSocket(forceNew: true);
     }
   }
 
-  void initSocket() async {
-    // 1. Safety Check: Don't reconnect if already connected
-    if (socket != null && socket!.connected) {
-      debugPrint("⚠️ Socket already connected. Skipping init.");
-      return;
+  void initSocket({bool forceNew = false}) async {
+    if (!forceNew && socket != null && socket!.connected) {
+      return; 
     }
 
-    String? userId = await _storage.read(key: "userId"); 
+    String? userId = await _storage.read(key: "userId");
     
-    // 2. Setup URL (Strip '/api' because Socket.io connects to root)
-    final String socketUrl = AppConfig.baseUrl.replaceAll('/api', '');
+    // Safety check for URL
+    String socketUrl = AppConfig.baseUrl;
+    if (socketUrl.endsWith('/')) {
+      socketUrl = socketUrl.substring(0, socketUrl.length - 1);
+    }
+    if (socketUrl.endsWith('/api')) {
+      socketUrl = socketUrl.replaceAll('/api', '');
+    }
 
-    // ✅ DEBUG: Print the exact URL we are trying to connect to
     debugPrint("🔌 Socket Connecting to: $socketUrl");
 
-    // 3. Initialize Socket
-    socket = IO.io(socketUrl, <String, dynamic>{
-      'transports': ['websocket'],
-      'autoConnect': false,
-    });
+    try {
+      socket = IO.io(socketUrl, <String, dynamic>{
+        'transports': ['websocket'],
+        'autoConnect': false,
+        'forceNew': true, // ✅ Ensure fresh connection logic
+        'reconnection': true,
+        'reconnectionDelay': 1000,
+        'reconnectionDelayMax': 5000,
+        'reconnectionAttempts': 99999,
+      });
 
-    // 4. Connect
-    socket!.connect();
+      socket!.connect();
 
-    // 5. Event Listeners
-    socket!.onConnect((_) {
-      debugPrint('✅ Socket Connected');
-      if (userId != null) {
-        socket!.emit("user_connected", userId);
-      }
-    });
+      socket!.onConnect((_) {
+        debugPrint('✅ Socket Connected');
+        if (userId != null) {
+          // Re-announce presence immediately
+          socket!.emit("user_connected", userId);
+        }
+      });
 
-    socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
-    
-    socket!.onConnectError((data) => debugPrint('⚠️ Socket Error: $data'));
+      // Handle Reconnect explicitly
+      socket!.onReconnect((_) {
+         debugPrint('🔄 Socket Reconnected');
+         if (userId != null) {
+          socket!.emit("user_connected", userId);
+        }
+      });
+
+      socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
+      socket!.onConnectError((data) => debugPrint('⚠️ Socket Error: $data'));
+
+    } catch (e) {
+      debugPrint("❌ CRITICAL SOCKET EXCEPTION: $e");
+    }
   }
 
-  // Call this after Login/Register to connect immediately
   void connectUser(String userId) {
     if (socket != null && socket!.connected) {
       socket!.emit("user_connected", userId);
