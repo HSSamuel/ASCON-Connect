@@ -3,7 +3,11 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const verify = require("./verifyToken");
-const cloudinary = require("../config/cloudinary");
+
+// ✅ FIX: Extract the actual Cloudinary object from the config wrapper
+const cloudinaryConfig = require("../config/cloudinary");
+const cloudinary = cloudinaryConfig.cloudinary;
+
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
@@ -165,7 +169,12 @@ router.post(
     try {
       const { text, type } = req.body;
       let fileUrl = "";
-      if (req.file) fileUrl = req.file.path;
+      let fileName = ""; // ✅ NEW
+
+      if (req.file) {
+        fileUrl = req.file.path;
+        fileName = req.file.originalname; // ✅ Capture original name (e.g. "MyCV.pdf")
+      }
 
       const newMessage = new Message({
         conversationId: req.params.conversationId,
@@ -173,16 +182,17 @@ router.post(
         text: text || "",
         type: type || "text",
         fileUrl: fileUrl,
+        fileName: fileName, // ✅ Save it
         isRead: false,
       });
 
       const savedMessage = await newMessage.save();
 
-      // ✅ FIX: Better Previews for Audio/Images
+      // Better Previews
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
       if (type === "audio") lastMessagePreview = "🎤 Sent a voice note";
-      if (type === "file") lastMessagePreview = "📎 Sent an attachment";
+      if (type === "file") lastMessagePreview = "📎 Sent a document";
 
       const conversation = await Conversation.findByIdAndUpdate(
         req.params.conversationId,

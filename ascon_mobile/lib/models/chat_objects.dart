@@ -9,11 +9,12 @@ class ChatMessage {
   
   final String type; // 'text', 'image', 'audio', 'file'
   final String? fileUrl;
+  final String? fileName;
+
   bool isDeleted;
   bool isEdited;
   bool isRead; 
   
-  // ✅ Status for UI feedback
   MessageStatus status; 
 
   ChatMessage({
@@ -23,10 +24,11 @@ class ChatMessage {
     required this.createdAt,
     this.type = 'text',
     this.fileUrl,
+    this.fileName,
     this.isDeleted = false,
     this.isEdited = false,
     this.isRead = false,
-    this.status = MessageStatus.sent, // Default to sent for incoming
+    this.status = MessageStatus.sent,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -37,6 +39,7 @@ class ChatMessage {
       createdAt: DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now(),
       type: json['type'] ?? 'text',
       fileUrl: json['fileUrl'],
+      fileName: json['fileName'],
       isDeleted: json['isDeleted'] ?? false,
       isEdited: json['isEdited'] ?? false,
       isRead: json['isRead'] ?? false,
@@ -53,6 +56,7 @@ class ChatMessage {
       'createdAt': createdAt.toIso8601String(),
       'type': type,
       'fileUrl': fileUrl,
+      'fileName': fileName,
       'isDeleted': isDeleted,
       'isEdited': isEdited,
       'isRead': isRead,

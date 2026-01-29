@@ -11,20 +11,21 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 
-// ✅ NEW IMPORTS for Audio/Selection/Zoom
+// ✅ NEW IMPORTS for Audio/Selection/Zoom/PDF
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:vibration/vibration.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 
 import '../services/api_client.dart';
 import '../services/socket_service.dart';
 import '../models/chat_objects.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
-import '../widgets/full_screen_image.dart'; // ✅ Import FullScreenImage
+import '../widgets/full_screen_image.dart'; 
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -82,7 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ✅ AUDIO PLAYING VARIABLES
   final AudioPlayer _audioPlayer = AudioPlayer();
-  String? _playingMessageId; // Currently playing message
+  String? _playingMessageId; 
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
@@ -391,14 +392,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 📨 SEND LOGIC
+  // 📨 SEND LOGIC (Hardened)
   // --------------------------------------------------------
   Future<void> _sendMessage({String? text, File? file, String type = 'text'}) async {
     if ((text == null || text.trim().isEmpty) && file == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
 
     String? token = await _storage.read(key: 'auth_token');
-    if (token == null) return;
+    if (token == null || token.isEmpty) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(content: Text("⚠️ Session expired. Please login again.")),
+       );
+       return;
+    }
 
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final tempMessage = ChatMessage(
@@ -407,6 +413,7 @@ class _ChatScreenState extends State<ChatScreen> {
       text: text ?? "",
       type: type,
       fileUrl: file?.path, 
+      fileName: file?.path.split('/').last,
       createdAt: DateTime.now(),
       status: MessageStatus.sending,
     );
@@ -424,14 +431,28 @@ class _ChatScreenState extends State<ChatScreen> {
           : AppConfig.baseUrl;
 
       final url = Uri.parse('$baseUrl/api/chat/$_activeConversationId');
+      
       var request = http.MultipartRequest('POST', url);
-      request.headers['auth-token'] = token;
+      request.headers['auth-token'] = token; 
 
-      if (text != null) request.fields['text'] = text;
+      if (text != null && text.isNotEmpty) {
+        request.fields['text'] = text;
+      }
       request.fields['type'] = type;
 
       if (file != null) {
-        request.files.add(await http.MultipartFile.fromPath('file', file.path));
+        if (!file.existsSync()) {
+          throw Exception("File does not exist locally.");
+        }
+        var stream = http.ByteStream(file.openRead());
+        var length = await file.length();
+        var multipartFile = http.MultipartFile(
+          'file',
+          stream,
+          length,
+          filename: file.path.split('/').last,
+        );
+        request.files.add(multipartFile);
       }
 
       var streamedResponse = await request.send();
@@ -440,19 +461,33 @@ class _ChatScreenState extends State<ChatScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final realMessage = ChatMessage.fromJson(data);
+
         setState(() {
           final index = _messages.indexWhere((m) => m.id == tempId);
-          if (index != -1) _messages[index] = realMessage;
+          if (index != -1) {
+            _messages[index] = realMessage;
+          }
         });
         _cacheMessages();
       } else {
-        throw Exception("Server Error");
+        String errorMsg = "Server Error (${response.statusCode})";
+        try {
+          final body = jsonDecode(response.body);
+          if (body['message'] != null) errorMsg = body['message'];
+        } catch (_) {}
+        throw Exception(errorMsg);
       }
     } catch (e) {
+      debugPrint("Send Failed: $e");
       setState(() {
         final index = _messages.indexWhere((m) => m.id == tempId);
-        if (index != -1) _messages[index].status = MessageStatus.error;
+        if (index != -1) {
+          _messages[index].status = MessageStatus.error;
+        }
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to send: ${e.toString().split(':').last.trim()}"), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -474,7 +509,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
     
-    // Optimistic UI Update
     setState(() {
       _messages.removeWhere((m) => idsToDelete.contains(m.id));
       _isSelectionMode = false;
@@ -563,24 +597,22 @@ class _ChatScreenState extends State<ChatScreen> {
             titleSpacing: 0,
             title: Row(
               children: [
-                // ✅ TAP TO ZOOM PROFILE PICTURE
                 GestureDetector(
                   onTap: () {
-                    // Only navigate if there is a valid image URL
                     if (widget.receiverProfilePic != null && widget.receiverProfilePic!.isNotEmpty) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => FullScreenImage(
                             imageUrl: widget.receiverProfilePic,
-                            heroTag: 'chat_profile_pic', // Unique Hero Tag
+                            heroTag: 'chat_profile_pic', 
                           ),
                         ),
                       );
                     }
                   },
                   child: Hero(
-                    tag: 'chat_profile_pic', // Must match the tag in FullScreenImage
+                    tag: 'chat_profile_pic', 
                     child: CircleAvatar(
                       radius: 18,
                       backgroundColor: Colors.grey[300],
@@ -660,16 +692,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 🫧 BUBBLES (Updated for Audio & Image Zoom)
+  // 🫧 BUBBLES
   // --------------------------------------------------------
   Widget _buildMessageBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     if (msg.isDeleted) return const SizedBox.shrink();
 
     Widget content;
+    
+    // 1. IMAGE
     if (msg.type == 'image') {
       bool isLocal = msg.fileUrl != null && !msg.fileUrl!.startsWith('http');
-      
-      // ✅ Allow tapping sent images to zoom too
       content = GestureDetector(
         onTap: () {
            if (msg.fileUrl != null) {
@@ -686,8 +718,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       );
+    
+    // 2. AUDIO
     } else if (msg.type == 'audio') {
-      // ✅ AUDIO BUBBLE
       bool isPlaying = _playingMessageId == msg.id;
       content = Container(
         width: 200,
@@ -725,6 +758,74 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       );
+
+    // 3. ✅ FILE / PDF (VIEWER FIX)
+    } else if (msg.type == 'file') {
+      bool isLocal = msg.fileUrl != null && !msg.fileUrl!.startsWith('http');
+      String displayName = msg.fileName ?? "Document (PDF)"; 
+      
+      content = GestureDetector(
+        onTap: () async {
+          if (!isLocal && msg.fileUrl != null) {
+             Uri url = Uri.parse(msg.fileUrl!);
+             
+             // ✅ CRITICAL FIX: Android WebView cannot render PDFs directly.
+             // We route it through Google Docs Viewer so it "Views" instead of "Downloads".
+             if (Platform.isAndroid && (msg.fileUrl!.toLowerCase().endsWith('.pdf') || displayName.toLowerCase().endsWith('.pdf'))) {
+                url = Uri.parse("https://docs.google.com/viewer?url=${msg.fileUrl}&embedded=true");
+             }
+
+             if (await canLaunchUrl(url)) {
+               // ✅ LaunchMode.inAppWebView keeps user IN the app (No redirect feel)
+               if (!await launchUrl(url, mode: LaunchMode.inAppWebView)) {
+                  // Fallback if WebView fails
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+               }
+             } else {
+               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open file.")));
+             }
+          } else if (isLocal) {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File is uploading...")));
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isMe ? Colors.white.withOpacity(0.2) : Colors.grey[200],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.picture_as_pdf, color: isMe ? Colors.white : primary, size: 30),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isMe ? Colors.white : Colors.black87,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(isLocal ? "Uploading..." : "Tap to view", 
+                      style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)
+                    ),
+                  ],
+                ),
+              )
+            ],
+          ),
+        ),
+      );
+
+    // 4. TEXT
     } else {
        content = Text.rich(
         TextSpan(
@@ -812,7 +913,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)),
           _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)),
-          _attachOption(Icons.insert_drive_file, Colors.blue, "File", _pickFile),
+          _attachOption(Icons.insert_drive_file, Colors.blue, "Document (PDF)", _pickFile),
         ],
       ),
     );

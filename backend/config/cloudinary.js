@@ -23,4 +23,8 @@ const storage = new CloudinaryStorage({
 
 // 3. Export the Upload Tool
 const upload = multer({ storage: storage });
+
+// ✅ FIX: Attach the configured cloudinary object so other files (like chat.js) can use it
+upload.cloudinary = cloudinary;
+
 module.exports = upload;
