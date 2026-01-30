@@ -17,7 +17,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:open_file_plus/open_file_plus.dart';
+import 'package:open_file/open_file.dart';
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
@@ -56,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _picker = ImagePicker();
+  final FocusNode _focusNode = FocusNode(); // ✅ Added FocusNode for Reply/Edit
 
   List<ChatMessage> _messages = [];
   String? _activeConversationId;
@@ -73,6 +74,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
+  // ✅ Reply & Edit State
+  ChatMessage? _replyingTo;
+  ChatMessage? _editingMessage;
+
   // Audio Recording
   late AudioRecorder _audioRecorder;
   bool _isRecording = false;
@@ -85,7 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
-  // ✅ Track downloading file
+  // Track downloading file
   String? _downloadingFileId;
 
   @override
@@ -126,6 +131,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
+    _focusNode.dispose(); // ✅ Dispose FocusNode
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
     _audioRecorder.dispose();
@@ -397,10 +403,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 📂 DOWNLOAD & OPEN HELPER (ENHANCED)
+  // 📂 SMART DOWNLOAD & OPEN (Caches Files)
   // --------------------------------------------------------
   Future<void> _downloadAndOpenWith(String url, String fileName, String messageId) async {
-    // 1. Web: Launch URL (Browser is the best PDF viewer for Web)
+    // 1. Web: Just launch URL
     if (kIsWeb) {
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -408,55 +414,91 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // 2. Mobile: Download & Open Native Viewer
-    setState(() => _downloadingFileId = messageId);
-
     try {
-      final response = await http.get(Uri.parse(url));
-
-      // ✅ Handle Server Errors
-      if (response.statusCode != 200) {
-        throw Exception("Server Error ${response.statusCode}: Access Denied");
-      }
-
-      // ✅ Get Temp Directory
+      // 2. Get Local Path
       final tempDir = await getTemporaryDirectory();
-      
-      // ✅ Sanitize Filename (Ensure it keeps the extension like .pdf)
-      // If the filename from server doesn't have an extension, you might need to append it based on mime-type,
-      // but usually, the fileName stored in ChatMessage includes it.
-      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_'); 
+      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.]'), '_'); 
       final file = File('${tempDir.path}/$safeName');
 
-      // ✅ Write File
+      // ✅ 3. CHECK: Does file already exist?
+      if (await file.exists()) {
+        debugPrint("📂 Opening cached file: ${file.path}");
+        final result = await OpenFile.open(file.path);
+        
+        if (result.type != ResultType.done) {
+           _shareFile(file.path, fileName);
+        }
+        return; 
+      }
+
+      // 4. Download (Only if file doesn't exist)
+      setState(() => _downloadingFileId = messageId);
+      
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode != 200) {
+        throw Exception("Server Error ${response.statusCode}");
+      }
+      
       await file.writeAsBytes(response.bodyBytes);
 
       if (mounted) {
         setState(() => _downloadingFileId = null);
-
-        // ✅ ATTEMPT 1: Open with native viewer (PDF Reader, Word, etc.)
+        
         final result = await OpenFile.open(file.path);
-
         if (result.type != ResultType.done) {
-          // ✅ ATTEMPT 2: Fallback to Share Sheet if viewing fails
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("No app found to open this file. Sharing instead..."))
-            );
-            await Share.shareXFiles([XFile(file.path)], text: 'Open $fileName');
-          }
+           _shareFile(file.path, fileName);
         }
       }
     } catch (e) {
-      debugPrint("Download/Open Error: $e");
+      debugPrint("Download Error: $e");
       if (mounted) {
         setState(() => _downloadingFileId = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Could not open file: ${e.toString().split(':').last.trim()}"),
-            backgroundColor: Colors.red,
-          )
+          SnackBar(content: Text("Could not open file: ${e.toString().split(':').last.trim()}"))
         );
+      }
+    }
+  }
+
+  // Helper for fallback sharing
+  void _shareFile(String path, String text) {
+    Share.shareXFiles([XFile(path)], text: 'Open $text');
+  }
+
+  // --------------------------------------------------------
+  // 💾 DOWNLOAD & SAVE (Explicit User Action)
+  // --------------------------------------------------------
+  Future<void> _downloadAndSave(String url, String fileName, String messageId) async {
+    if (kIsWeb) {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.]'), '_');
+      final file = File('${tempDir.path}/$safeName');
+
+      if (!await file.exists()) {
+        setState(() => _downloadingFileId = messageId);
+        
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode != 200) throw Exception("Download Failed");
+        
+        await file.writeAsBytes(response.bodyBytes);
+        
+        if (mounted) setState(() => _downloadingFileId = null);
+      }
+
+      await Share.shareXFiles([XFile(file.path)], text: 'Save $fileName');
+
+    } catch (e) {
+      debugPrint("Save Error: $e");
+      if (mounted) {
+        setState(() => _downloadingFileId = null);
       }
     }
   }
@@ -473,6 +515,36 @@ class _ChatScreenState extends State<ChatScreen> {
   }) async {
     if ((text == null || text.trim().isEmpty) && filePath == null && fileBytes == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
+
+    // ✅ EDIT MODE LOGIC
+    if (_editingMessage != null && type == 'text') {
+      try {
+        final baseUrl = AppConfig.baseUrl.endsWith('/')
+            ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
+            : AppConfig.baseUrl;
+        
+        final url = Uri.parse('$baseUrl/api/chat/message/${_editingMessage!.id}');
+        String? token = await _storage.read(key: 'auth_token');
+        
+        final response = await http.put(
+          url, 
+          headers: {'auth-token': token!, 'Content-Type': 'application/json'},
+          body: jsonEncode({'text': text})
+        );
+        
+        if (response.statusCode == 200) {
+          setState(() {
+            _editingMessage!.text = text!;
+            _editingMessage!.isEdited = true;
+            _editingMessage = null;
+            _textController.clear();
+          });
+        }
+      } catch (e) {
+        debugPrint("Edit Failed: $e");
+      }
+      return;
+    }
 
     String? token = await _storage.read(key: 'auth_token');
     if (token == null || token.isEmpty) {
@@ -492,6 +564,11 @@ class _ChatScreenState extends State<ChatScreen> {
       fileUrl: filePath, 
       fileName: fileName ?? (filePath != null ? filePath.split('/').last : "File"),
       localBytes: fileBytes, 
+      // ✅ Add Reply Info Optimistically
+      replyToId: _replyingTo?.id,
+      replyToText: _replyingTo?.text,
+      replyToSenderName: _replyingTo != null ? (_replyingTo!.senderId == _myUserId ? "You" : widget.receiverName) : null,
+      replyToType: _replyingTo?.type,
       createdAt: DateTime.now(),
       status: MessageStatus.sending,
     );
@@ -500,6 +577,8 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(tempMessage);
       _textController.clear();
       _isTyping = false;
+      // ✅ Clear Reply State
+      _replyingTo = null;
     });
     _scrollToBottom();
 
@@ -517,6 +596,11 @@ class _ChatScreenState extends State<ChatScreen> {
         request.fields['text'] = text;
       }
       request.fields['type'] = type;
+      
+      // ✅ Add Reply ID to Request
+      if (tempMessage.replyToId != null) {
+        request.fields['replyToId'] = tempMessage.replyToId!;
+      }
 
       if (fileBytes != null) {
         request.files.add(http.MultipartFile.fromBytes(
@@ -807,192 +891,164 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildMessageBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     if (msg.isDeleted) return const SizedBox.shrink();
 
-    Widget content;
-    
-    // 1. IMAGE
-    if (msg.type == 'image') {
-      if (msg.localBytes != null) {
-        content = ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.memory(msg.localBytes!, height: 200, width: 200, fit: BoxFit.cover)
-        );
-      } else if (msg.fileUrl != null && !msg.fileUrl!.startsWith('http')) {
-        if (!kIsWeb) {
-          content = ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.file(File(msg.fileUrl!), height: 200, width: 200, fit: BoxFit.cover)
-          );
-        } else {
-          content = const Icon(Icons.image_not_supported);
-        }
-      } else {
-        content = GestureDetector(
-          onTap: () {
-             if (msg.fileUrl != null) {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id)));
-             }
-          },
-          child: Hero(
-            tag: msg.id,
-            child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(imageUrl: msg.fileUrl!, height: 200, fit: BoxFit.cover),
-            ),
-          ),
-        );
-      }
-    
-    // 2. AUDIO
-    } else if (msg.type == 'audio') {
-      bool isPlaying = _playingMessageId == msg.id;
-      content = Container(
-        width: 200,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () async {
-                if (isPlaying) {
-                  await _audioPlayer.pause();
-                  setState(() => _playingMessageId = null);
-                } else {
-                  if (msg.fileUrl != null) {
-                    Source urlSource = msg.fileUrl!.startsWith('http') 
-                        ? UrlSource(msg.fileUrl!) 
-                        : DeviceFileSource(msg.fileUrl!);
-                    await _audioPlayer.play(urlSource);
-                    setState(() => _playingMessageId = msg.id);
-                  }
-                }
-              },
-              child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 36, color: isMe ? Colors.white : primary),
-            ),
-            Expanded(
-              child: Slider(
-                value: isPlaying ? _currentPosition.inSeconds.toDouble() : 0.0,
-                max: isPlaying ? _totalDuration.inSeconds.toDouble() : 1.0,
-                activeColor: isMe ? Colors.white : primary,
-                inactiveColor: isMe ? Colors.white38 : Colors.grey[300],
-                onChanged: (val) {
-                  if(isPlaying) _audioPlayer.seek(Duration(seconds: val.toInt()));
-                },
-              ),
-            ),
-          ],
-        ),
-      );
-
-    // 3. ✅ FILE / PDF (DOWNLOAD & OPEN WITH)
-    } else if (msg.type == 'file') {
-      String displayName = msg.fileName ?? "Document"; 
-      bool isDownloading = _downloadingFileId == msg.id;
-
-      content = GestureDetector(
-        onTap: () {
-          if (isDownloading) return;
-          if (msg.fileUrl != null && msg.fileUrl!.startsWith('http')) {
-             // ✅ Call the new Helper
-             _downloadAndOpenWith(msg.fileUrl!, displayName, msg.id);
-          } else {
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File is local or uploading...")));
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: isMe ? Colors.white.withOpacity(0.2) : Colors.grey[200],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.picture_as_pdf, color: isMe ? Colors.white : primary, size: 30),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isMe ? Colors.white : Colors.black87,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      isDownloading ? "Downloading..." : "Tap to open", 
-                      style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)
-                    ),
-                  ],
-                ),
-              ),
-              if (isDownloading)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8.0),
-                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                )
-            ],
-          ),
-        ),
-      );
-
-    // 4. TEXT
-    } else {
-       content = Text.rich(
-        TextSpan(
-          children: _parseFormattedText(
-            msg.text, 
-            TextStyle(
-              color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-              fontSize: 15,
-            )
-          )
-        )
-      );
-    }
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isMe ? primary : (isDark ? const Color(0xFF2C2C2C) : Colors.white),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: isMe ? const Radius.circular(16) : Radius.zero,
-            bottomRight: isMe ? Radius.zero : const Radius.circular(16),
-          ),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            content,
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+    // ✅ WRAP IN DISMISSIBLE FOR SWIPE-TO-REPLY
+    return Dismissible(
+      key: Key(msg.id),
+      direction: DismissDirection.startToEnd, // Swipe Left-to-Right
+      confirmDismiss: (direction) async {
+        setState(() {
+          _replyingTo = msg;
+          _editingMessage = null; // Cancel edit if replying
+        });
+        Vibration.vibrate(duration: 50);
+        _focusNode.requestFocus(); // Auto-focus input
+        return false; // Do not dismiss
+      },
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 20),
+        child: Icon(Icons.reply_rounded, color: isDark ? Colors.white70 : Colors.grey[700]),
+      ),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          // ✅ ADD EDIT TO LONG PRESS (Only for my text messages)
+          onLongPress: () {
+            if (!isMe || _isSelectionMode) return;
+            
+            showModalBottomSheet(context: context, builder: (c) => Wrap(
               children: [
-                if (msg.isEdited) const Text("edited • ", style: TextStyle(fontSize: 10, color: Colors.white70)),
-                Text(DateFormat('h:mm a').format(msg.createdAt.toLocal()), style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
-                if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg)],
+                ListTile(
+                  leading: const Icon(Icons.reply), 
+                  title: const Text("Reply"), 
+                  onTap: () { 
+                    Navigator.pop(c); 
+                    setState(() {
+                      _replyingTo = msg;
+                      _editingMessage = null;
+                    });
+                    _focusNode.requestFocus();
+                  }
+                ),
+                if (msg.type == 'text') 
+                  ListTile(
+                    leading: const Icon(Icons.edit), 
+                    title: const Text("Edit"), 
+                    onTap: () { 
+                      Navigator.pop(c); 
+                      setState(() {
+                        _editingMessage = msg;
+                        _replyingTo = null;
+                        _textController.text = msg.text;
+                      }); 
+                      _focusNode.requestFocus();
+                    }
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red), 
+                  title: const Text("Delete", style: TextStyle(color: Colors.red)), 
+                  onTap: () { 
+                    Navigator.pop(c); 
+                    _toggleSelection(msg.id); 
+                    _deleteSelectedMessages(); 
+                  }
+                ),
               ],
-            )
-          ],
+            ));
+          },
+          child: Container(
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            decoration: BoxDecoration(
+              color: isMe ? primary : (isDark ? const Color(0xFF2C2C2C) : Colors.white),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ✅ RENDER QUOTED REPLY
+                if (msg.replyToId != null) 
+                  _buildReplyPreviewInBubble(msg, isMe, isDark, primary),
+
+                Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      _buildMessageContent(msg, isMe, isDark, primary),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (msg.isEdited) const Text("edited • ", style: TextStyle(fontSize: 10, color: Colors.white70)),
+                          Text(DateFormat('h:mm a').format(msg.createdAt.toLocal()), style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                          if (isMe) ...[const SizedBox(width: 4), _buildStatusIcon(msg)],
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
+  // ✅ HELPER: Reply Preview inside Bubble
+  Widget _buildReplyPreviewInBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
+    return Container(
+      margin: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(8),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: isMe ? Colors.white : primary, width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            msg.replyToSenderName ?? "User",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isMe ? Colors.white70 : primary)
+          ),
+          const SizedBox(height: 2),
+          Text(
+            msg.replyToType == 'text' ? (msg.replyToText ?? "") : "Media Attachment",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: isMe ? Colors.white60 : Colors.grey[700])
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageContent(ChatMessage msg, bool isMe, bool isDark, Color primary) {
+    if (msg.type == 'image') {
+      if (msg.localBytes != null) return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(msg.localBytes!, height: 200, width: 200, fit: BoxFit.cover));
+      if (msg.fileUrl != null && !msg.fileUrl!.startsWith('http')) return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(File(msg.fileUrl!), height: 200, width: 200, fit: BoxFit.cover));
+      return GestureDetector(onTap: () { if (msg.fileUrl != null) Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id))); }, child: Hero(tag: msg.id, child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: msg.fileUrl!, height: 200, fit: BoxFit.cover))));
+    }
+    
+    if (msg.type == 'audio') {
+      bool isPlaying = _playingMessageId == msg.id;
+      return Container(width: 200, padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [GestureDetector(onTap: () async { if (isPlaying) { await _audioPlayer.pause(); setState(() => _playingMessageId = null); } else { if (msg.fileUrl != null) { Source urlSource = msg.fileUrl!.startsWith('http') ? UrlSource(msg.fileUrl!) : DeviceFileSource(msg.fileUrl!); await _audioPlayer.play(urlSource); setState(() => _playingMessageId = msg.id); } } }, child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 36, color: isMe ? Colors.white : primary)), Expanded(child: Slider(value: isPlaying ? _currentPosition.inSeconds.toDouble() : 0.0, max: isPlaying ? _totalDuration.inSeconds.toDouble() : 1.0, activeColor: isMe ? Colors.white : primary, inactiveColor: isMe ? Colors.white38 : Colors.grey[300], onChanged: (val) { if(isPlaying) _audioPlayer.seek(Duration(seconds: val.toInt())); }))]));
+    }
+
+    if (msg.type == 'file') {
+      bool isDownloading = _downloadingFileId == msg.id;
+      return Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: isMe ? Colors.white.withOpacity(0.2) : Colors.grey[200], borderRadius: BorderRadius.circular(8)), child: Row(mainAxisSize: MainAxisSize.min, children: [GestureDetector(onTap: () => _downloadAndOpenWith(msg.fileUrl!, msg.fileName ?? "Doc", msg.id), child: Icon(Icons.description, color: isMe ? Colors.white : primary, size: 30)), const SizedBox(width: 8), Flexible(child: GestureDetector(onTap: () => _downloadAndOpenWith(msg.fileUrl!, msg.fileName ?? "Doc", msg.id), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(msg.fileName ?? "Document", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, color: isMe ? Colors.white : Colors.black87, decoration: TextDecoration.underline)), const SizedBox(height: 2), Text(isDownloading ? "Downloading..." : "Tap to open", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey))]))), if (!isDownloading) InkWell(onTap: () => _downloadAndSave(msg.fileUrl!, msg.fileName ?? "Doc", msg.id), borderRadius: BorderRadius.circular(20), child: Padding(padding: const EdgeInsets.all(6.0), child: Icon(Icons.download_rounded, color: isMe ? Colors.white70 : Colors.grey, size: 20))), if (isDownloading) const Padding(padding: EdgeInsets.only(left: 8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))]));
+    }
+
+    return Text.rich(TextSpan(children: _parseFormattedText(msg.text, TextStyle(color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87), fontSize: 15))));
+  }
+
   Widget _buildStatusIcon(ChatMessage msg) {
-    IconData icon;
-    Color color;
+    IconData icon; Color color;
     switch (msg.status) {
       case MessageStatus.sending: icon = Icons.access_time; color = Colors.white70; break;
       case MessageStatus.error: icon = Icons.error_outline; color = Colors.redAccent; break;
@@ -1006,32 +1062,20 @@ class _ChatScreenState extends State<ChatScreen> {
     final List<TextSpan> spans = [];
     final RegExp exp = RegExp(r'([*_~])(.*?)\1');
     text.splitMapJoin(exp, onMatch: (Match m) {
-        final String marker = m.group(1)!;
-        final String content = m.group(2)!;
+        final String marker = m.group(1)!; final String content = m.group(2)!;
         TextStyle newStyle = baseStyle;
         if (marker == '*') newStyle = newStyle.copyWith(fontWeight: FontWeight.bold);
         if (marker == '_') newStyle = newStyle.copyWith(fontStyle: FontStyle.italic);
         if (marker == '~') newStyle = newStyle.copyWith(decoration: TextDecoration.underline);
         spans.add(TextSpan(text: content, style: newStyle));
         return '';
-      },
-      onNonMatch: (String s) { spans.add(TextSpan(text: s, style: baseStyle)); return ''; },
+      }, onNonMatch: (String s) { spans.add(TextSpan(text: s, style: baseStyle)); return ''; },
     );
     return spans;
   }
   
   void _showAttachmentMenu() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Wrap(
-        alignment: WrapAlignment.spaceEvenly,
-        children: [
-          _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)),
-          _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)),
-          _attachOption(Icons.insert_drive_file, Colors.blue, "Document (PDF)", _pickFile),
-        ],
-      ),
-    );
+    showModalBottomSheet(context: context, builder: (context) => Wrap(alignment: WrapAlignment.spaceEvenly, children: [_attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), _attachOption(Icons.insert_drive_file, Colors.blue, "Document (PDF)", _pickFile)]));
   }
   
   Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
@@ -1039,78 +1083,86 @@ class _ChatScreenState extends State<ChatScreen> {
   }
   
   Widget _buildInputArea(bool isDark, Color primary) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-      child: SafeArea(
-        child: Row(
-          children: [
-            // ✅ Only show Mic if NOT on web
-            if (!_isRecording && !kIsWeb)
-              IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
-            
-            // On web, just show attachment button always
-            if (kIsWeb)
-               IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
+    return Column(
+      children: [
+        // ✅ REPLY / EDIT PREVIEW BAR
+        if (_replyingTo != null || _editingMessage != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: isDark ? Colors.grey[850] : Colors.grey[100],
+            child: Row(
+              children: [
+                Icon(_editingMessage != null ? Icons.edit : Icons.reply, color: primary, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _editingMessage != null ? "Editing Message" : "Replying to ${_replyingTo!.senderId == _myUserId ? 'Yourself' : 'User'}",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: primary),
+                      ),
+                      Text(
+                        _editingMessage != null ? _editingMessage!.text : (_replyingTo!.type == 'text' ? _replyingTo!.text : "Media"),
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () { setState(() { _replyingTo = null; _editingMessage = null; _textController.clear(); }); })
+              ],
+            ),
+          ),
 
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[900] : const Color(0xFFF2F4F5),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: _isRecording 
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Icon(Icons.mic, color: Colors.red, size: 20),
-                        Text(
-                          "Recording... ${_recordDuration ~/ 60}:${(_recordDuration % 60).toString().padLeft(2, '0')}", 
-                          style: const TextStyle(fontWeight: FontWeight.bold)
+        // STANDARD INPUT
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          child: SafeArea(
+            child: Row(
+              children: [
+                if (!_isRecording && !kIsWeb) IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
+                if (kIsWeb) IconButton(icon: Icon(Icons.add, color: primary), onPressed: _showAttachmentMenu),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(color: isDark ? Colors.grey[900] : const Color(0xFFF2F4F5), borderRadius: BorderRadius.circular(24)),
+                    child: _isRecording 
+                      ? Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Icon(Icons.mic, color: Colors.red, size: 20), Text("Recording... ${_recordDuration ~/ 60}:${(_recordDuration % 60).toString().padLeft(2, '0')}", style: const TextStyle(fontWeight: FontWeight.bold)), TextButton(onPressed: _cancelRecording, child: const Text("Cancel", style: TextStyle(color: Colors.red)))])
+                      : TextField(
+                          controller: _textController, focusNode: _focusNode, // ✅ Attach Focus Node
+                          maxLines: 4, minLines: 1,
+                          onChanged: (val) {
+                            setState((){});
+                            if (val.isNotEmpty) {
+                               if (!_isTyping) { _isTyping = true; SocketService().socket?.emit('typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); }
+                               _typingDebounce?.cancel();
+                               _typingDebounce = Timer(const Duration(seconds: 2), () { _isTyping = false; SocketService().socket?.emit('stop_typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); });
+                            }
+                          },
+                          decoration: const InputDecoration(hintText: "Message...", border: InputBorder.none),
+                          textCapitalization: TextCapitalization.sentences,
                         ),
-                        TextButton(onPressed: _cancelRecording, child: const Text("Cancel", style: TextStyle(color: Colors.red)))
-                      ],
-                    )
-                  : TextField(
-                      controller: _textController,
-                      maxLines: 4, minLines: 1,
-                      onChanged: (val) {
-                        setState((){});
-                        if (val.isNotEmpty) {
-                           if (!_isTyping) { _isTyping = true; SocketService().socket?.emit('typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); }
-                           _typingDebounce?.cancel();
-                           _typingDebounce = Timer(const Duration(seconds: 2), () { _isTyping = false; SocketService().socket?.emit('stop_typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); });
-                        }
-                      },
-                      decoration: const InputDecoration(hintText: "Message...", border: InputBorder.none),
-                      textCapitalization: TextCapitalization.sentences,
-                    ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            
-            CircleAvatar(
-              backgroundColor: primary,
-              child: IconButton(
-                icon: Icon(
-                  (_textController.text.trim().isNotEmpty || _isRecording || kIsWeb) ? Icons.send : Icons.mic, 
-                  color: Colors.white, size: 20
+                  ),
                 ),
-                onPressed: () {
-                  if (_isRecording) {
-                    _stopRecording(send: true);
-                  } else if (_textController.text.trim().isNotEmpty) {
-                    _sendMessage(text: _textController.text);
-                  } else if (!kIsWeb) {
-                    _startRecording();
-                  }
-                },
-              ),
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: primary,
+                  child: IconButton(
+                    icon: Icon((_textController.text.trim().isNotEmpty || _isRecording || kIsWeb) ? Icons.send : Icons.mic, color: Colors.white, size: 20),
+                    onPressed: () {
+                      if (_isRecording) { _stopRecording(send: true); }
+                      else if (_textController.text.trim().isNotEmpty) { _sendMessage(text: _textController.text); }
+                      else if (!kIsWeb) { _startRecording(); }
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

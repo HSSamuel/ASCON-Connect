@@ -136,7 +136,6 @@ router.post("/delete-multiple", verify, async (req, res) => {
       return res.status(400).json("No IDs provided");
 
     // ✅ CHANGED: Allow deleting ANY message (Sent or Received)
-    // We fetch them first just to get the conversationId for the socket event
     const messages = await Message.find({ _id: { $in: messageIds } });
 
     if (messages.length === 0)
@@ -147,7 +146,7 @@ router.post("/delete-multiple", verify, async (req, res) => {
     // ✅ PERFORM HARD DELETE
     await Message.deleteMany({ _id: { $in: messageIds } });
 
-    // Emit Real-time Event (So it disappears for the other person too)
+    // Emit Real-time Event
     _emitDeleteEvent(req, conversationId, messageIds);
 
     res.status(200).json({ success: true, deletedIds: messageIds });
@@ -173,6 +172,8 @@ router.get("/:conversationId", verify, async (req, res) => {
     if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
+      .populate("replyTo", "text sender type fileUrl") // ✅ POPULATE REPLY INFO
+      .populate("replyTo.sender", "fullName") // ✅ POPULATE ORIGINAL SENDER NAME
       .sort({ createdAt: -1 })
       .limit(limit);
 
@@ -183,7 +184,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. SEND A MESSAGE (Updated for Always-On Notifications)
+// 6. SEND A MESSAGE (Updated for Reply & Edit)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -191,13 +192,13 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     try {
-      const { text, type } = req.body;
+      const { text, type, replyToId } = req.body; // ✅ GET replyToId
       let fileUrl = "";
-      let fileName = ""; 
+      let fileName = "";
 
       if (req.file) {
         fileUrl = req.file.path;
-        fileName = req.file.originalname; 
+        fileName = req.file.originalname;
       }
 
       const newMessage = new Message({
@@ -207,10 +208,18 @@ router.post(
         type: type || "text",
         fileUrl: fileUrl,
         fileName: fileName,
+        replyTo: replyToId || null, // ✅ SAVE REPLY REFERENCE
         isRead: false,
       });
 
       const savedMessage = await newMessage.save();
+
+      // ✅ POPULATE IMMEDIATELY FOR SOCKET
+      await savedMessage.populate({
+        path: "replyTo",
+        select: "text sender type",
+        populate: { path: "sender", select: "fullName" },
+      });
 
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
@@ -239,10 +248,8 @@ router.post(
         });
 
         // 2. Push Notification (ALWAYS SEND)
-        // ✅ REMOVED the `if (!receiver.isOnline)` check.
-        // Now it sends regardless of status.
         const sender = await User.findById(req.user._id);
-        
+
         await sendPersonalNotification(
           receiverId.toString(),
           `Message from ${sender.fullName}`,
@@ -253,7 +260,7 @@ router.post(
             senderId: req.user._id.toString(),
             senderName: sender.fullName,
             senderProfilePic: sender.profilePicture || "",
-          }
+          },
         );
       }
 
@@ -301,8 +308,6 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 router.delete("/:conversationId", verify, async (req, res) => {
   try {
     // ✅ CHANGED: Directly delete the conversation and all its messages
-    // This removes it for BOTH users immediately.
-
     const conversation = await Conversation.findByIdAndDelete(
       req.params.conversationId,
     );
@@ -310,9 +315,6 @@ router.delete("/:conversationId", verify, async (req, res) => {
     if (conversation) {
       // Delete all messages associated with this chat
       await Message.deleteMany({ conversationId: req.params.conversationId });
-
-      // Optional: Emit event to participants to remove it from their lists in real-time
-      // _emitConversationDeleteEvent(req, conversation);
     }
 
     res
@@ -329,6 +331,7 @@ router.delete("/:conversationId", verify, async (req, res) => {
 router.put("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
+    if (!msg) return res.status(404).json("Not found");
     if (msg.sender.toString() !== req.user._id) {
       return res.status(403).json("Unauthorized");
     }

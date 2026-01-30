@@ -18,9 +18,15 @@ const messageSchema = new mongoose.Schema(
     text: { type: String, default: "" },
     fileUrl: { type: String, default: "" },
 
-    // ✅ NEW: Stores the original filename (e.g. "MyCV.pdf")
-    // instead of the random Cloudinary ID.
+    // ✅ Stores the original filename (e.g. "MyCV.pdf")
     fileName: { type: String, default: "" },
+
+    // ✅ NEW: Reply Functionality
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
+    },
 
     isDeleted: { type: Boolean, default: false },
     isEdited: { type: Boolean, default: false },

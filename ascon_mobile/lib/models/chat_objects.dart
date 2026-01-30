@@ -15,6 +15,12 @@ class ChatMessage {
   // ✅ NEW: Store file bytes for Web support
   final Uint8List? localBytes; 
   
+  // ✅ NEW: Reply Data (for Swipe-to-Reply)
+  final String? replyToId;
+  final String? replyToText;
+  final String? replyToSenderName;
+  final String? replyToType; // 'text', 'image', etc.
+  
   bool isDeleted;
   bool isEdited;
   bool isRead; 
@@ -28,7 +34,11 @@ class ChatMessage {
     this.type = 'text',
     this.fileUrl,
     this.fileName,
-    this.localBytes, // ✅ Initialize
+    this.localBytes, 
+    this.replyToId,
+    this.replyToText,
+    this.replyToSenderName,
+    this.replyToType,
     this.isDeleted = false,
     this.isEdited = false,
     this.isRead = false,
@@ -36,14 +46,41 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    // Extract Reply Info safely
+    String? rId;
+    String? rText;
+    String? rSender;
+    String? rType;
+
+    if (json['replyTo'] != null) {
+      // Handle expanded object (Populated)
+      if (json['replyTo'] is Map) {
+        rId = json['replyTo']['_id'];
+        rText = json['replyTo']['text'];
+        rType = json['replyTo']['type'];
+        
+        // Handle nested population of sender inside reply
+        if (json['replyTo']['sender'] is Map) {
+           rSender = json['replyTo']['sender']['fullName'];
+        }
+      } else {
+        // Fallback if just an ID string
+        rId = json['replyTo'].toString();
+      }
+    }
+
     return ChatMessage(
       id: json['_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      senderId: json['sender'] ?? '',
+      senderId: (json['sender'] is Map) ? json['sender']['_id'] : json['sender'] ?? '',
       text: json['text'] ?? '',
       createdAt: DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now(),
       type: json['type'] ?? 'text',
       fileUrl: json['fileUrl'],
       fileName: json['fileName'],
+      replyToId: rId,
+      replyToText: rText,
+      replyToSenderName: rSender,
+      replyToType: rType,
       isDeleted: json['isDeleted'] ?? false,
       isEdited: json['isEdited'] ?? false,
       isRead: json['isRead'] ?? false,
@@ -60,6 +97,13 @@ class ChatMessage {
       'type': type,
       'fileUrl': fileUrl,
       'fileName': fileName,
+      // ✅ Save Reply Info back to Cache/JSON
+      'replyTo': replyToId != null ? {
+        '_id': replyToId,
+        'text': replyToText,
+        'type': replyToType,
+        'sender': {'fullName': replyToSenderName}
+      } : null,
       'isDeleted': isDeleted,
       'isEdited': isEdited,
       'isRead': isRead,
