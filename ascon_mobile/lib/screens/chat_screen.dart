@@ -150,6 +150,8 @@ class _ChatScreenState extends State<ChatScreen> {
     SocketService().socket?.off('messages_deleted_bulk');
     SocketService().socket?.off('typing_start');
     SocketService().socket?.off('typing_stop');
+    // ✅ NEW LISTENER
+    SocketService().socket?.off('user_status_result');
 
     super.dispose();
   }
@@ -164,8 +166,35 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _setupSocketListeners() {
     final socket = SocketService().socket;
+    if (socket == null) return;
 
-    socket?.on('new_message', (data) {
+    // ✅ 1. Active Check Function (Fixes Notification Status)
+    void checkStatus() {
+      // debugPrint("🔍 Checking status for: ${widget.receiverId}");
+      socket.emit('check_user_status', {'userId': widget.receiverId});
+    }
+
+    // ✅ 2. Trigger check immediately if connected
+    if (socket.connected) {
+      checkStatus();
+    }
+
+    // ✅ 3. Trigger check on reconnection (FIXED: Use generic .on())
+    socket.on('connect', (_) => checkStatus());
+    socket.on('reconnect', (_) => checkStatus());
+
+    // ✅ 4. Listen for Status Result
+    socket.on('user_status_result', (data) {
+      if (!mounted) return;
+      if (data['userId'] == widget.receiverId) {
+        setState(() {
+          _isPeerOnline = data['isOnline'];
+          if (!_isPeerOnline) _peerLastSeen = data['lastSeen'];
+        });
+      }
+    });
+
+    socket.on('new_message', (data) {
       if (!mounted) return;
       if (data['conversationId'] == _activeConversationId) {
         setState(() {
@@ -182,7 +211,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    socket?.on('user_status_update', (data) { 
+    socket.on('user_status_update', (data) { 
       if (mounted && data['userId'] == widget.receiverId) {
         setState(() {
           _isPeerOnline = data['isOnline'];
@@ -191,7 +220,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    socket?.on('messages_read', (data) { 
+    socket.on('messages_read', (data) { 
       if (mounted && data['conversationId'] == _activeConversationId) {
         setState(() {
           for (var msg in _messages) {
@@ -202,19 +231,19 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    socket?.on('typing_start', (data) {
+    socket.on('typing_start', (data) {
        if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
         setState(() => _isPeerTyping = true);
       }
     });
 
-    socket?.on('typing_stop', (data) {
+    socket.on('typing_stop', (data) {
       if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
         setState(() => _isPeerTyping = false);
       }
     });
 
-    socket?.on('messages_deleted_bulk', (data) {
+    socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == _activeConversationId) {
         List<dynamic> ids = data['messageIds'];
         setState(() {

@@ -59,8 +59,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         setState(() {
           _conversations = data
               .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
-              // ✅ FIX: Filter out conversations where 'otherUserId' is ME.
-              // This happens if the other person deleted the chat and I am the only participant left.
+              // Filter out conversations where 'otherUserId' is ME.
               .where((chat) => chat.otherUserId != _myUserId) 
               .toList();
           _isLoading = false;
@@ -88,7 +87,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       }
     } catch (e) {
       debugPrint("Delete failed: $e");
-      _loadChats(); 
+      _loadChats(); // Revert if failed
     }
   }
 
@@ -127,69 +126,82 @@ class _ChatListScreenState extends State<ChatListScreen> {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _conversations.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _conversations.length,
-                  separatorBuilder: (_, __) => Divider(color: Colors.grey.withOpacity(0.1)),
-                  itemBuilder: (context, index) {
-                    final chat = _conversations[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      onTap: () async {
-                        await Navigator.push(
-                          context, 
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              conversationId: chat.id,
-                              receiverName: chat.otherUserName,
-                              receiverId: chat.otherUserId ?? '', 
-                              receiverProfilePic: chat.otherUserImage, 
-                            )
-                          )
-                        );
-                        _loadChats(); 
-                      },
-                      leading: CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Colors.grey[300],
-                        backgroundImage: (chat.otherUserImage != null && chat.otherUserImage!.startsWith('http'))
-                            ? CachedNetworkImageProvider(chat.otherUserImage!)
-                            : null,
-                        child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
-                            ? Text(
-                                chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
-                                style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
+      // ✅ ADDED REFRESH INDICATOR
+      body: RefreshIndicator(
+        onRefresh: _loadChats, // Triggers reload on swipe down
+        color: primaryColor,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _conversations.isEmpty
+                // ✅ Wrap empty state in ListView so pull-to-refresh still works
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+                      _buildEmptyState(),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(), // Ensures bounce effect
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _conversations.length,
+                    separatorBuilder: (_, __) => Divider(color: Colors.grey.withOpacity(0.1)),
+                    itemBuilder: (context, index) {
+                      final chat = _conversations[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        onTap: () async {
+                          await Navigator.push(
+                            context, 
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                conversationId: chat.id,
+                                receiverName: chat.otherUserName,
+                                receiverId: chat.otherUserId ?? '', 
+                                receiverProfilePic: chat.otherUserImage, 
                               )
-                            : null,
-                      ),
-                      title: Text(
-                        chat.otherUserName,
-                        style: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 16),
-                      ),
-                      subtitle: Text(
-                        chat.lastMessage,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
-                      ),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            DateFormat('MMM d').format(chat.lastMessageTime.toLocal()),
-                            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                          ),
-                        ],
-                      ),
-                      onLongPress: () => _confirmDelete(chat),
-                    );
-                  },
-                ),
+                            )
+                          );
+                          _loadChats(); 
+                        },
+                        leading: CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Colors.grey[300],
+                          backgroundImage: (chat.otherUserImage != null && chat.otherUserImage!.startsWith('http'))
+                              ? CachedNetworkImageProvider(chat.otherUserImage!)
+                              : null,
+                          child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
+                              ? Text(
+                                  chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
+                                )
+                              : null,
+                        ),
+                        title: Text(
+                          chat.otherUserName,
+                          style: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                        subtitle: Text(
+                          chat.lastMessage,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
+                        ),
+                        trailing: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              DateFormat('MMM d').format(chat.lastMessageTime.toLocal()),
+                              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                        onLongPress: () => _confirmDelete(chat),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 

@@ -154,6 +154,31 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ✅ NEW: On-Demand Status Check (Fixes Deep Link Status Issue)
+  socket.on("check_user_status", async ({ userId }) => {
+    if (!userId) return;
+
+    const isOnline =
+      onlineUsers.has(userId) && onlineUsers.get(userId).size > 0;
+
+    let lastSeen = null;
+    if (!isOnline) {
+      try {
+        const user = await User.findById(userId).select("lastSeen");
+        if (user) lastSeen = user.lastSeen;
+      } catch (e) {
+        console.error("Status check error", e);
+      }
+    }
+
+    // Send result back ONLY to the requester
+    socket.emit("user_status_result", {
+      userId,
+      isOnline,
+      lastSeen,
+    });
+  });
+
   // 2. Typing Events
   socket.on("typing", (data) => {
     if (data.receiverId) {

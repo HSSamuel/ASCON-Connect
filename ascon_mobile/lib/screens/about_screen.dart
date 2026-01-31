@@ -167,7 +167,7 @@ class AboutScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildSocialIcon(FontAwesomeIcons.facebook, const Color(0xFF1877F2), "https://web.facebook.com/ascontopobadagry/?_rdc=1&_rdr#"),
+                      _buildSocialIcon(FontAwesomeIcons.facebook, const Color(0xFF1877F2), "https://web.facebook.com/ascontopobadagry"),
                       const SizedBox(width: 20),
                       _buildSocialIcon(FontAwesomeIcons.xTwitter, isDark ? Colors.white : Colors.black, "https://x.com/AsconBadagry"),
                       const SizedBox(width: 20),

@@ -7,7 +7,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/full_screen_image.dart'; 
 import 'chat_screen.dart'; 
 // ✅ Import DataService for API calls
-import '../services/data_service.dart'; 
+import '../services/data_service.dart';
+// ✅ Import SocketService for Real-Time Presence
+import '../services/socket_service.dart';
 
 class AlumniDetailScreen extends StatefulWidget {
   final Map<String, dynamic> alumniData;
@@ -22,18 +24,83 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   // ✅ State for Mentorship Logic
   final DataService _dataService = DataService();
   String _mentorshipStatus = "Loading"; // None, Pending, Accepted, Rejected
-  String? _requestId; // ✅ NEW: Store ID to allow cancellation
+  String? _requestId; // Store ID to allow cancellation
   bool _isLoadingStatus = false;
+
+  // ✅ State for Real-Time Presence
+  late bool _isOnline;
+  String? _lastSeen;
 
   @override
   void initState() {
     super.initState();
-    // Only fetch status if they are actually a mentor
+    
+    // Initialize Status from passed data first
+    _isOnline = widget.alumniData['isOnline'] == true;
+    _lastSeen = widget.alumniData['lastSeen'];
+
+    // Only fetch mentorship status if they are actually a mentor
     if (widget.alumniData['isOpenToMentorship'] == true) {
       _checkStatus();
     } else {
       _mentorshipStatus = "None"; 
     }
+
+    // ✅ Start Listening for Real-Time Updates
+    _setupSocketListeners();
+  }
+
+  @override
+  void dispose() {
+    // Clean up specific listener to avoid memory leaks
+    SocketService().socket?.off('user_status_result');
+    // Note: We don't remove 'user_status_update' globally as other screens might need it,
+    // but the mounted check handles safety.
+    super.dispose();
+  }
+
+  // ✅ REAL-TIME PRESENCE LOGIC
+  void _setupSocketListeners() {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    final targetUserId = widget.alumniData['_id'];
+
+    // 1. Define Check Function
+    void checkPresence() {
+      socket.emit('check_user_status', {'userId': targetUserId});
+    }
+
+    // 2. Initial Check
+    if (socket.connected) {
+      checkPresence();
+    }
+
+    // 3. Check on Reconnect
+    socket.on('connect', (_) => checkPresence());
+    socket.on('reconnect', (_) => checkPresence());
+
+    // 4. Listen for Check Result
+    socket.on('user_status_result', (data) {
+      if (!mounted) return;
+      if (data['userId'] == targetUserId) {
+        setState(() {
+          _isOnline = data['isOnline'];
+          if (!_isOnline) _lastSeen = data['lastSeen'];
+        });
+      }
+    });
+
+    // 5. Listen for Live Updates (Push)
+    socket.on('user_status_update', (data) {
+      if (!mounted) return;
+      if (data['userId'] == targetUserId) {
+        setState(() {
+          _isOnline = data['isOnline'];
+          if (!_isOnline) _lastSeen = data['lastSeen'];
+        });
+      }
+    });
   }
 
   // ✅ 1. Check current relationship status from Backend
@@ -161,8 +228,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     final bool showPhone = widget.alumniData['isPhoneVisible'] == true;
     final bool isMentor = widget.alumniData['isOpenToMentorship'] == true;
     
-    final bool isOnline = widget.alumniData['isOnline'] == true;
-    final String statusText = isOnline ? "Active Now" : _formatLastSeen(widget.alumniData['lastSeen']);
+    // ✅ Use Live State for Status
+    final String statusText = _isOnline ? "Active Now" : _formatLastSeen(_lastSeen);
 
     final String phone = widget.alumniData['phoneNumber'] ?? '';
     final String linkedin = widget.alumniData['linkedin'] ?? '';
@@ -191,11 +258,11 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
       // Logic based on API Status
       if (_mentorshipStatus == "Pending") {
-        label = "Withdraw Request"; // ✅ UPDATED: Cancel Option
+        label = "Withdraw Request"; // ✅ Cancel Option
         btnColor = Colors.orange[800]!;
         icon = Icons.cancel_outlined;
         
-        // ✅ ADDED: Withdraw Logic
+        // ✅ Withdraw Logic
         action = () async {
            final confirm = await showDialog(
              context: context, 
@@ -231,7 +298,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
               receiverId: widget.alumniData['_id'],
               receiverName: fullName,
               receiverProfilePic: imageString,
-              isOnline: isOnline,
+              isOnline: _isOnline, // ✅ Pass live status
+              lastSeen: _lastSeen, // ✅ Pass live last seen
            )));
         };
       } else if (_mentorshipStatus == "Rejected") {
@@ -367,7 +435,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         Container(
                           width: 8, height: 8,
                           decoration: BoxDecoration(
-                            color: isOnline ? Colors.green : Colors.grey[400],
+                            color: _isOnline ? Colors.green : Colors.grey[400],
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -375,7 +443,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         Text(
                           statusText, 
                           style: GoogleFonts.lato(
-                            color: isOnline ? Colors.green[700] : Colors.grey[600],
+                            color: _isOnline ? Colors.green[700] : Colors.grey[600],
                             fontSize: 12,
                             fontWeight: FontWeight.w600
                           ),
@@ -441,8 +509,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         receiverId: widget.alumniData['_id'] ?? '',
                         receiverName: fullName,
                         receiverProfilePic: imageString,
-                        isOnline: isOnline,
-                        lastSeen: widget.alumniData['lastSeen'],
+                        isOnline: _isOnline, // ✅ Pass live status
+                        lastSeen: _lastSeen, // ✅ Pass live last seen
                       ),
                     ),
                   );
