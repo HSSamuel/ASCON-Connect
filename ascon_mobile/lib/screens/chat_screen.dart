@@ -56,7 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _picker = ImagePicker();
-  final FocusNode _focusNode = FocusNode(); // ✅ Added FocusNode for Reply/Edit
+  final FocusNode _focusNode = FocusNode(); 
 
   List<ChatMessage> _messages = [];
   String? _activeConversationId;
@@ -106,6 +106,17 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupScrollListener();
     _setupSocketListeners();
     _setupAudioPlayerListeners();
+
+    // ✅ ROBUST RETRY: Check status again after 1.5s
+    // This catches cases where socket was connecting when screen opened (Notifications)
+    Timer(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+         final socket = SocketService().socket;
+         if (socket != null && socket.connected) {
+           socket.emit('check_user_status', {'userId': widget.receiverId});
+         }
+      }
+    });
   }
 
   void _setupAudioPlayerListeners() {
@@ -131,7 +142,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _textController.dispose();
     _scrollController.dispose();
-    _focusNode.dispose(); // ✅ Dispose FocusNode
+    _focusNode.dispose(); 
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
     _audioRecorder.dispose();
@@ -166,9 +177,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _setupSocketListeners() {
     final socket = SocketService().socket;
-    if (socket == null) return;
+    
+    // ✅ SAFETY CHECK: If socket not initialized yet, force it.
+    if (socket == null) {
+      SocketService().initSocket();
+      Future.delayed(const Duration(milliseconds: 500), _setupSocketListeners);
+      return;
+    }
 
-    // ✅ 1. Active Check Function (Fixes Notification Status)
+    // ✅ 1. Active Check Function
     void checkStatus() {
       // debugPrint("🔍 Checking status for: ${widget.receiverId}");
       socket.emit('check_user_status', {'userId': widget.receiverId});
@@ -179,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
       checkStatus();
     }
 
-    // ✅ 3. Trigger check on reconnection (FIXED: Use generic .on())
+    // ✅ 3. Trigger check on reconnection 
     socket.on('connect', (_) => checkStatus());
     socket.on('reconnect', (_) => checkStatus());
 
@@ -370,18 +387,33 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ✅ UPDATED STATUS TEXT LOGIC (From Alumni Detail Screen)
   String _getStatusText() {
     if (_isPeerTyping) return "Typing...";
     if (_isPeerOnline) return "Active Now";
     if (_peerLastSeen == null) return "Offline";
+    
     try {
       final lastSeen = DateTime.parse(_peerLastSeen!).toLocal();
       final now = DateTime.now();
+      final diff = now.difference(lastSeen);
+
+      if (diff.inMinutes < 1) return "Last seen just now";
+      if (diff.inMinutes < 60) return "Last seen ${diff.inMinutes}m ago";
+      
       if (now.day == lastSeen.day && now.month == lastSeen.month && now.year == lastSeen.year) {
         return "Last seen today at ${DateFormat('h:mm a').format(lastSeen)}";
       }
+      
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (yesterday.day == lastSeen.day && yesterday.month == lastSeen.month && yesterday.year == lastSeen.year) {
+        return "Last seen yesterday at ${DateFormat('h:mm a').format(lastSeen)}";
+      }
+
       return "Last seen ${DateFormat('MMM d, h:mm a').format(lastSeen)}";
-    } catch (e) { return "Offline"; }
+    } catch (e) {
+      return "Offline";
+    }
   }
 
   // --------------------------------------------------------

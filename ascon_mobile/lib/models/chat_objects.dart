@@ -1,4 +1,4 @@
-import 'dart:typed_data'; // ✅ Needed for Uint8List
+import 'dart:typed_data'; // ✅ FIXED Typo: Changed from dart:typed_material
 
 enum MessageStatus { sending, sent, delivered, read, error }
 
@@ -12,10 +12,10 @@ class ChatMessage {
   final String? fileUrl;
   final String? fileName;
   
-  // ✅ NEW: Store file bytes for Web support
+  // Store file bytes for Web support
   final Uint8List? localBytes; 
   
-  // ✅ NEW: Reply Data (for Swipe-to-Reply)
+  // Reply Data (for Swipe-to-Reply)
   final String? replyToId;
   final String? replyToText;
   final String? replyToSenderName;
@@ -46,25 +46,20 @@ class ChatMessage {
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    // Extract Reply Info safely
     String? rId;
     String? rText;
     String? rSender;
     String? rType;
 
     if (json['replyTo'] != null) {
-      // Handle expanded object (Populated)
       if (json['replyTo'] is Map) {
         rId = json['replyTo']['_id'];
         rText = json['replyTo']['text'];
         rType = json['replyTo']['type'];
-        
-        // Handle nested population of sender inside reply
         if (json['replyTo']['sender'] is Map) {
            rSender = json['replyTo']['sender']['fullName'];
         }
       } else {
-        // Fallback if just an ID string
         rId = json['replyTo'].toString();
       }
     }
@@ -97,7 +92,6 @@ class ChatMessage {
       'type': type,
       'fileUrl': fileUrl,
       'fileName': fileName,
-      // ✅ Save Reply Info back to Cache/JSON
       'replyTo': replyToId != null ? {
         '_id': replyToId,
         'text': replyToText,
@@ -107,7 +101,6 @@ class ChatMessage {
       'isDeleted': isDeleted,
       'isEdited': isEdited,
       'isRead': isRead,
-      // Note: We do NOT save localBytes to cache/JSON
     };
   }
 }
@@ -119,6 +112,9 @@ class ChatConversation {
   final String? otherUserId;
   final String lastMessage;
   final DateTime lastMessageTime;
+  
+  bool isOnline;
+  String? lastSeen;
 
   ChatConversation({
     required this.id,
@@ -127,16 +123,20 @@ class ChatConversation {
     this.otherUserId,
     required this.lastMessage,
     required this.lastMessageTime,
+    this.isOnline = false,
+    this.lastSeen,
   });
 
   factory ChatConversation.fromJson(Map<String, dynamic> json, String myUserId) {
-    final participants = (json['participants'] as List).toList();
+    final participants = (json['participants'] as List?) ?? []; // ✅ Safe null check
     
+    // ✅ Safe search for the other participant
     var otherUser = participants.firstWhere(
-      (user) => user['_id'].toString() != myUserId, 
+      (user) => user != null && user['_id'].toString() != myUserId, 
       orElse: () => null,
     );
 
+    // Fallback if the other user isn't found
     if (otherUser == null && participants.isNotEmpty) {
       otherUser = participants[0];
     }
@@ -144,6 +144,9 @@ class ChatConversation {
     final String name = otherUser?['fullName'] ?? 'Alumni Member';
     final String? image = otherUser?['profilePicture'];
     final String? uid = otherUser?['_id'];
+    
+    final bool online = otherUser?['isOnline'] ?? false;
+    final String? seen = otherUser?['lastSeen']?.toString();
 
     return ChatConversation(
       id: json['_id'] ?? '',
@@ -151,7 +154,9 @@ class ChatConversation {
       otherUserImage: image,
       otherUserId: uid,
       lastMessage: json['lastMessage'] ?? 'Start a conversation',
-      lastMessageTime: DateTime.parse(json['lastMessageAt'] ?? DateTime.now().toIso8601String()),
+      lastMessageTime: DateTime.tryParse(json['lastMessageAt']?.toString() ?? '') ?? DateTime.now(),
+      isOnline: online,
+      lastSeen: seen,
     );
   }
 }

@@ -15,7 +15,9 @@ import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
 import '../screens/facility_detail_screen.dart'; 
 import '../screens/mentorship_dashboard_screen.dart'; 
-import '../screens/chat_screen.dart'; // ✅ Added Chat Screen Import
+import '../screens/chat_screen.dart'; 
+// ✅ Import SocketService to wake it up
+import '../services/socket_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -126,22 +128,26 @@ class NotificationService {
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // ✅ 1. CHAT NAVIGATION (Updated)
+      // ✅ 1. CHAT NAVIGATION
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
-        // ✅ Read Name and Pic from payload (Default to "Alumni Member" if missing)
         final senderName = data['senderName'] ?? "Alumni Member";
         final senderProfilePic = data['senderProfilePic'];
 
         if (conversationId != null && senderId != null) {
+          // ✅ FIX: Wake up socket immediately!
+          // This ensures the connection is starting while the screen transitions
+          SocketService().initSocket(); 
+
           navigatorKey.currentState?.push(
             MaterialPageRoute(
               builder: (_) => ChatScreen(
                 conversationId: conversationId,
                 receiverId: senderId, 
-                receiverName: senderName, // ✅ Pass dynamic name
-                receiverProfilePic: senderProfilePic, // ✅ Pass dynamic pic
+                receiverName: senderName,
+                receiverProfilePic: senderProfilePic,
+                // Note: We don't know isOnline status here, ChatScreen will fetch it.
               ),
             ),
           );

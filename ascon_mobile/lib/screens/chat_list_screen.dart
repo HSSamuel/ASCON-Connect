@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../services/api_client.dart';
+import '../services/socket_service.dart'; // ✅ Added for Real-Time Status
 import '../models/chat_objects.dart';
 import '../config/storage_config.dart';
 import 'chat_screen.dart';
@@ -23,6 +24,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final _storage = StorageConfig.storage;
   
   List<ChatConversation> _conversations = [];
+  final Map<String, bool> _onlineStatus = {}; // ✅ Store Online Status
   bool _isLoading = true;
   String? _myUserId;
 
@@ -30,6 +32,39 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void initState() {
     super.initState();
     _loadChats();
+    _setupSocketListeners(); // ✅ Initialize Socket Listeners
+  }
+
+  @override
+  void dispose() {
+    // Clean up listeners when screen is destroyed
+    SocketService().socket?.off('user_status_update');
+    SocketService().socket?.off('user_status_result');
+    super.dispose();
+  }
+
+  // ✅ LISTEN FOR STATUS UPDATES
+  void _setupSocketListeners() {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    // 1. Listen for Broadcasts (Real-time updates)
+    socket.on('user_status_update', (data) {
+      if (mounted) {
+        setState(() {
+          _onlineStatus[data['userId']] = data['isOnline'];
+        });
+      }
+    });
+
+    // 2. Listen for Specific Results (Initial checks)
+    socket.on('user_status_result', (data) {
+      if (mounted) {
+        setState(() {
+          _onlineStatus[data['userId']] = data['isOnline'];
+        });
+      }
+    });
   }
 
   Future<void> _loadChats() async {
@@ -64,10 +99,25 @@ class _ChatListScreenState extends State<ChatListScreen> {
               .toList();
           _isLoading = false;
         });
+
+        // ✅ Check Status for all loaded users immediately
+        _checkInitialStatuses();
       }
     } catch (e) {
       debugPrint("Error loading chats: $e");
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ BATCH CHECK STATUS
+  void _checkInitialStatuses() {
+    final socket = SocketService().socket;
+    if (socket != null && socket.connected) {
+      for (var chat in _conversations) {
+        if (chat.otherUserId != null) {
+           socket.emit('check_user_status', {'userId': chat.otherUserId});
+        }
+      }
     }
   }
 
@@ -148,6 +198,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     separatorBuilder: (_, __) => Divider(color: Colors.grey.withOpacity(0.1)),
                     itemBuilder: (context, index) {
                       final chat = _conversations[index];
+                      // ✅ Check if this user is online
+                      final isOnline = _onlineStatus[chat.otherUserId] == true;
+
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         onTap: () async {
@@ -159,23 +212,46 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 receiverName: chat.otherUserName,
                                 receiverId: chat.otherUserId ?? '', 
                                 receiverProfilePic: chat.otherUserImage, 
+                                isOnline: isOnline, // ✅ PASS ONLINE STATUS
                               )
                             )
                           );
                           _loadChats(); 
                         },
-                        leading: CircleAvatar(
-                          radius: 28,
-                          backgroundColor: Colors.grey[300],
-                          backgroundImage: (chat.otherUserImage != null && chat.otherUserImage!.startsWith('http'))
-                              ? CachedNetworkImageProvider(chat.otherUserImage!)
-                              : null,
-                          child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
-                              ? Text(
-                                  chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
-                                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
-                                )
-                              : null,
+                        // ✅ MODIFIED AVATAR WITH GREEN DOT
+                        leading: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 28,
+                              backgroundColor: Colors.grey[300],
+                              backgroundImage: (chat.otherUserImage != null && chat.otherUserImage!.startsWith('http'))
+                                  ? CachedNetworkImageProvider(chat.otherUserImage!)
+                                  : null,
+                              child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
+                                  ? Text(
+                                      chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
+                                      style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
+                                    )
+                                  : null,
+                            ),
+                            if (isOnline)
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(context).scaffoldBackgroundColor, 
+                                      width: 2
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         title: Text(
                           chat.otherUserName,
