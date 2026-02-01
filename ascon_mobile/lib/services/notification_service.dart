@@ -16,7 +16,7 @@ import '../screens/programme_detail_screen.dart';
 import '../screens/facility_detail_screen.dart'; 
 import '../screens/mentorship_dashboard_screen.dart'; 
 import '../screens/chat_screen.dart'; 
-// ✅ Import SocketService to wake it up
+import '../screens/login_screen.dart'; // ✅ Import Login Screen
 import '../services/socket_service.dart';
 
 @pragma('vm:entry-point')
@@ -68,7 +68,7 @@ class NotificationService {
       initSettings,
       onDidReceiveNotificationResponse: (response) {
         if (response.payload != null) {
-          _handleNavigation(jsonDecode(response.payload!));
+          handleNavigation(jsonDecode(response.payload!));
         }
       },
     );
@@ -97,13 +97,13 @@ class NotificationService {
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint("🚀 App Opened from Notification: ${message.data}");
-      _handleNavigation(message.data);
+      handleNavigation(message.data);
     });
 
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _handleNavigation(initialMessage.data);
+        handleNavigation(initialMessage.data);
       });
     }
 
@@ -116,19 +116,39 @@ class NotificationService {
     await syncToken();
   }
 
-  void _handleNavigation(Map<String, dynamic> data) {
+  // ✅ Made Public & Added Auth Check
+  Future<void> handleNavigation(Map<String, dynamic> data) async {
     final route = data['route'];
     final type = data['type']; 
     final id = data['id'] ?? data['eventId']; 
 
     if (route == null && type != 'chat_message') return; 
 
+    // 🔒 AUTH CHECK: Redirect to Login if no token found
+    String? token = await _storage.read(key: 'auth_token');
+    if (token == null) {
+      final prefs = await SharedPreferences.getInstance();
+      token = prefs.getString('auth_token');
+    }
+
+    if (token == null) {
+      debugPrint("🔒 User logged out. Redirecting to Login with pending navigation.");
+      // Pass the data to LoginScreen so it can handle it after login
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => LoginScreen(pendingNavigation: data), 
+        ),
+        (route) => false,
+      );
+      return;
+    }
+
     debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
 
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // ✅ 1. CHAT NAVIGATION
+      // 1. CHAT NAVIGATION
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
@@ -136,8 +156,7 @@ class NotificationService {
         final senderProfilePic = data['senderProfilePic'];
 
         if (conversationId != null && senderId != null) {
-          // ✅ FIX: Wake up socket immediately!
-          // This ensures the connection is starting while the screen transitions
+          // Warm up socket
           SocketService().initSocket(); 
 
           navigatorKey.currentState?.push(
@@ -147,7 +166,7 @@ class NotificationService {
                 receiverId: senderId, 
                 receiverName: senderName,
                 receiverProfilePic: senderProfilePic,
-                // Note: We don't know isOnline status here, ChatScreen will fetch it.
+                isOnline: false, // Chat screen will auto-detect
               ),
             ),
           );
@@ -155,7 +174,7 @@ class NotificationService {
         return;
       }
 
-      // ✅ 2. Mentorship Dashboard (No ID needed)
+      // 2. Mentorship Dashboard
       if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
@@ -163,7 +182,7 @@ class NotificationService {
         return;
       }
 
-      // ✅ 3. Detail Routes (Require ID)
+      // 3. Detail Routes
       if (id != null) {
         if (route == 'event_detail') {
           navigatorKey.currentState?.push(
@@ -198,7 +217,15 @@ class NotificationService {
     String type = message.data['type'] ?? 'Update';
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
-    String formattedTitle = '<b>New $type:</b> $originalTitle';
+    
+    // ✅ FIX: Clean Title Logic
+    String formattedTitle;
+    if (type == 'chat_message' || type == 'chat') {
+      // Don't add "New chat_message:", just show sender name
+      formattedTitle = originalTitle; 
+    } else {
+      formattedTitle = '<b>New $type:</b> $originalTitle';
+    }
 
     final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
 
@@ -254,7 +281,6 @@ class NotificationService {
         return;
       }
 
-      // ✅ Robust Auth Token Retrieval
       String? authToken = await _storage.read(key: 'auth_token');
 
       if (authToken == null) {
@@ -262,7 +288,6 @@ class NotificationService {
         authToken = prefs.getString('auth_token');
       }
 
-      // Retry logic (Wait for write to finish if called immediately after login)
       if (authToken == null) {
         debugPrint("⏳ Auth Token not found yet. Retrying in 1.5s...");
         await Future.delayed(const Duration(milliseconds: 1500));
@@ -288,8 +313,6 @@ class NotificationService {
         } else {
            debugPrint("⚠️ Backend rejected token: ${response.statusCode} - ${response.body}");
         }
-      } else {
-        debugPrint("⚠️ Token sync skipped: No Auth Token found (User likely logged out).");
       }
     } catch (e) {
       debugPrint("❌ Error syncing token: $e");

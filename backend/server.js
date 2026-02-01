@@ -198,7 +198,39 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 3. User Disconnects (With Grace Period)
+  // ✅ 3. EXPLICIT LOGOUT (Immediate Offline Status)
+  socket.on("user_logout", async (userId) => {
+    if (!userId) return;
+    logger.info(`👋 User ${userId} logging out explicitly`);
+
+    // Clear all sockets and timers immediately
+    if (disconnectTimers.has(userId)) {
+      clearTimeout(disconnectTimers.get(userId));
+      disconnectTimers.delete(userId);
+    }
+    if (onlineUsers.has(userId)) {
+      onlineUsers.delete(userId);
+    }
+
+    try {
+      const lastSeen = new Date();
+      await User.findByIdAndUpdate(userId, {
+        isOnline: false,
+        lastSeen: lastSeen,
+      });
+
+      // Broadcast immediately (No delay)
+      io.emit("user_status_update", {
+        userId: userId,
+        isOnline: false,
+        lastSeen: lastSeen,
+      });
+    } catch (e) {
+      logger.error(`Logout Error: ${e.message}`);
+    }
+  });
+
+  // 4. User Disconnects (With Grace Period for accidental drops)
   socket.on("disconnect", () => {
     const userId = socket.userId;
     if (!userId || !onlineUsers.has(userId)) return;
@@ -234,7 +266,7 @@ io.on("connection", (socket) => {
           logger.error(`Socket Error (Disconnect): ${e.message}`);
         }
       }
-    }, 5000); // ✅ UPDATED: 5 Seconds Grace Period (Prevents Flickering)
+    }, 5000); // 5 Seconds Grace Period
 
     disconnectTimers.set(userId, timer);
   });

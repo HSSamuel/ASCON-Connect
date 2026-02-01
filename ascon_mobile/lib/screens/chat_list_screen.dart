@@ -7,9 +7,10 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../services/api_client.dart';
-import '../services/socket_service.dart'; // ✅ Added for Real-Time Status
+import '../services/socket_service.dart';
 import '../models/chat_objects.dart';
 import '../config/storage_config.dart';
+import '../utils/presence_formatter.dart'; 
 import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -24,7 +25,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
   final _storage = StorageConfig.storage;
   
   List<ChatConversation> _conversations = [];
-  final Map<String, bool> _onlineStatus = {}; // ✅ Store Online Status
+  
+  // ✅ Store presence data for Green Dot
+  final Map<String, dynamic> _userPresence = {}; 
+  
   bool _isLoading = true;
   String? _myUserId;
 
@@ -32,46 +36,49 @@ class _ChatListScreenState extends State<ChatListScreen> {
   void initState() {
     super.initState();
     _loadChats();
-    _setupSocketListeners(); // ✅ Initialize Socket Listeners
+    _setupSocketListeners();
   }
 
   @override
   void dispose() {
-    // Clean up listeners when screen is destroyed
+    // We don't disconnect socket here, just stop listening to updates for this screen
     SocketService().socket?.off('user_status_update');
     SocketService().socket?.off('user_status_result');
     super.dispose();
   }
 
-  // ✅ LISTEN FOR STATUS UPDATES
+  // ✅ LISTEN FOR PRESENCE (Green Dot)
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     if (socket == null) return;
 
-    // 1. Listen for Broadcasts (Real-time updates)
+    // 1. Listen for Broadcasts
     socket.on('user_status_update', (data) {
       if (mounted) {
         setState(() {
-          _onlineStatus[data['userId']] = data['isOnline'];
+          _userPresence[data['userId']] = {
+            'isOnline': data['isOnline'],
+            'lastSeen': data['lastSeen']
+          };
         });
       }
     });
 
-    // 2. Listen for Specific Results (Initial checks)
+    // 2. Listen for Initial Results
     socket.on('user_status_result', (data) {
       if (mounted) {
         setState(() {
-          _onlineStatus[data['userId']] = data['isOnline'];
+          _userPresence[data['userId']] = {
+            'isOnline': data['isOnline'],
+            'lastSeen': data['lastSeen']
+          };
         });
       }
     });
   }
 
   Future<void> _loadChats() async {
-    // 1. Get User ID (Critical for identifying "Other" user)
     _myUserId = await _storage.read(key: 'userId');
-    
-    // Fallback if not in secure storage
     if (_myUserId == null) {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('cached_user');
@@ -79,10 +86,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
         final userData = jsonDecode(userString);
         _myUserId = userData['id'] ?? userData['_id'];
       }
-    }
-
-    if (_myUserId == null) {
-      debugPrint("⚠️ Warning: Could not find My User ID. Chat names might be wrong.");
     }
 
     try {
@@ -94,13 +97,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
         setState(() {
           _conversations = data
               .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
-              // Filter out conversations where 'otherUserId' is ME.
               .where((chat) => chat.otherUserId != _myUserId) 
               .toList();
           _isLoading = false;
         });
 
-        // ✅ Check Status for all loaded users immediately
+        // ✅ Batch check status for all users in the list
         _checkInitialStatuses();
       }
     } catch (e) {
@@ -109,7 +111,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  // ✅ BATCH CHECK STATUS
   void _checkInitialStatuses() {
     final socket = SocketService().socket;
     if (socket != null && socket.connected) {
@@ -121,9 +122,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  // Delete Logic
+  // ✅ RESTORED DELETE LOGIC
   Future<void> _deleteChat(String conversationId) async {
-    // Optimistic Update: Remove from list immediately
     setState(() {
       _conversations.removeWhere((c) => c.id == conversationId);
     });
@@ -136,18 +136,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
         );
       }
     } catch (e) {
-      debugPrint("Delete failed: $e");
       _loadChats(); // Revert if failed
     }
   }
 
-  // Confirmation Dialog
   void _confirmDelete(ChatConversation chat) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Conversation?"),
-        content: Text("Are you sure you want to remove ${chat.otherUserName} from your messages?"),
+        content: Text("Delete chat with ${chat.otherUserName}?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -176,30 +174,27 @@ class _ChatListScreenState extends State<ChatListScreen> {
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
-      // ✅ ADDED REFRESH INDICATOR
       body: RefreshIndicator(
-        onRefresh: _loadChats, // Triggers reload on swipe down
+        onRefresh: _loadChats, 
         color: primaryColor,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _conversations.isEmpty
-                // ✅ Wrap empty state in ListView so pull-to-refresh still works
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.3),
-                      _buildEmptyState(),
-                    ],
-                  )
+                ? ListView(children: [SizedBox(height: MediaQuery.of(context).size.height * 0.3), _buildEmptyState()])
                 : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(), // Ensures bounce effect
                     padding: const EdgeInsets.all(12),
                     itemCount: _conversations.length,
                     separatorBuilder: (_, __) => Divider(color: Colors.grey.withOpacity(0.1)),
                     itemBuilder: (context, index) {
                       final chat = _conversations[index];
-                      // ✅ Check if this user is online
-                      final isOnline = _onlineStatus[chat.otherUserId] == true;
+                      
+                      // ✅ Resolve Presence
+                      final presence = _userPresence[chat.otherUserId];
+                      final bool isOnline = presence != null && presence['isOnline'] == true;
+                      final String? lastSeen = presence != null ? presence['lastSeen'] : null;
+
+                      // ✅ Trailing is Message Time (Requested)
+                      String trailingText = DateFormat('MMM d').format(chat.lastMessageTime.toLocal());
 
                       return ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -212,13 +207,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 receiverName: chat.otherUserName,
                                 receiverId: chat.otherUserId ?? '', 
                                 receiverProfilePic: chat.otherUserImage, 
-                                isOnline: isOnline, // ✅ PASS ONLINE STATUS
+                                isOnline: isOnline, 
+                                lastSeen: lastSeen,
                               )
                             )
                           );
                           _loadChats(); 
                         },
-                        // ✅ MODIFIED AVATAR WITH GREEN DOT
                         leading: Stack(
                           children: [
                             CircleAvatar(
@@ -228,26 +223,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                   ? CachedNetworkImageProvider(chat.otherUserImage!)
                                   : null,
                               child: (chat.otherUserImage == null || chat.otherUserImage!.isEmpty)
-                                  ? Text(
-                                      chat.otherUserName.isNotEmpty ? chat.otherUserName[0].toUpperCase() : '?', 
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)
-                                    )
+                                  ? Text(chat.otherUserName.isNotEmpty ? chat.otherUserName[0] : '?', style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor))
                                   : null,
                             ),
+                            // ✅ Green Dot Indicator
                             if (isOnline)
                               Positioned(
-                                right: 0,
-                                bottom: 0,
+                                right: 0, bottom: 0,
                                 child: Container(
-                                  width: 14,
-                                  height: 14,
+                                  width: 14, height: 14,
                                   decoration: BoxDecoration(
                                     color: Colors.green,
                                     shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Theme.of(context).scaffoldBackgroundColor, 
-                                      width: 2
-                                    ),
+                                    border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2),
                                   ),
                                 ),
                               ),
@@ -268,8 +256,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              DateFormat('MMM d').format(chat.lastMessageTime.toLocal()),
-                              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                              trailingText, // ✅ Shows Date (e.g. "Oct 25")
+                              style: TextStyle(
+                                fontSize: 12, 
+                                color: Colors.grey[500],
+                              ),
                             ),
                           ],
                         ),
@@ -282,17 +273,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text("No messages yet", style: GoogleFonts.lato(fontSize: 18, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          Text("Visit the directory to start networking!", style: TextStyle(color: Colors.grey[500])),
-        ],
-      ),
-    );
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.chat_bubble_outline, size: 60, color: Colors.grey[400]), const SizedBox(height: 16), Text("No messages yet", style: GoogleFonts.lato(fontSize: 18, color: Colors.grey[600]))]));
   }
 }

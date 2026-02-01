@@ -3,7 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
-import '../services/socket_service.dart'; // ✅ NEW: Import Socket Service
+import '../services/socket_service.dart'; // ✅ Import Socket Service
 import '../config.dart'; // ✅ Import AppConfig
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -11,7 +11,10 @@ import 'welcome_dialog.dart';
 import 'home_screen.dart'; 
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  // ✅ Accept pending notification payload to handle redirection after login
+  final Map<String, dynamic>? pendingNavigation;
+
+  const LoginScreen({super.key, this.pendingNavigation});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -37,14 +40,34 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
 
-    // ✅ NEW: Connect Socket for Online Presence immediately
-    // This ensures the green dot appears instantly
+    // ✅ Connect Socket for Online Presence immediately
     if (user['_id'] != null) {
       SocketService().connectUser(user['_id']);
     }
 
-    bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
     String safeName = user['fullName'] ?? "Alumni"; 
+
+    // ✅ SMART REDIRECTION LOGIC
+    // If this login was triggered by a notification click...
+    if (widget.pendingNavigation != null) {
+      debugPrint("🚀 Handling Pending Navigation after Login...");
+      
+      // 1. Navigate to Home first (to set the root of the stack)
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => HomeScreen(userName: safeName)),
+        (route) => false,
+      );
+      
+      // 2. Wait briefly for Home to initialize, then push the specific screen
+      Future.delayed(const Duration(milliseconds: 600), () {
+        NotificationService().handleNavigation(widget.pendingNavigation!);
+      });
+      return; // Exit early, skipping Welcome Dialog
+    }
+
+    // Standard Login Flow
+    bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
 
     if (hasSeenWelcome) {
       _navigateToHome(safeName);
@@ -307,7 +330,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 12),
 
-                // ✅ GOOGLE LOGIN BUTTON (Restored Working Custom Button)
+                // ✅ GOOGLE LOGIN BUTTON
                 SizedBox(
                   width: double.infinity,
                   height: 45, 

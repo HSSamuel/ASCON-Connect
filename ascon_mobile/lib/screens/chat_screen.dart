@@ -27,6 +27,7 @@ import '../models/chat_objects.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../widgets/full_screen_image.dart'; 
+import '../utils/presence_formatter.dart'; // ✅ Presence Formatter
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -70,11 +71,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   late bool _isPeerOnline;
   String? _peerLastSeen;
+  
+  // ✅ Polling Timer for Aggressive Status Check
+  Timer? _statusPollingTimer;
 
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
-  // ✅ Reply & Edit State
+  // Reply & Edit State
   ChatMessage? _replyingTo;
   ChatMessage? _editingMessage;
 
@@ -107,16 +111,39 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    // ✅ ROBUST RETRY: Check status again after 1.5s
-    // This catches cases where socket was connecting when screen opened (Notifications)
-    Timer(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-         final socket = SocketService().socket;
-         if (socket != null && socket.connected) {
-           socket.emit('check_user_status', {'userId': widget.receiverId});
-         }
+    // ✅ AGGRESSIVE FIX: If starting Offline (e.g. from Notification), poll for status
+    if (!_isPeerOnline) {
+      _startStatusPolling();
+    }
+  }
+
+  // ✅ New Method: Repeatedly ask for status until we get it or timeout
+  void _startStatusPolling() {
+    // Attempt 1: Immediate
+    _checkStatusSafe();
+
+    // Attempt 2-6: Every 2 seconds
+    _statusPollingTimer?.cancel();
+    _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_isPeerOnline || !mounted) {
+        timer.cancel(); // Stop if online or screen closed
+      } else if (timer.tick > 5) {
+        timer.cancel(); // Stop after 10 seconds (5 attempts)
+      } else {
+        _checkStatusSafe();
       }
     });
+  }
+
+  void _checkStatusSafe() {
+    final socket = SocketService().socket;
+    if (socket != null && socket.connected) {
+      // debugPrint("🔍 Polling status for ${widget.receiverName}...");
+      socket.emit('check_user_status', {'userId': widget.receiverId});
+    } else {
+      // If socket isn't ready, try to init it
+      SocketService().initSocket();
+    }
   }
 
   void _setupAudioPlayerListeners() {
@@ -145,6 +172,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _focusNode.dispose(); 
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
+    _statusPollingTimer?.cancel(); // ✅ Cancel Polling
     _audioRecorder.dispose();
     _audioPlayer.dispose();
 
@@ -161,7 +189,6 @@ class _ChatScreenState extends State<ChatScreen> {
     SocketService().socket?.off('messages_deleted_bulk');
     SocketService().socket?.off('typing_start');
     SocketService().socket?.off('typing_stop');
-    // ✅ NEW LISTENER
     SocketService().socket?.off('user_status_result');
 
     super.dispose();
@@ -185,28 +212,32 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // ✅ 1. Active Check Function
+    // 1. Active Check Function
     void checkStatus() {
-      // debugPrint("🔍 Checking status for: ${widget.receiverId}");
       socket.emit('check_user_status', {'userId': widget.receiverId});
     }
 
-    // ✅ 2. Trigger check immediately if connected
+    // 2. Trigger check immediately if connected
     if (socket.connected) {
       checkStatus();
     }
 
-    // ✅ 3. Trigger check on reconnection 
+    // 3. Trigger check on reconnection 
     socket.on('connect', (_) => checkStatus());
     socket.on('reconnect', (_) => checkStatus());
 
-    // ✅ 4. Listen for Status Result
+    // 4. Listen for Status Result
     socket.on('user_status_result', (data) {
       if (!mounted) return;
       if (data['userId'] == widget.receiverId) {
         setState(() {
           _isPeerOnline = data['isOnline'];
           if (!_isPeerOnline) _peerLastSeen = data['lastSeen'];
+          
+          // ✅ Stop polling if we confirmed they are online
+          if (_isPeerOnline) {
+            _statusPollingTimer?.cancel();
+          }
         });
       }
     });
@@ -387,33 +418,14 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ✅ UPDATED STATUS TEXT LOGIC (From Alumni Detail Screen)
+  // ✅ UPDATED STATUS TEXT LOGIC using PresenceFormatter
   String _getStatusText() {
     if (_isPeerTyping) return "Typing...";
     if (_isPeerOnline) return "Active Now";
     if (_peerLastSeen == null) return "Offline";
     
-    try {
-      final lastSeen = DateTime.parse(_peerLastSeen!).toLocal();
-      final now = DateTime.now();
-      final diff = now.difference(lastSeen);
-
-      if (diff.inMinutes < 1) return "Last seen just now";
-      if (diff.inMinutes < 60) return "Last seen ${diff.inMinutes}m ago";
-      
-      if (now.day == lastSeen.day && now.month == lastSeen.month && now.year == lastSeen.year) {
-        return "Last seen today at ${DateFormat('h:mm a').format(lastSeen)}";
-      }
-      
-      final yesterday = now.subtract(const Duration(days: 1));
-      if (yesterday.day == lastSeen.day && yesterday.month == lastSeen.month && yesterday.year == lastSeen.year) {
-        return "Last seen yesterday at ${DateFormat('h:mm a').format(lastSeen)}";
-      }
-
-      return "Last seen ${DateFormat('MMM d, h:mm a').format(lastSeen)}";
-    } catch (e) {
-      return "Offline";
-    }
+    // Use the uniform formatter logic
+    return "Last seen ${PresenceFormatter.format(_peerLastSeen)}";
   }
 
   // --------------------------------------------------------
@@ -464,10 +476,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
-  // 📂 SMART DOWNLOAD & OPEN (Caches Files)
+  // 📂 SMART DOWNLOAD & OPEN
   // --------------------------------------------------------
   Future<void> _downloadAndOpenWith(String url, String fileName, String messageId) async {
-    // 1. Web: Just launch URL
     if (kIsWeb) {
       if (await canLaunchUrl(Uri.parse(url))) {
         await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -476,27 +487,22 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      // 2. Get Local Path
       final tempDir = await getTemporaryDirectory();
       final safeName = fileName.replaceAll(RegExp(r'[^\w\s\.]'), '_'); 
       final file = File('${tempDir.path}/$safeName');
 
-      // ✅ 3. CHECK: Does file already exist?
       if (await file.exists()) {
         debugPrint("📂 Opening cached file: ${file.path}");
         final result = await OpenFile.open(file.path);
-        
         if (result.type != ResultType.done) {
            _shareFile(file.path, fileName);
         }
         return; 
       }
 
-      // 4. Download (Only if file doesn't exist)
       setState(() => _downloadingFileId = messageId);
       
       final response = await http.get(Uri.parse(url));
-      
       if (response.statusCode != 200) {
         throw Exception("Server Error ${response.statusCode}");
       }
@@ -522,14 +528,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // Helper for fallback sharing
   void _shareFile(String path, String text) {
     Share.shareXFiles([XFile(path)], text: 'Open $text');
   }
 
-  // --------------------------------------------------------
-  // 💾 DOWNLOAD & SAVE (Explicit User Action)
-  // --------------------------------------------------------
   Future<void> _downloadAndSave(String url, String fileName, String messageId) async {
     if (kIsWeb) {
       if (await canLaunchUrl(Uri.parse(url))) {
@@ -545,12 +547,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (!await file.exists()) {
         setState(() => _downloadingFileId = messageId);
-        
         final response = await http.get(Uri.parse(url));
         if (response.statusCode != 200) throw Exception("Download Failed");
-        
         await file.writeAsBytes(response.bodyBytes);
-        
         if (mounted) setState(() => _downloadingFileId = null);
       }
 
@@ -625,7 +624,6 @@ class _ChatScreenState extends State<ChatScreen> {
       fileUrl: filePath, 
       fileName: fileName ?? (filePath != null ? filePath.split('/').last : "File"),
       localBytes: fileBytes, 
-      // ✅ Add Reply Info Optimistically
       replyToId: _replyingTo?.id,
       replyToText: _replyingTo?.text,
       replyToSenderName: _replyingTo != null ? (_replyingTo!.senderId == _myUserId ? "You" : widget.receiverName) : null,
@@ -638,7 +636,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(tempMessage);
       _textController.clear();
       _isTyping = false;
-      // ✅ Clear Reply State
       _replyingTo = null;
     });
     _scrollToBottom();
@@ -658,7 +655,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       request.fields['type'] = type;
       
-      // ✅ Add Reply ID to Request
       if (tempMessage.replyToId != null) {
         request.fields['replyToId'] = tempMessage.replyToId!;
       }

@@ -10,6 +10,8 @@ import 'chat_screen.dart';
 import '../services/data_service.dart';
 // ✅ Import SocketService for Real-Time Presence
 import '../services/socket_service.dart';
+// ✅ Import PresenceFormatter for consistent times
+import '../utils/presence_formatter.dart'; 
 
 class AlumniDetailScreen extends StatefulWidget {
   final Map<String, dynamic> alumniData;
@@ -181,29 +183,12 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
+  // ✅ UPDATED: Use PresenceFormatter logic
   String _formatLastSeen(String? dateString) {
     if (dateString == null) return "Offline";
-    try {
-      final lastSeen = DateTime.parse(dateString).toLocal();
-      final now = DateTime.now();
-      final diff = now.difference(lastSeen);
-
-      if (diff.inMinutes < 1) return "Last seen just now";
-      if (diff.inMinutes < 60) return "Last seen ${diff.inMinutes}m ago";
-      
-      if (now.day == lastSeen.day && now.month == lastSeen.month && now.year == lastSeen.year) {
-        return "Last seen today at ${DateFormat('h:mm a').format(lastSeen)}";
-      }
-      
-      final yesterday = now.subtract(const Duration(days: 1));
-      if (yesterday.day == lastSeen.day && yesterday.month == lastSeen.month && yesterday.year == lastSeen.year) {
-        return "Last seen yesterday at ${DateFormat('h:mm a').format(lastSeen)}";
-      }
-
-      return "Last seen ${DateFormat('MMM d, h:mm a').format(lastSeen)}";
-    } catch (e) {
-      return "Offline";
-    }
+    final formatted = PresenceFormatter.format(dateString);
+    if (formatted == "Just now" || formatted == "Active just now") return "Active just now";
+    return "Last seen $formatted";
   }
 
   @override

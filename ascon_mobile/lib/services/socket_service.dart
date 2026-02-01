@@ -6,6 +6,9 @@ import '../config/storage_config.dart';
 class SocketService with WidgetsBindingObserver {
   IO.Socket? socket; 
   final _storage = StorageConfig.storage;
+  
+  // ✅ Cache User ID in memory to avoid async storage delays during login
+  String? _currentUserId;
 
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
@@ -16,26 +19,28 @@ class SocketService with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // If we go to background, we disconnect to save battery.
-    // The backend now has a 1-second "Grace Period". 
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // Background: Disconnect to save battery (Backend handles grace period)
       disconnect();
     } else if (state == AppLifecycleState.resumed) {
-      // Force reconnect immediately on resume
+      // Foreground: Reconnect immediately
       initSocket();
     }
   }
 
-  void initSocket({bool forceNew = false}) async {
-    // 1. Check if already connected (Avoid unnecessary reconnection)
-    if (socket != null && socket!.connected) {
-      debugPrint("🟢 Socket is already connected.");
-      return; 
+  // ✅ Modified: accept optional userId to skip storage read
+  void initSocket({String? userIdOverride}) async {
+    // 1. Update in-memory ID if provided
+    if (userIdOverride != null) {
+      _currentUserId = userIdOverride;
     }
 
-    String? userId = await _storage.read(key: "userId");
-    
-    // Safety check for URL
+    // 2. If still null, try reading from storage (for app restarts)
+    if (_currentUserId == null) {
+      _currentUserId = await _storage.read(key: "userId");
+    }
+
+    // 3. Prepare URL
     String socketUrl = AppConfig.baseUrl;
     if (socketUrl.endsWith('/')) {
       socketUrl = socketUrl.substring(0, socketUrl.length - 1);
@@ -44,65 +49,81 @@ class SocketService with WidgetsBindingObserver {
       socketUrl = socketUrl.replaceAll('/api', '');
     }
 
-    // Only print this once to reduce noise
-    if (socket == null) debugPrint("🔌 Socket Connecting to: $socketUrl");
+    // 4. Create Socket if missing
+    if (socket == null) {
+      debugPrint("🔌 Socket Connecting to: $socketUrl");
+      
+      socket = IO.io(socketUrl, <String, dynamic>{
+        'transports': ['websocket'],
+        'autoConnect': false,
+        'timeout': 30000,
+        'reconnection': true,
+        'reconnectionDelay': 2000,
+        'reconnectionDelayMax': 10000,
+        'reconnectionAttempts': 99999,
+      });
 
-    try {
-      // 2. Create Socket if it doesn't exist
-      if (socket == null) {
-        socket = IO.io(socketUrl, <String, dynamic>{
-          'transports': ['websocket'], // Force WebSocket for better performance
-          'autoConnect': false,
-          'timeout': 30000,            // ✅ INCREASED: 30s timeout (was default 20s)
-          // 'forceNew': true,         // ❌ REMOVED: Caused thrashing/timeouts
-          'reconnection': true,
-          'reconnectionDelay': 2000,   // ✅ INCREASED: Wait 2s before retrying (was 1s)
-          'reconnectionDelayMax': 10000,
-          'reconnectionAttempts': 99999,
-        });
+      // --- EVENT LISTENERS ---
+      socket!.onConnect((_) {
+        debugPrint('✅ Socket Connected');
+        _emitUserConnected();
+      });
 
-        // --- EVENT LISTENERS ---
-        socket!.onConnect((_) {
-          debugPrint('✅ Socket Connected');
-          if (userId != null) {
-            socket!.emit("user_connected", userId);
-          }
-        });
+      socket!.onReconnect((_) {
+         debugPrint('🔄 Socket Reconnected');
+         _emitUserConnected();
+      });
 
-        socket!.onReconnect((_) {
-           debugPrint('🔄 Socket Reconnected');
-           if (userId != null) {
-            socket!.emit("user_connected", userId);
-          }
-        });
+      socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
+      
+      socket!.onConnectError((data) {
+        if (!data.toString().contains("timeout")) {
+          debugPrint('⚠️ Socket Error: $data');
+        }
+      });
+    }
 
-        socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
-        
-        // ✅ Refined Error Handling: Ignore "timeout" noise
-        socket!.onConnectError((data) {
-          if (data.toString().contains("timeout")) {
-            // calculated silence: do not log standard timeouts
-          } else {
-            debugPrint('⚠️ Socket Error: $data');
-          }
-        });
-      }
-
-      // 3. Connect!
-      if (!socket!.connected) {
-        socket!.connect();
-      }
-
-    } catch (e) {
-      debugPrint("❌ CRITICAL SOCKET EXCEPTION: $e");
+    // 5. Force Connect if disconnected
+    if (!socket!.connected) {
+      socket!.connect();
+    } else {
+      // If already connected, ensure we identify ourselves
+      _emitUserConnected();
     }
   }
 
+  // ✅ Helper to identify user to server
+  void _emitUserConnected() {
+    if (_currentUserId != null && socket != null) {
+      // debugPrint("📤 Identifying as User: $_currentUserId");
+      socket!.emit("user_connected", _currentUserId);
+    }
+  }
+
+  // ✅ Call this from Login/Register to connect INSTANTLY
   void connectUser(String userId) {
+    _currentUserId = userId; // Set memory cache immediately
     if (socket != null && socket!.connected) {
-      socket!.emit("user_connected", userId);
+      _emitUserConnected();
     } else {
-      initSocket();
+      initSocket(userIdOverride: userId);
+    }
+  }
+
+  // ✅ Call this from Logout
+  void logoutUser() {
+    if (socket != null && _currentUserId != null) {
+      // Tell server we are leaving deliberately (no grace period)
+      socket!.emit('user_logout', _currentUserId);
+      
+      // Give a tiny delay for the packet to send before cutting connection
+      Future.delayed(const Duration(milliseconds: 100), () {
+        disconnect();
+        _currentUserId = null;
+      });
+    } else {
+      disconnect();
+      _currentUserId = null;
     }
   }
 

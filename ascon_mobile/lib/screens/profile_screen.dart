@@ -6,7 +6,8 @@ import '../services/data_service.dart';
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'document_request_screen.dart'; 
-import 'mentorship_dashboard_screen.dart'; // ✅ Import Mentorship Dashboard
+import 'mentorship_dashboard_screen.dart'; 
+import '../services/socket_service.dart'; // ✅ Import SocketService
 
 class ProfileScreen extends StatefulWidget {
   final String userName;
@@ -58,7 +59,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ) ?? false;
 
     if (confirm) {
+      // ✅ 1. Use the dedicated logout function to update status instantly
+      SocketService().logoutUser();
+
+      // 2. Perform local logout
       await _authService.logout();
+      
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
@@ -270,7 +276,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // ✅ ALUMNI SERVICES SECTION
+                    // ALUMNI SERVICES
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16), 
                       decoration: BoxDecoration(
@@ -289,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Text("Alumni Services", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
                           ),
                           
-                          // 1. Document Request
+                          // Document Request
                           ListTile(
                             leading: Container(
                               padding: const EdgeInsets.all(8),
@@ -309,7 +315,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Divider(height: 1),
                           ),
 
-                          // ✅ 2. Mentorship Program (NEW)
+                          // Mentorship Program
                           ListTile(
                             leading: Container(
                               padding: const EdgeInsets.all(8),
@@ -318,7 +324,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             title: const Text("Mentorship Program", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                             subtitle: const Text("Manage requests & connections", style: TextStyle(fontSize: 12)),
-                            trailing: _buildNotificationBadge(),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
                             onTap: () {
                               Navigator.push(context, MaterialPageRoute(builder: (c) => const MentorshipDashboardScreen()));
                             },
@@ -401,10 +407,5 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ],
     );
-  }
-
-  // ✅ Helper for the Red Dot / Arrow
-  Widget _buildNotificationBadge() {
-    return const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey);
   }
 }
