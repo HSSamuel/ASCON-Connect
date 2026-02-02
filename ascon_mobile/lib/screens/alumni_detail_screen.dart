@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
+import 'dart:async'; // ✅ Imported for StreamSubscription
 import 'package:intl/intl.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
@@ -32,6 +33,9 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   // ✅ State for Real-Time Presence
   late bool _isOnline;
   String? _lastSeen;
+  
+  // ✅ STREAM SUBSCRIPTION
+  StreamSubscription? _statusSubscription;
 
   @override
   void initState() {
@@ -48,16 +52,13 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
       _mentorshipStatus = "None"; 
     }
 
-    // ✅ Start Listening for Real-Time Updates
+    // ✅ Start Listening for Real-Time Updates via Stream
     _setupSocketListeners();
   }
 
   @override
   void dispose() {
-    // Clean up specific listener to avoid memory leaks
-    SocketService().socket?.off('user_status_result');
-    // Note: We don't remove 'user_status_update' globally as other screens might need it,
-    // but the mounted check handles safety.
+    _statusSubscription?.cancel(); // ✅ Cancel Stream Listener
     super.dispose();
   }
 
@@ -65,36 +66,13 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     if (socket == null) return;
-
     final targetUserId = widget.alumniData['_id'];
 
-    // 1. Define Check Function
-    void checkPresence() {
-      socket.emit('check_user_status', {'userId': targetUserId});
-    }
+    // 1. Initial Check
+    SocketService().checkUserStatus(targetUserId);
 
-    // 2. Initial Check
-    if (socket.connected) {
-      checkPresence();
-    }
-
-    // 3. Check on Reconnect
-    socket.on('connect', (_) => checkPresence());
-    socket.on('reconnect', (_) => checkPresence());
-
-    // 4. Listen for Check Result
-    socket.on('user_status_result', (data) {
-      if (!mounted) return;
-      if (data['userId'] == targetUserId) {
-        setState(() {
-          _isOnline = data['isOnline'];
-          if (!_isOnline) _lastSeen = data['lastSeen'];
-        });
-      }
-    });
-
-    // 5. Listen for Live Updates (Push)
-    socket.on('user_status_update', (data) {
+    // 2. Listen to the Stream
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
       if (!mounted) return;
       if (data['userId'] == targetUserId) {
         setState(() {

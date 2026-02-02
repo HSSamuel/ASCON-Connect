@@ -37,18 +37,22 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
 
+    // ✅ CRITICAL: Connect socket IMMEDIATELY upon login success
+    // This ensures presence is active before we navigate to chat
     if (user['_id'] != null) {
       SocketService().connectUser(user['_id']);
     }
 
     String safeName = user['fullName'] ?? "Alumni"; 
 
+    // Handle Pending Navigation (e.g., Opened from Notification while logged out)
     if (widget.pendingNavigation != null) {
       debugPrint("🚀 Handling Pending Navigation after Login...");
       
-      // ✅ GoRouter Navigation
+      // Navigate to Home first to set up the stack
       context.go('/home');
       
+      // Delay slightly to allow Home to mount, then execute deep link
       Future.delayed(const Duration(milliseconds: 600), () {
         NotificationService().handleNavigation(widget.pendingNavigation!);
       });

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
-import 'package:google_fonts/google_fonts.dart'; // ✅ Added for Lato font
+import 'package:google_fonts/google_fonts.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ Added for Frequency Capping
+
 import '../services/data_service.dart';
 import '../services/api_client.dart'; 
 import '../widgets/skeleton_loader.dart'; 
+import '../services/socket_service.dart'; 
 import 'alumni_detail_screen.dart';
 
 class DirectoryScreen extends StatefulWidget {
@@ -30,6 +33,12 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   bool _isLoading = false;
   bool _isSearching = false;
   bool _showMentorsOnly = false;
+  
+  // ✅ STREAM SUBSCRIPTION (Presence System)
+  StreamSubscription? _statusSubscription;
+  
+  // ✅ Scroll Controller for Smart Action
+  final ScrollController _mainScrollController = ScrollController();
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -38,16 +47,47 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     super.initState();
     _loadDirectory();
     _loadRecommendations(); 
+    
+    // ✅ Listen to Real-Time Status Stream
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
+      if (!mounted) return;
+      
+      setState(() {
+        final userId = data['userId'];
+        final isOnline = data['isOnline'];
+        
+        // 1. Update in main list
+        for (var user in _allAlumni) {
+          if (user['_id'] == userId) {
+            user['isOnline'] = isOnline;
+            user['lastSeen'] = data['lastSeen'];
+          }
+        }
+        
+        // 2. Update in search results (if active)
+        for (var user in _searchResults) {
+           if (user['_id'] == userId) {
+            user['isOnline'] = isOnline;
+            user['lastSeen'] = data['lastSeen'];
+          }
+        }
+        
+        // Note: _groupedAlumni references the same map objects, 
+        // so we don't need to rebuild the map, just setState.
+      });
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _mainScrollController.dispose(); // ✅ Dispose Scroll Controller
+    _statusSubscription?.cancel(); 
     super.dispose();
   }
 
   // ---------------------------------------------------------
-  // 🧠 SMART RECOMMENDATIONS
+  // 🧠 SMART RECOMMENDATIONS (With Frequency Cap)
   // ---------------------------------------------------------
   Future<void> _loadRecommendations() async {
     final result = await _dataService.fetchRecommendations();
@@ -57,11 +97,22 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         _hasRecommendations = _recommendedAlumni.isNotEmpty;
       });
 
-      // Show pop-up if matches found
+      // ✅ NEW: Check if we have shown this recently
       if (_hasRecommendations) {
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) _showSmartMatchPopup();
-        });
+        final prefs = await SharedPreferences.getInstance();
+        final lastShown = prefs.getInt('last_recommendation_popup_time') ?? 0;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
+        // Only show if 24 hours (86400000 ms) have passed
+        if (now - lastShown > 86400000) { 
+          Future.delayed(const Duration(seconds: 1), () {
+            if (mounted) {
+              _showSmartMatchPopup();
+              // Save current time as last shown
+              prefs.setInt('last_recommendation_popup_time', now);
+            }
+          });
+        }
       }
     }
   }
@@ -147,7 +198,17 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  Navigator.pop(context);
+                  // ✅ Scroll to top to show the recommendations section
+                  if (_mainScrollController.hasClients) {
+                    _mainScrollController.animateTo(
+                      0, 
+                      duration: const Duration(milliseconds: 500), 
+                      curve: Curves.easeOut
+                    );
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).primaryColor,
                   foregroundColor: Colors.white,
@@ -281,7 +342,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     
     return Scaffold(
-      // ✅ UPDATED APP BAR: Matches Events Screen (Green + White Text)
       appBar: AppBar(
         title: Text(
           "Alumni Directory", 
@@ -370,6 +430,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               }, 
               color: primaryColor,
               child: SingleChildScrollView(
+                controller: _mainScrollController, // ✅ Attached ScrollController
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: Column(
                   children: [
@@ -552,6 +613,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     final primaryColor = Theme.of(context).primaryColor;
 
     final bool isMentor = user['isOpenToMentorship'] == true;
+    final bool isOnline = user['isOnline'] == true;
 
     String subtitle = user['programmeTitle'] ?? 'Member';
     if (user['jobTitle'] != null && user['jobTitle'].toString().isNotEmpty) {
@@ -583,9 +645,26 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: borderColor, width: 1)),
-                  child: _buildAvatar(user['profilePicture'], isDark),
+                Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: borderColor, width: 1)),
+                      child: _buildAvatar(user['profilePicture'], isDark),
+                    ),
+                    if (isOnline)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14, height: 14,
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: cardColor, width: 2),
+                          ),
+                        ),
+                      )
+                  ],
                 ),
                 const SizedBox(width: 12),
                 Expanded(

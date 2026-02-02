@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:async'; // ✅ Import Async for StreamSubscription
 import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../services/api_client.dart';
@@ -31,50 +32,31 @@ class _ChatListScreenState extends State<ChatListScreen> {
   
   bool _isLoading = true;
   String? _myUserId;
+  
+  // ✅ STREAM SUBSCRIPTION
+  StreamSubscription? _statusSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadChats();
-    _setupSocketListeners();
+    
+    // ✅ NEW: Listen to the central Presence Stream
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
+      if (!mounted) return;
+      setState(() {
+        _userPresence[data['userId']] = {
+          'isOnline': data['isOnline'],
+          'lastSeen': data['lastSeen']
+        };
+      });
+    });
   }
 
   @override
   void dispose() {
-    // We don't disconnect socket here, just stop listening to updates for this screen
-    SocketService().socket?.off('user_status_update');
-    SocketService().socket?.off('user_status_result');
+    _statusSubscription?.cancel(); // ✅ Cancel the subscription
     super.dispose();
-  }
-
-  // ✅ LISTEN FOR PRESENCE (Green Dot)
-  void _setupSocketListeners() {
-    final socket = SocketService().socket;
-    if (socket == null) return;
-
-    // 1. Listen for Broadcasts
-    socket.on('user_status_update', (data) {
-      if (mounted) {
-        setState(() {
-          _userPresence[data['userId']] = {
-            'isOnline': data['isOnline'],
-            'lastSeen': data['lastSeen']
-          };
-        });
-      }
-    });
-
-    // 2. Listen for Initial Results
-    socket.on('user_status_result', (data) {
-      if (mounted) {
-        setState(() {
-          _userPresence[data['userId']] = {
-            'isOnline': data['isOnline'],
-            'lastSeen': data['lastSeen']
-          };
-        });
-      }
-    });
   }
 
   Future<void> _loadChats() async {
@@ -102,7 +84,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           _isLoading = false;
         });
 
-        // ✅ Batch check status for all users in the list
+        // ✅ Check statuses for everyone in the list
         _checkInitialStatuses();
       }
     } catch (e) {
@@ -112,12 +94,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   void _checkInitialStatuses() {
-    final socket = SocketService().socket;
-    if (socket != null && socket.connected) {
-      for (var chat in _conversations) {
-        if (chat.otherUserId != null) {
-           socket.emit('check_user_status', {'userId': chat.otherUserId});
-        }
+    // We can use the helper method to trigger checks
+    // The responses will come through the Stream we are already listening to!
+    for (var chat in _conversations) {
+      if (chat.otherUserId != null) {
+         SocketService().checkUserStatus(chat.otherUserId!);
       }
     }
   }

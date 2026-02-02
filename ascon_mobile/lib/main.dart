@@ -35,7 +35,8 @@ void main() async {
   // ✅ LOAD ENV FIRST
   await dotenv.load(fileName: ".env");
 
-  // ✅ Initialize Socket Service
+  // ✅ Initialize Socket Service Early
+  // This prepares the socket controller so it is ready for connections/updates immediately.
   SocketService().initSocket();
 
   // 1. INITIALIZE FIREBASE

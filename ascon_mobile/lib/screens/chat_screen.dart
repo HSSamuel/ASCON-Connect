@@ -74,6 +74,9 @@ class _ChatScreenState extends State<ChatScreen> {
   
   // ✅ Polling Timer for Aggressive Status Check
   Timer? _statusPollingTimer;
+  
+  // ✅ STREAM SUBSCRIPTION (New Presence System)
+  StreamSubscription? _statusSubscription;
 
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
@@ -115,6 +118,25 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_isPeerOnline) {
       _startStatusPolling();
     }
+    
+    // ✅ NEW: Listen to the Stream for Instant Updates
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
+      if (!mounted) return;
+      if (data['userId'] == widget.receiverId) {
+        setState(() {
+          _isPeerOnline = data['isOnline'];
+          // Only update lastSeen if they are offline (to avoid flickering)
+          if (!_isPeerOnline && data['lastSeen'] != null) {
+            _peerLastSeen = data['lastSeen'];
+          }
+          
+          // Stop polling if we confirmed they are online
+          if (_isPeerOnline) {
+            _statusPollingTimer?.cancel();
+          }
+        });
+      }
+    });
   }
 
   // ✅ New Method: Repeatedly ask for status until we get it or timeout
@@ -136,14 +158,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _checkStatusSafe() {
-    final socket = SocketService().socket;
-    if (socket != null && socket.connected) {
-      // debugPrint("🔍 Polling status for ${widget.receiverName}...");
-      socket.emit('check_user_status', {'userId': widget.receiverId});
-    } else {
-      // If socket isn't ready, try to init it
-      SocketService().initSocket();
-    }
+    // Use the helper method from SocketService to request status
+    SocketService().checkUserStatus(widget.receiverId);
   }
 
   void _setupAudioPlayerListeners() {
@@ -173,6 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
     _statusPollingTimer?.cancel(); // ✅ Cancel Polling
+    _statusSubscription?.cancel(); // ✅ Cancel Stream Listener
     _audioRecorder.dispose();
     _audioPlayer.dispose();
 
@@ -183,13 +200,12 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
 
+    // Only turn off specific chat listeners, NOT global status listeners
     SocketService().socket?.off('new_message');
-    SocketService().socket?.off('user_status_update');
     SocketService().socket?.off('messages_read');
     SocketService().socket?.off('messages_deleted_bulk');
     SocketService().socket?.off('typing_start');
     SocketService().socket?.off('typing_stop');
-    SocketService().socket?.off('user_status_result');
 
     super.dispose();
   }
@@ -214,7 +230,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // 1. Active Check Function
     void checkStatus() {
-      socket.emit('check_user_status', {'userId': widget.receiverId});
+      SocketService().checkUserStatus(widget.receiverId);
     }
 
     // 2. Trigger check immediately if connected
@@ -226,22 +242,7 @@ class _ChatScreenState extends State<ChatScreen> {
     socket.on('connect', (_) => checkStatus());
     socket.on('reconnect', (_) => checkStatus());
 
-    // 4. Listen for Status Result
-    socket.on('user_status_result', (data) {
-      if (!mounted) return;
-      if (data['userId'] == widget.receiverId) {
-        setState(() {
-          _isPeerOnline = data['isOnline'];
-          if (!_isPeerOnline) _peerLastSeen = data['lastSeen'];
-          
-          // ✅ Stop polling if we confirmed they are online
-          if (_isPeerOnline) {
-            _statusPollingTimer?.cancel();
-          }
-        });
-      }
-    });
-
+    // 4. Listen for New Messages
     socket.on('new_message', (data) {
       if (!mounted) return;
       if (data['conversationId'] == _activeConversationId) {
@@ -259,14 +260,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
-    socket.on('user_status_update', (data) { 
-      if (mounted && data['userId'] == widget.receiverId) {
-        setState(() {
-          _isPeerOnline = data['isOnline'];
-          if (!_isPeerOnline) _peerLastSeen = data['lastSeen'];
-        });
-      }
-    });
+    // NOTE: 'user_status_update' and 'user_status_result' are handled via the Stream now.
 
     socket.on('messages_read', (data) { 
       if (mounted && data['conversationId'] == _activeConversationId) {

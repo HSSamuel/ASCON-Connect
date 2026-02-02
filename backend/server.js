@@ -105,14 +105,15 @@ app.use(express.json());
 // ⚡ SOCKET.IO SCALABLE PRESENCE SYSTEM
 // ==========================================
 
-let ioConfig = {
+const io = new Server(server, {
   cors: {
-    origin: "*", // Allow mobile/web connections
+    origin: "*",
     methods: ["GET", "POST"],
   },
-  pingTimeout: 60000,
-  pingInterval: 25000,
-};
+  // ⚡ FASTER HEARTBEAT ⚡
+  pingTimeout: 10000, // Detect disconnect in 10 seconds (was 60000)
+  pingInterval: 5000, // Send ping every 5 seconds (was 25000)
+});
 
 // ✅ FIX: Only initialize Redis if explicitly enabled in .env
 // Add USE_REDIS=true to your .env file only if you have Redis running.

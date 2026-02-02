@@ -156,7 +156,8 @@ class NotificationService {
         final senderProfilePic = data['senderProfilePic'];
 
         if (conversationId != null && senderId != null) {
-          // Warm up socket
+          // ✅ CRITICAL: Warm up socket before ChatScreen loads
+          // This ensures the initial "check_user_status" call in ChatScreen succeeds
           SocketService().initSocket(); 
 
           navigatorKey.currentState?.push(
@@ -166,7 +167,9 @@ class NotificationService {
                 receiverId: senderId, 
                 receiverName: senderName,
                 receiverProfilePic: senderProfilePic,
-                isOnline: false, // Chat screen will auto-detect
+                // We pass false, letting the ChatScreen's new polling logic
+                // fetch the accurate real-time status instantly.
+                isOnline: false, 
               ),
             ),
           );
