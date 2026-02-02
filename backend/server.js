@@ -11,6 +11,9 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const http = require("http");
 const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createClient } = require("redis");
+
 const User = require("./models/User");
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
@@ -99,16 +102,49 @@ app.use(
 app.use(express.json());
 
 // ==========================================
-// ⚡ SOCKET.IO SMART PRESENCE SYSTEM
+// ⚡ SOCKET.IO SCALABLE PRESENCE SYSTEM
 // ==========================================
-const io = new Server(server, {
+
+let ioConfig = {
   cors: {
     origin: "*", // Allow mobile/web connections
     methods: ["GET", "POST"],
   },
-  pingTimeout: 60000, // Wait 60s before assuming dead connection
-  pingInterval: 25000, // Send heartbeat every 25s
-});
+  pingTimeout: 60000,
+  pingInterval: 25000,
+};
+
+// ✅ FIX: Only initialize Redis if explicitly enabled in .env
+// Add USE_REDIS=true to your .env file only if you have Redis running.
+if (process.env.USE_REDIS === "true") {
+  logger.info("🔌 Redis Enabled. Attempting to connect...");
+
+  const pubClient = createClient({
+    url: process.env.REDIS_URL || "redis://localhost:6379",
+  });
+  const subClient = pubClient.duplicate();
+
+  pubClient.on("error", (err) =>
+    logger.warn(`Redis Pub Error: ${err.message}`),
+  );
+  subClient.on("error", (err) =>
+    logger.warn(`Redis Sub Error: ${err.message}`),
+  );
+
+  Promise.all([pubClient.connect(), subClient.connect()])
+    .then(() => logger.info("✅ Redis Connected Successfully"))
+    .catch((err) =>
+      logger.warn("⚠️ Redis Connection Failed (Using Memory): " + err.message),
+    );
+
+  ioConfig.adapter = createAdapter(pubClient, subClient);
+} else {
+  logger.info(
+    "ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.",
+  );
+}
+
+const io = new Server(server, ioConfig);
 
 // 🧠 IN-MEMORY STATE (The "Brain" of the Presence System)
 const onlineUsers = new Map(); // Stores userId -> Set<socketId>

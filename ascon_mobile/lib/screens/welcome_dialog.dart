@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'home_screen.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
 
 class WelcomeDialog extends StatelessWidget {
   final String userName;
@@ -151,12 +151,8 @@ class WelcomeDialog extends StatelessWidget {
                     // ✅ 2. CLOSE DIALOG
                     Navigator.of(context).pop(); 
                     
-                    // ✅ 3. NAVIGATE TO HOME SCREEN
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => HomeScreen(userName: userName)),
-                      (route) => false, 
-                    );
+                    // ✅ 3. NAVIGATE TO HOME SCREEN (Using GoRouter)
+                    context.go('/home');
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,

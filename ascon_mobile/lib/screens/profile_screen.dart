@@ -1,17 +1,18 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
 import '../services/auth_service.dart';
 import '../services/data_service.dart'; 
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'document_request_screen.dart'; 
 import 'mentorship_dashboard_screen.dart'; 
-import '../services/socket_service.dart'; // ✅ Import SocketService
+import '../services/socket_service.dart'; 
 
 class ProfileScreen extends StatefulWidget {
-  final String userName;
-  const ProfileScreen({super.key, required this.userName});
+  final String? userName; // ✅ Made Optional
+  const ProfileScreen({super.key, this.userName}); // ✅ Removed required
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -59,18 +60,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ) ?? false;
 
     if (confirm) {
-      // ✅ 1. Use the dedicated logout function to update status instantly
+      // 1. Use the dedicated logout function to update status instantly
       SocketService().logoutUser();
 
       // 2. Perform local logout
       await _authService.logout();
       
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
+      
+      // ✅ 3. Use GoRouter for Logout
+      context.go('/login');
     }
   }
 
@@ -89,7 +88,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
 
-    final String fullName = _userProfile?['fullName'] ?? widget.userName;
+    // ✅ Handle potential null if userName wasn't passed (fallback to profile data or default)
+    final String fullName = _userProfile?['fullName'] ?? widget.userName ?? "Alumni";
     final String jobTitle = _userProfile?['jobTitle'] ?? '';
     final String org = _userProfile?['organization'] ?? '';
     final String programme = (_userProfile?['programmeTitle']?.toString().isNotEmpty ?? false)

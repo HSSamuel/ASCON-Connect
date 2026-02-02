@@ -9,14 +9,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/socket_service.dart'; 
 import 'config/theme.dart';
+import 'config.dart'; // Import for AppConfig if needed
+import 'router.dart'; // ✅ Import the Router
 
-// ✅ Screens
-import 'screens/splash_screen.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
-
-// Global Key for Notification Navigation
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+// ✅ Global Key: Aliased to the Router's key so NotificationService works
+final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 
 // ✅ DEFINE CHANNEL ID
 const String channelId = 'ascon_high_importance'; 
@@ -25,11 +22,9 @@ const String channelName = 'ASCON Notifications';
 // ✅ GLOBAL THEME CONTROLLER
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
-// ✅ CRITICAL ADDITION: BACKGROUND HANDLER
-// This must be a top-level function (outside any class)
+// ✅ BACKGROUND HANDLER
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // We must initialize Firebase inside the background handler too
   await Firebase.initializeApp();
   debugPrint("🌙 Background Message Received: ${message.messageId}");
 }
@@ -37,10 +32,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ✅ FIX: LOAD ENV FIRST (Before accessing SocketService or AppConfig)
+  // ✅ LOAD ENV FIRST
   await dotenv.load(fileName: ".env");
 
-  // ✅ NOW Initialize Socket Service (Safe to use AppConfig now)
+  // ✅ Initialize Socket Service
   SocketService().initSocket();
 
   // 1. INITIALIZE FIREBASE
@@ -56,23 +51,18 @@ void main() async {
             storageBucket: dotenv.env['FIREBASE_STORAGE_BUCKET'] ?? "",
           ),
         );
-        debugPrint("✅ Firebase Web Initialized Successfully");
       }
     } catch (e) {
       debugPrint("⚠️ Firebase Web Init Error: $e");
     }
   } else {
-    // Android/iOS
     await Firebase.initializeApp();
-    
-    // ✅ CRITICAL: Register Background Handler immediately after Firebase Init
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   }
 
   // 2. INITIALIZE NOTIFICATIONS (Mobile Only)
   if (!kIsWeb) {
     try {
-      // Setup Channel Explicitly
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         channelId, 
         channelName, 
@@ -90,7 +80,6 @@ void main() async {
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
 
-      // Init Service
       await NotificationService().init();
       debugPrint("✅ Notifications Initialized Successfully");
     } catch (e) {
@@ -109,8 +98,9 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
-        return MaterialApp(
-          navigatorKey: navigatorKey,
+        // ✅ CHANGED: Use MaterialApp.router
+        return MaterialApp.router(
+          routerConfig: appRouter, // Connects GoRouter
           title: 'ASCON Alumni',
           debugShowCheckedModeBanner: false,
 
@@ -119,13 +109,6 @@ class MyApp extends StatelessWidget {
           darkTheme: AppTheme.darkTheme,
           
           themeMode: currentMode, 
-
-          home: const SplashScreen(),
-
-          routes: {
-            '/login': (context) => const LoginScreen(),
-            '/home': (context) => const HomeScreen(),
-          },
         );
       },
     );

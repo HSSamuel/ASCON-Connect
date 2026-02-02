@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
-import api from "../api"; // ✅ Import centralized API
+import api from "../api";
 import { FaTrash, FaEdit, FaTimes, FaLink } from "react-icons/fa";
 import "./FacilitiesTab.css";
 import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
 import SkeletonTable from "./SkeletonTable";
+import { useDashboard } from "../context/DashboardContext"; // ✅ Import Context
 
-function FacilitiesTab({ onRefreshStats }) {
+function FacilitiesTab() {
+  const { triggerRefresh } = useDashboard(); // ✅ Get trigger from context
+
   const [facilities, setFacilities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -89,7 +92,7 @@ function FacilitiesTab({ onRefreshStats }) {
       await api.delete(`/api/facilities/${deleteModal.id}`);
       showToast("Facility Deleted Successfully!", "success");
       fetchFacilities();
-      if (onRefreshStats) onRefreshStats();
+      triggerRefresh(); // ✅ Refresh Stats via Context
     } catch (err) {
       showToast("Failed to delete facility", "error");
     } finally {
@@ -126,7 +129,7 @@ function FacilitiesTab({ onRefreshStats }) {
       }
       resetForm();
       fetchFacilities();
-      if (onRefreshStats) onRefreshStats();
+      triggerRefresh(); // ✅ Refresh Stats via Context
     } catch (err) {
       showToast(err.response?.data?.message || "Operation failed", "error");
     } finally {

@@ -3,41 +3,31 @@ import "./App.css";
 import NavBar from "./components/NavBar";
 import StatCard from "./components/StatCard";
 
-// ✅ Import ALL Smart Managers including the new DocumentsManager
+// ✅ Import ALL Smart Managers
 import UsersManager from "./pages/UsersManager";
 import EventsManager from "./pages/EventsManager";
 import ProgrammesManager from "./pages/ProgrammesManager";
 import RegistrationsManager from "./pages/RegistrationsManager";
 import JobsManager from "./pages/JobsManager";
 import FacilitiesTab from "./components/FacilitiesTab";
-import DocumentsManager from "./pages/DocumentsManager"; // ✅ NEW IMPORT
+import DocumentsManager from "./pages/DocumentsManager";
 
 import { useAuth } from "./hooks/useAuth";
-import { useStats } from "./hooks/useStats";
+// Note: useStats is now used inside the Context, not here directly
+import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 
-function AdminDashboard({ token, onLogout }) {
-  const [activeTab, setActiveTab] = useState("users");
-  const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
-
-  // ✅ 1. CREATE A REFRESH TRIGGER
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const { canEdit, userRole } = useAuth(token, onLogout);
-  const stats = useStats(refreshTrigger);
-
-  useEffect(() => {
-    document.body.setAttribute("data-theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    localStorage.setItem("theme", newTheme);
-    setTheme(newTheme);
-  };
-
-  // ✅ 3. HELPER FUNCTION TO UPDATE STATS
-  const refreshStats = () => {
-    setRefreshTrigger((prev) => prev + 1);
-  };
+// Internal Component to consume Context
+const DashboardContent = ({
+  token,
+  onLogout,
+  activeTab,
+  setActiveTab,
+  theme,
+  toggleTheme,
+  canEdit,
+  userRole,
+}) => {
+  const { stats } = useDashboard(); // ✅ Clean access to stats
 
   return (
     <div className="admin-container">
@@ -90,7 +80,6 @@ function AdminDashboard({ token, onLogout }) {
           onClick={() => setActiveTab("jobs")}
         />
 
-        {/* FACILITIES STAT CARD */}
         <StatCard
           title="Facilities"
           value={stats.facilities || 0}
@@ -106,15 +95,6 @@ function AdminDashboard({ token, onLogout }) {
           color="#E6E6FA"
           onClick={() => setActiveTab("registrations")}
         />
-
-        {/* OPTIONAL: Document Stats Card (You can add this if your stats API returns it) */}
-        {/* <StatCard
-          title="Doc Requests"
-          value={stats.documentRequests || 0}
-          icon="📄"
-          color="#f8d7da"
-          onClick={() => setActiveTab("documents")}
-        /> */}
       </div>
 
       <div
@@ -137,21 +117,50 @@ function AdminDashboard({ token, onLogout }) {
           <JobsManager token={token} canEdit={canEdit} />
         )}
 
-        {/* ✅ 4. PASS THE REFRESH FUNCTION TO FACILITIES TAB */}
-        {activeTab === "facilities" && (
-          <FacilitiesTab onRefreshStats={refreshStats} />
-        )}
+        {/* ✅ FacilitiesTab no longer needs onRefreshStats prop */}
+        {activeTab === "facilities" && <FacilitiesTab />}
 
         {activeTab === "registrations" && (
           <RegistrationsManager token={token} canEdit={canEdit} />
         )}
 
-        {/* ✅ 5. RENDER DOCUMENTS MANAGER */}
         {activeTab === "documents" && (
           <DocumentsManager token={token} canEdit={canEdit} />
         )}
       </div>
     </div>
+  );
+};
+
+function AdminDashboard({ token, onLogout }) {
+  const [activeTab, setActiveTab] = useState("users");
+  const [theme, setTheme] = useState(localStorage.getItem("theme") || "light");
+  const { canEdit, userRole } = useAuth(token, onLogout);
+
+  useEffect(() => {
+    document.body.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    localStorage.setItem("theme", newTheme);
+    setTheme(newTheme);
+  };
+
+  return (
+    // ✅ WRAP ENTIRE DASHBOARD IN PROVIDER
+    <DashboardProvider>
+      <DashboardContent
+        token={token}
+        onLogout={onLogout}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        theme={theme}
+        toggleTheme={toggleTheme}
+        canEdit={canEdit}
+        userRole={userRole}
+      />
+    </DashboardProvider>
   );
 }
 
