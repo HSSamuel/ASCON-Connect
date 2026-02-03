@@ -250,6 +250,13 @@ class AuthService {
     final userId = user['id'] ?? user['_id']; 
     if (userId != null) {
       await _storage.write(key: 'userId', value: userId);
+
+      // ========================================================
+      // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Background Connection)
+      // Instant socket connection before UI starts rendering.
+      // ========================================================
+      SocketService().connectUser(userId);
+
     } else {
       debugPrint("⚠️ Warning: User ID not found in session data");
     }

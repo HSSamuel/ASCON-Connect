@@ -37,10 +37,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
 
-    // ✅ CRITICAL: Connect socket IMMEDIATELY upon login success
-    // This ensures presence is active before we navigate to chat
-    if (user['_id'] != null) {
-      SocketService().connectUser(user['_id']);
+    // ========================================================
+    // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Frontend)
+    // Connect socket IMMEDIATELY in the background upon login success
+    // This ensures the user appears "Online" instantly before the UI even transitions.
+    // ========================================================
+    if (user['id'] != null || user['_id'] != null) {
+      final String userId = user['id'] ?? user['_id'];
+      SocketService().connectUser(userId);
     }
 
     String safeName = user['fullName'] ?? "Alumni"; 

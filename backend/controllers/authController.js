@@ -158,12 +158,28 @@ exports.login = asyncHandler(async (req, res) => {
   if (!user.alumniId || user.alumniId === "PENDING" || user.alumniId === "") {
     const yearToUse = user.yearOfAttendance || new Date().getFullYear();
     user.alumniId = await generateAlumniId(yearToUse);
-    await user.save();
   }
 
   if (fcmToken) {
     await manageFcmToken(user._id, fcmToken);
   }
+
+  // ========================================================
+  // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Immediate Online Status)
+  // ========================================================
+  user.isOnline = true;
+  user.lastSeen = new Date();
+  await user.save(); // Save ID repair AND online status at once
+
+  // Broadcast instantly to global IO instance
+  if (req.io) {
+    req.io.emit("user_status_update", {
+      userId: user._id,
+      isOnline: true,
+      lastSeen: user.lastSeen,
+    });
+  }
+  // ========================================================
 
   const token = jwt.sign(
     { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
@@ -253,6 +269,23 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   if (fcmToken) {
     await manageFcmToken(user._id, fcmToken);
   }
+
+  // ========================================================
+  // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Google Auth)
+  // ========================================================
+  user.isOnline = true;
+  user.lastSeen = new Date();
+  await user.save();
+
+  // Broadcast instantly to global IO instance
+  if (req.io) {
+    req.io.emit("user_status_update", {
+      userId: user._id,
+      isOnline: true,
+      lastSeen: user.lastSeen,
+    });
+  }
+  // ========================================================
 
   const authToken = jwt.sign(
     {

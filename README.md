@@ -1,6 +1,6 @@
 # ASCON Alumni Association Platform
 
-**ASCON Alumni** is the official digital platform for the Administrative Staff College of Nigeria (ASCON) Alumni. It bridges the gap between the institution and its graduates, providing Digital Identity, Networking, and Verification services.
+**ASCON Alumni** is the official digital platform for the Administrative Staff College of Nigeria (ASCON) Alumni. It bridges the gap between the institution and its graduates, providing Digital Identity, Networking, Smart Career Matching, and Verification services.
 
 ## 🚀 Project Architecture
 
@@ -8,9 +8,9 @@ The project is a **Full-Stack Application** divided into three distinct parts:
 
 | Folder                 | Tech Stack            | Description                                                                                   |
 | :--------------------- | :-------------------- | :-------------------------------------------------------------------------------------------- |
-| **`/ascon_mobile`**    | **Flutter (Dart)**    | The Android/iOS mobile app used by Alumni. Features Digital ID, News, and Profile Management. |
-| **`/ascon_web_admin`** | **React.js**          | The Admin Portal for ASCON staff to Approve users, Post Events, and Verify IDs.               |
-| **`/backend`**         | **Node.js & Express** | The central API connecting the App, Website, and MongoDB Database.                            |
+| **`/ascon_mobile`** | **Flutter (Dart)** | The Android/iOS mobile app used by Alumni. Features Digital ID, Smart Match, and Real-Time Chat. |
+| **`/ascon_web_admin`** | **React.js** | The Admin Portal for ASCON staff to Approve users, Post Events, and Verify IDs.               |
+| **`/backend`** | **Node.js & Express** | The central API connecting the App, Website, and MongoDB Database.                            |
 
 ---
 
@@ -39,6 +39,10 @@ _Located in `/backend`_
 
     # Google Auth
     GOOGLE_CLIENT_ID = your_google_client_id
+
+    # Redis (For Scalable Sockets)
+    USE_REDIS = true
+    REDIS_URL = redis://localhost:6379
     ```
 
 4.  Start the server: `npm start`
@@ -67,11 +71,16 @@ _Located in `/ascon_mobile`_
 3.  **Environment Configuration:**
     Create a `.env` file in the root of `ascon_mobile` to switch between Local and Production servers easily.
 
+    ```env
+    # API Connection (Use your computer's IP address for local testing on Physical devices)
+    API_URL=[http://192.168.1.xxx:5000](http://192.168.1.xxx:5000)
+    # For Production: API_URL=[https://ascon-st50.onrender.com](https://ascon-st50.onrender.com)
+
+    # Firebase Cloud Messaging (Web Push Key)
+    FIREBASE_VAPID_KEY=your_firebase_vapid_key
     ```
 
-    ```
-
-4.  **Run the app:** \* Development: `flutter run`
+4.  **Run the app:** - Development: `flutter run`
     - Web (CORS Disabled): `flutter run -d chrome --web-browser-flag "--disable-web-security"`
 5.  **Build Release (Android):** `flutter build apk --release`
 6.  **Build Release (iPhone):** `flutter build ios --release`
@@ -81,29 +90,33 @@ _Located in `/ascon_mobile`_
 ## 🔐 Key Features
 
 ### 1. Auto-Generated Digital ID
-
 - **Logic:** Upon registration, every user is assigned a unique Alumni ID (e.g., `ASC/2025/0042`).
 - **Visual:** The mobile app renders a realistic ID card with a QR Code.
-- **Verification:** The QR Code links to `/verify/ASC-...` allowing security personnel to validate identity instantly without logging in.
+- **Verification:** The QR Code links to a public `/verify/ASC-...` portal, allowing security personnel to validate identity instantly without logging in.
 
-### 2. Smart Notification System (FCM)
+### 2. AI-Lite Smart Match System
+- **Aggregation Pipeline:** Uses highly optimized MongoDB Aggregation pipelines to calculate matching scores between Alumni without overloading the Node.js server.
+- **Weighted Scoring:** Users are matched based on Industry (10pts), Shared Skills (2pts per skill), and Class Year/Programme (1pt).
 
+### 3. "Near Me" Geolocation System
+- **Privacy First:** Alumni must explicitly toggle "Make Location Visible" in their profile to appear on the map.
+- **Travel Mode:** Allows users to manually type a city (e.g., "Abuja") to find local alumni before traveling.
+- **Security:** Queries are sanitized to prevent ReDoS (Regular Expression Denial of Service) attacks.
+
+### 4. Scalable Real-time Presence System (Socket.io + Redis)
+- **Multi-Server Scaling:** Integrated with `@socket.io/redis-adapter` allowing the chat and presence system to scale across multiple server instances.
+- **"Double-Tap" Connection:** Emits online status instantly upon HTTP Login success, bypassing UI transition delays.
+- **Grace Period Logic:** Implements a 5-second disconnect timer to prevent status "flickering" if a user briefly switches apps or loses connection.
+
+### 5. Smart Notification System (FCM)
 - **Hybrid Support:** Works for both Android (Push Notifications) and Web.
-- **Token Management:** Implements a **"Cap & Slice"** strategy. Each user account stores up to 5 active devices. When a 6th device logs in, the oldest token is automatically removed to prevent database bloat.
-- **Targeting:** Admins can send Broadcasts (to all) or Personal Messages (to specific users).
+- **"Cap & Slice" Strategy:** Each user account stores up to 5 active device tokens. When a 6th device logs in, the oldest token is automatically removed to prevent database bloat.
 
-### 3. Role-Based Access Control (RBAC)
-
-- **User:** View profile, events, and Digital ID.
-- **Admin:** Approve users, post events, manage jobs.
+### 6. Role-Based Access Control (RBAC) & Mentorship
 - **Super Admin:** Manage other admins and edit sensitive data.
+- **Admin:** Approve users, post events, manage jobs.
+- **Mentor (New):** Alumni can toggle "Open to Mentorship", earning a Gold Badge on their profile.
 - **Security:** Protected via JWT Access Tokens (2h expiry) and Refresh Tokens (30d expiry).
-
-### 4. Verification System
-
-- New accounts are **Auto-Verified** for MVP speed.
-- Admins can manually revoke verification or ban users via the Dashboard.
-- **Unverified users** are blocked from logging in until approved.
 
 ---
 
@@ -119,4 +132,4 @@ _Located in `/ascon_mobile`_
 
 ## 🤝 Contribution
 
-Developed by **[HUNSA S. Samuel]** for ASCON.
+Developed by **[HUNSA S. Samuel]** for the Administrative Staff College of Nigeria (ASCON).

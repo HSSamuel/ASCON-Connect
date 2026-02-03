@@ -1,4 +1,3 @@
-// ❌ REMOVE: import 'dart:io'; 
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -26,10 +25,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _yearController;
   late TextEditingController _otherProgrammeController;
 
+  // ✅ NEW: Geolocation Controllers
+  late TextEditingController _cityController;
+  late TextEditingController _stateController;
+
   String? _selectedProgramme;
   
-  // ✅ NEW: Mentorship State
+  // ✅ Mentorship & Privacy States
   bool _isOpenToMentorship = false; 
+  bool _isLocationVisible = false; // ✅ NEW: Location Privacy Toggle
 
   Uint8List? _selectedImageBytes; 
   XFile? _pickedFile; // ✅ We keep this as XFile
@@ -61,8 +65,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _yearController = TextEditingController(text: widget.userData['yearOfAttendance']?.toString() ?? '');
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
 
-    // ✅ Initialize Mentorship Status from User Data
+    // ✅ NEW: Initialize Geolocation Controllers
+    _cityController = TextEditingController(text: widget.userData['city'] ?? '');
+    _stateController = TextEditingController(text: widget.userData['state'] ?? '');
+
+    // ✅ Initialize Mentorship & Location Status from User Data
     _isOpenToMentorship = widget.userData['isOpenToMentorship'] == true;
+    _isLocationVisible = widget.userData['isLocationVisible'] == true; // ✅ NEW
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
 
@@ -88,6 +97,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _phoneController.dispose();
     _yearController.dispose();
     _otherProgrammeController.dispose();
+    _cityController.dispose(); // ✅ NEW
+    _stateController.dispose(); // ✅ NEW
     super.dispose();
   }
 
@@ -121,6 +132,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'linkedin': _linkedinController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
         'yearOfAttendance': _yearController.text.trim(),
+        
+        // ✅ NEW: Include Geolocation Data
+        'city': _cityController.text.trim(),
+        'state': _stateController.text.trim(),
+        'isLocationVisible': _isLocationVisible.toString(),
+
         // ✅ Send Mentorship Status (converted to string for multipart request)
         'isOpenToMentorship': _isOpenToMentorship.toString(), 
       };
@@ -310,9 +327,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               
               _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
 
+              const SizedBox(height: 24),
+
+              // ==========================================
+              // ✅ NEW: GEOLOCATION & PRIVACY SECTION
+              // ==========================================
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text("Location (For 'Near Me' feature)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField("City", _cityController, Icons.location_city),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildTextField("State", _stateController, Icons.map_outlined),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
 
-              // ✅ NEW: MENTORSHIP TOGGLE UI (With Visibility Fix)
+              // ✅ NEW: LOCATION PRIVACY TOGGLE
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: SwitchListTile(
+                  title: const Text("Make Location Visible", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: Text("Allow nearby alumni to find you on the map.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  value: _isLocationVisible,
+                  activeColor: Colors.blue,
+                  inactiveThumbColor: Colors.grey, 
+                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
+                  onChanged: (bool value) {
+                    setState(() {
+                      _isLocationVisible = value;
+                    });
+                  },
+                  secondary: Icon(Icons.location_on, color: _isLocationVisible ? Colors.blue : Colors.grey),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ✅ MENTORSHIP TOGGLE (Existing)
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,

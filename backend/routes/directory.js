@@ -3,6 +3,13 @@ const User = require("../models/User");
 const verifyToken = require("./verifyToken"); // ✅ Protected Route
 
 // =========================================================
+// 🔒 HELPER: REGEX SANITIZER (PREVENTS ReDoS ATTACKS)
+// =========================================================
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+// =========================================================
 // 1. DIRECTORY SEARCH (PROTECTED)
 // =========================================================
 // @route   GET /api/directory
@@ -23,7 +30,7 @@ router.get("/", verifyToken, async (req, res) => {
       if (isYear) {
         query.yearOfAttendance = Number(search);
       } else {
-        const sanitizedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const sanitizedSearch = escapeRegex(search); // ✅ Applied security fix here too
         query.$text = { $search: sanitizedSearch };
       }
     }
@@ -64,58 +71,93 @@ router.get("/", verifyToken, async (req, res) => {
 // 2. SMART CAREER MATCH (AI-LITE)
 // =========================================================
 // @route   GET /api/directory/smart-matches
+// ✅ FIX: Moved heavy scoring logic from Node.js RAM to MongoDB Aggregation Pipeline
 router.get("/smart-matches", verifyToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id);
     if (!currentUser)
       return res.status(404).json({ message: "User not found" });
 
-    // 1. Get all other verified users
-    const allUsers = await User.find({
-      _id: { $ne: currentUser._id },
-      isVerified: true,
-    }).select(
-      "fullName jobTitle organization profilePicture industry skills city state programmeTitle yearOfAttendance isOpenToMentorship",
-    );
+    // Ensure user arrays exist for the aggregation
+    const userSkills = currentUser.skills || [];
+    const userIndustry = currentUser.industry
+      ? currentUser.industry.toLowerCase()
+      : "";
 
-    // 2. Calculate Similarity Score
-    const matches = allUsers.map((user) => {
-      let score = 0;
+    const topMatches = await User.aggregate([
+      // 1. Filter out self and unverified users
+      { $match: { _id: { $ne: currentUser._id }, isVerified: true } },
 
-      // A. Industry Match (High Weight: 10 pts)
-      if (
-        currentUser.industry &&
-        user.industry &&
-        currentUser.industry.toLowerCase() === user.industry.toLowerCase()
-      ) {
-        score += 10;
-      }
+      // 2. Calculate match scores for each criteria
+      {
+        $addFields: {
+          industryMatch: {
+            $cond: [{ $eq: [{ $toLower: "$industry" }, userIndustry] }, 10, 0],
+          },
+          programmeMatch: {
+            $cond: [
+              { $eq: ["$programmeTitle", currentUser.programmeTitle] },
+              1,
+              0,
+            ],
+          },
+          yearMatch: {
+            $cond: [
+              { $eq: ["$yearOfAttendance", currentUser.yearOfAttendance] },
+              1,
+              0,
+            ],
+          },
+          skillMatch: {
+            $multiply: [
+              {
+                $size: {
+                  $setIntersection: [{ $ifNull: ["$skills", []] }, userSkills],
+                },
+              },
+              2, // 2 points per matching skill
+            ],
+          },
+        },
+      },
 
-      // B. Skill Overlap (Medium Weight: 2 pts per skill)
-      if (
-        currentUser.skills &&
-        currentUser.skills.length > 0 &&
-        user.skills &&
-        user.skills.length > 0
-      ) {
-        const commonSkills = user.skills.filter((skill) =>
-          currentUser.skills.includes(skill),
-        );
-        score += commonSkills.length * 2;
-      }
+      // 3. Sum the total score
+      {
+        $addFields: {
+          matchScore: {
+            $add: [
+              "$industryMatch",
+              "$programmeMatch",
+              "$yearMatch",
+              "$skillMatch",
+            ],
+          },
+        },
+      },
 
-      // C. Programme/Year Match (Low Weight: 1 pt)
-      if (currentUser.programmeTitle === user.programmeTitle) score += 1;
-      if (currentUser.yearOfAttendance === user.yearOfAttendance) score += 1;
+      // 4. Filter only those with at least 1 point, sort, and limit
+      { $match: { matchScore: { $gt: 0 } } },
+      { $sort: { matchScore: -1 } },
+      { $limit: 15 },
 
-      return { ...user.toObject(), matchScore: score };
-    });
-
-    // 3. Sort by Score (Descending) and take top 15
-    const topMatches = matches
-      .filter((m) => m.matchScore > 0)
-      .sort((a, b) => b.matchScore - a.matchScore)
-      .slice(0, 15);
+      // 5. Project only necessary fields for the frontend
+      {
+        $project: {
+          fullName: 1,
+          jobTitle: 1,
+          organization: 1,
+          profilePicture: 1,
+          industry: 1,
+          skills: 1,
+          city: 1,
+          state: 1,
+          programmeTitle: 1,
+          yearOfAttendance: 1,
+          isOpenToMentorship: 1,
+          matchScore: 1,
+        },
+      },
+    ]);
 
     res.json({ success: true, data: topMatches });
   } catch (err) {
@@ -138,13 +180,16 @@ router.get("/near-me", verifyToken, async (req, res) => {
       return res.json({ success: true, data: [], message: "No location set." });
     }
 
+    // ✅ FIX: Sanitize the city string to prevent Regex DoS attacks
+    const safeCity = escapeRegex(targetCity);
+
     // Find users in the same city who have OPTED IN to location sharing
     const nearbyUsers = await User.find({
       _id: { $ne: currentUser._id },
       isVerified: true,
-      isLocationVisible: true, // ✅ Privacy Check
-      // WITH THIS (Allows "Lagos" to match "Lagos State" or "Ikeja, Lagos"):
-      city: { $regex: new RegExp(targetCity, "i") },
+      isLocationVisible: true, // Privacy Check
+      // Matches "Lagos State" or "Ikeja, Lagos" safely
+      city: { $regex: new RegExp(safeCity, "i") },
     }).select(
       "fullName jobTitle organization profilePicture city state phoneNumber email isOnline",
     );
