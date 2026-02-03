@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 import '../services/data_service.dart';
 import '../widgets/skeleton_loader.dart'; 
 import 'job_detail_screen.dart';
@@ -51,62 +50,54 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
-    // ✅ WRAPPED WITH POPSCOPE
-    return PopScope(
-      canPop: false, 
-      onPopInvoked: (didPop) {
-        if (didPop) return;
-        context.go('/home'); // Go to Home Tab
-      },
-      child: Scaffold(
-        backgroundColor: scaffoldBg,
-        appBar: AppBar(
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white, 
-          iconTheme: const IconThemeData(color: Colors.white),
-          title: Text(
-            "Opportunities & Facilities",
-            style: GoogleFonts.lato(
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              fontSize: 22,
-            ),
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      appBar: AppBar(
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white, 
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          "Opportunities & Facilities",
+          style: GoogleFonts.lato(
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+            fontSize: 22,
           ),
-          centerTitle: false,
-          elevation: 0,
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(70),
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.black26 : Colors.white, 
-                borderRadius: BorderRadius.circular(16),
+        ),
+        centerTitle: false,
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(70),
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.black26 : Colors.white, 
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: isDark ? primaryColor : primaryColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: isDark ? primaryColor : primaryColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                labelColor: isDark ? Colors.white : primaryColor,
-                unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
-                labelStyle: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 13),
-                tabs: const [
-                  Tab(text: "JOBS", height: 40),
-                  Tab(text: "FACILITIES", height: 40),
-                ],
-              ),
+              labelColor: isDark ? Colors.white : primaryColor,
+              unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
+              labelStyle: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 13),
+              tabs: const [
+                Tab(text: "JOBS", height: 40),
+                Tab(text: "FACILITIES", height: 40),
+              ],
             ),
           ),
         ),
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildJobsList(isDark, primaryColor),
-            const FacilitiesTab(), 
-          ],
-        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildJobsList(isDark, primaryColor),
+          const FacilitiesTab(), 
+        ],
       ),
     );
   }

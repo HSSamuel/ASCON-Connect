@@ -59,6 +59,7 @@ router.put("/update", verifyToken, (req, res) => {
         customProgramme: req.body.customProgramme,
         industry: req.body.industry || "",
         city: req.body.city || "",
+        state: req.body.state || "", // ✅ FIXED: Now captures state from the mobile app
         skills: skillsArray,
       };
 

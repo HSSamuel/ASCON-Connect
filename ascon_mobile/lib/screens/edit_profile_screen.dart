@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl_phone_field/intl_phone_field.dart'; // ✅ IMPORTED PHONE FIELD
 import '../services/data_service.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
@@ -21,22 +22,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _jobController;
   late TextEditingController _orgController;
   late TextEditingController _linkedinController;
-  late TextEditingController _phoneController;
   late TextEditingController _yearController;
   late TextEditingController _otherProgrammeController;
 
-  // ✅ NEW: Geolocation Controllers
+  // Geolocation Controllers
   late TextEditingController _cityController;
   late TextEditingController _stateController;
 
+  // ✅ New variable to hold the combined phone number
+  String _completePhoneNumber = "";
+
   String? _selectedProgramme;
-  
-  // ✅ Mentorship & Privacy States
   bool _isOpenToMentorship = false; 
-  bool _isLocationVisible = false; // ✅ NEW: Location Privacy Toggle
+  bool _isLocationVisible = false; 
 
   Uint8List? _selectedImageBytes; 
-  XFile? _pickedFile; // ✅ We keep this as XFile
+  XFile? _pickedFile; 
   String? _currentUrl;
 
   final List<String> _programmeOptions = [
@@ -61,17 +62,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _jobController = TextEditingController(text: widget.userData['jobTitle'] ?? '');
     _orgController = TextEditingController(text: widget.userData['organization'] ?? '');
     _linkedinController = TextEditingController(text: widget.userData['linkedin'] ?? '');
-    _phoneController = TextEditingController(text: widget.userData['phoneNumber'] ?? '');
     _yearController = TextEditingController(text: widget.userData['yearOfAttendance']?.toString() ?? '');
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
 
-    // ✅ NEW: Initialize Geolocation Controllers
+    // ✅ Initialize Geolocation (This will now save to the DB once you add 'state' to the backend schema)
     _cityController = TextEditingController(text: widget.userData['city'] ?? '');
     _stateController = TextEditingController(text: widget.userData['state'] ?? '');
 
-    // ✅ Initialize Mentorship & Location Status from User Data
+    // Set existing phone number
+    _completePhoneNumber = widget.userData['phoneNumber'] ?? '';
+
     _isOpenToMentorship = widget.userData['isOpenToMentorship'] == true;
-    _isLocationVisible = widget.userData['isLocationVisible'] == true; // ✅ NEW
+    _isLocationVisible = widget.userData['isLocationVisible'] == true; 
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
 
@@ -94,11 +96,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _jobController.dispose();
     _orgController.dispose();
     _linkedinController.dispose();
-    _phoneController.dispose();
     _yearController.dispose();
     _otherProgrammeController.dispose();
-    _cityController.dispose(); // ✅ NEW
-    _stateController.dispose(); // ✅ NEW
+    _cityController.dispose(); 
+    _stateController.dispose(); 
     super.dispose();
   }
 
@@ -130,15 +131,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'jobTitle': _jobController.text.trim(),
         'organization': _orgController.text.trim(),
         'linkedin': _linkedinController.text.trim(),
-        'phoneNumber': _phoneController.text.trim(),
+        'phoneNumber': _completePhoneNumber, // ✅ Sends full country code + number
         'yearOfAttendance': _yearController.text.trim(),
         
-        // ✅ NEW: Include Geolocation Data
         'city': _cityController.text.trim(),
         'state': _stateController.text.trim(),
         'isLocationVisible': _isLocationVisible.toString(),
-
-        // ✅ Send Mentorship Status (converted to string for multipart request)
         'isOpenToMentorship': _isOpenToMentorship.toString(), 
       };
 
@@ -150,7 +148,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         fields['customProgramme'] = "";
       }
 
-      // ✅ FIX: PASS XFILE DIRECTLY (Do not convert to File)
       final bool success = await _dataService.updateProfile(fields, _pickedFile);
 
       if (!mounted) return;
@@ -218,6 +215,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final cardColor = Theme.of(context).cardColor;
+
+    // Helper to extract raw number for the UI if the saved number already has a country code.
+    String initialPhoneNumber = widget.userData['phoneNumber'] ?? '';
+    String initialCountryCode = 'NG'; // Default NG
+    
+    // Check if the saved number includes a country code (e.g., +234)
+    if (initialPhoneNumber.startsWith('+')) {
+      if (initialPhoneNumber.startsWith('+234')) {
+        initialCountryCode = 'NG';
+        initialPhoneNumber = initialPhoneNumber.substring(4); // Remove +234 for the text box
+      } else if (initialPhoneNumber.startsWith('+1')) {
+        initialCountryCode = 'US';
+        initialPhoneNumber = initialPhoneNumber.substring(2);
+      } else if (initialPhoneNumber.startsWith('+44')) {
+        initialCountryCode = 'GB';
+        initialPhoneNumber = initialPhoneNumber.substring(3);
+      }
+      // Expand this list based on your user base, intl_phone_field handles the display automatically
+    } else if (initialPhoneNumber.startsWith('0')) {
+      // Legacy numbers without code, remove the leading zero
+      initialPhoneNumber = initialPhoneNumber.substring(1); 
+    }
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -309,16 +328,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               const SizedBox(height: 12),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildTextField("Phone", _phoneController, Icons.phone, isNumber: true),
-                  ),
-                ],
+              _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
+              
+              const SizedBox(height: 12),
+
+              // ✅ NEW: INTERNATIONAL PHONE FIELD
+              IntlPhoneField(
+                initialValue: initialPhoneNumber,
+                initialCountryCode: initialCountryCode,
+                decoration: InputDecoration(
+                  labelText: 'Phone Number',
+                  labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                ),
+                style: TextStyle(fontSize: 14, color: textColor),
+                dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
+                onChanged: (phone) {
+                  _completePhoneNumber = phone.completeNumber; // Captures +23480...
+                },
               ),
 
               const SizedBox(height: 12),
@@ -329,9 +357,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               const SizedBox(height: 24),
 
-              // ==========================================
-              // ✅ NEW: GEOLOCATION & PRIVACY SECTION
-              // ==========================================
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
@@ -350,7 +375,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 12),
 
-              // ✅ NEW: LOCATION PRIVACY TOGGLE
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
@@ -375,7 +399,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               const SizedBox(height: 12),
 
-              // ✅ MENTORSHIP TOGGLE (Existing)
               Container(
                 decoration: BoxDecoration(
                   color: cardColor,
@@ -387,8 +410,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   subtitle: Text("Allow other alumni to contact you for guidance.", style: TextStyle(color: Colors.grey, fontSize: 12)),
                   value: _isOpenToMentorship,
                   activeColor: const Color(0xFFD4AF37), // Gold for Mentors
-                  
-                  // ✅ FIX: Force colors for Inactive State
                   inactiveThumbColor: Colors.grey, 
                   inactiveTrackColor: Colors.grey.withOpacity(0.2),
 

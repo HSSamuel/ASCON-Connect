@@ -107,97 +107,104 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final currentIndex = widget.navigationShell.currentIndex;
 
-    // We only show AppBar on the Dashboard (Index 0)
-    // Other screens manage their own AppBars
     final showAppBar = currentIndex == 0;
 
-    return Scaffold(
-      appBar: showAppBar 
-        ? AppBar(
-            title: Text("Dashboard", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : primaryColor)),
-            backgroundColor: Theme.of(context).cardColor,
-            elevation: 0,
-            automaticallyImplyLeading: false,
-            actions: [
-              Stack(
-                alignment: Alignment.topRight,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
-                    onPressed: () async {
-                      setState(() => _hasUnreadMessages = false); 
-                      // Use GoRouter to push chat
-                      context.push('/chat').then((_) => _checkUnreadStatus());
-                    },
-                  ),
-                  if (_hasUnreadMessages)
-                    Positioned(
-                      right: 8, top: 8,
-                      child: Container(
-                        width: 10, height: 10,
-                        decoration: BoxDecoration(
-                          color: Colors.red, 
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Theme.of(context).cardColor, width: 1.5)
+    // ✅ NEW: CENTRAL ROUTE NAVIGATION FIX
+    // Handled at the Shell level so it works perfectly for ALL tabs.
+    return PopScope(
+      canPop: currentIndex == 0, // Only allow app exit if we are already on Dashboard
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        // If back is pressed on any other tab, go to Dashboard (Index 0)
+        _goBranch(0); 
+      },
+      child: Scaffold(
+        appBar: showAppBar 
+          ? AppBar(
+              title: Text("Dashboard", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : primaryColor)),
+              backgroundColor: Theme.of(context).cardColor,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              actions: [
+                Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
+                      onPressed: () async {
+                        setState(() => _hasUnreadMessages = false); 
+                        context.push('/chat').then((_) => _checkUnreadStatus());
+                      },
+                    ),
+                    if (_hasUnreadMessages)
+                      Positioned(
+                        right: 8, top: 8,
+                        child: Container(
+                          width: 10, height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.red, 
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Theme.of(context).cardColor, width: 1.5)
+                          ),
                         ),
-                      ),
-                    )
-                ],
-              ),
-              IconButton(
-                icon: Icon(Icons.info_outline, color: isDark ? Colors.white : primaryColor, size: 22),
-                onPressed: () => context.push('/about'),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12.0),
-                child: IconButton(
-                  tooltip: 'Switch Theme',
-                  icon: ValueListenableBuilder<ThemeMode>(
-                    valueListenable: themeNotifier,
-                    builder: (context, currentMode, _) {
-                      bool isCurrentlyDark = currentMode == ThemeMode.dark || (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
-                      return Icon(isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, color: isDark ? Colors.white : primaryColor, size: 24);
-                    },
-                  ),
-                  onPressed: () => themeNotifier.value = themeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+                      )
+                  ],
                 ),
-              ),
-            ],
-          )
-        : null, 
+                IconButton(
+                  icon: Icon(Icons.info_outline, color: isDark ? Colors.white : primaryColor, size: 22),
+                  onPressed: () => context.push('/about'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(right: 12.0),
+                  child: IconButton(
+                    tooltip: 'Switch Theme',
+                    icon: ValueListenableBuilder<ThemeMode>(
+                      valueListenable: themeNotifier,
+                      builder: (context, currentMode, _) {
+                        bool isCurrentlyDark = currentMode == ThemeMode.dark || (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
+                        return Icon(isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, color: isDark ? Colors.white : primaryColor, size: 24);
+                      },
+                    ),
+                    onPressed: () => themeNotifier.value = themeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+                  ),
+                ),
+              ],
+            )
+          : null, 
 
-      body: widget.navigationShell,
+        body: widget.navigationShell,
 
-      floatingActionButton: SizedBox(
-        width: 58, height: 58,
-        child: FloatingActionButton(
-          onPressed: () => _goBranch(2), // Jobs Tab
-          backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
-          elevation: 6.0,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.work, color: Colors.white, size: 28),
+        floatingActionButton: SizedBox(
+          width: 58, height: 58,
+          child: FloatingActionButton(
+            onPressed: () => _goBranch(2), // Jobs Tab
+            backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
+            elevation: 6.0,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.work, color: Colors.white, size: 28),
+          ),
         ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: SizedBox(
-        height: 60,
-        child: BottomAppBar(
-          shape: const CircularNotchedRectangle(),
-          notchMargin: 6.0,
-          color: navBarColor,
-          elevation: 0,
-          clipBehavior: Clip.antiAlias,
-          padding: EdgeInsets.zero,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: currentIndex),
-              _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: currentIndex),
-              const SizedBox(width: 48), // Gap for FAB
-              _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: currentIndex),
-              _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: currentIndex),
-            ],
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        bottomNavigationBar: SizedBox(
+          height: 60,
+          child: BottomAppBar(
+            shape: const CircularNotchedRectangle(),
+            notchMargin: 6.0,
+            color: navBarColor,
+            elevation: 0,
+            clipBehavior: Clip.antiAlias,
+            padding: EdgeInsets.zero,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: currentIndex),
+                _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: currentIndex),
+                const SizedBox(width: 48), // Gap for FAB
+                _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: currentIndex),
+                _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: currentIndex),
+              ],
+            ),
           ),
         ),
       ),

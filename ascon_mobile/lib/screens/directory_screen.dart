@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:shared_preferences/shared_preferences.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 
 import '../services/data_service.dart';
 import '../services/api_client.dart'; 
@@ -48,14 +47,14 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   bool _isLoadingNearMe = false;
   final TextEditingController _cityController = TextEditingController();
   
-  // ✅ NEW: Local Filter for Near Me Tab
+  // Local Filter for Near Me Tab
   final TextEditingController _nearMeFilterController = TextEditingController();
   String _nearMeFilter = "";
   
-  // ✅ STREAM SUBSCRIPTION (Presence System)
+  // STREAM SUBSCRIPTION (Presence System)
   StreamSubscription? _statusSubscription;
   
-  // ✅ Scroll Controller for Smart Action
+  // Scroll Controller for Smart Action
   final ScrollController _mainScrollController = ScrollController();
 
   @override
@@ -69,7 +68,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     _loadSmartMatches();
     _loadNearMe(); 
     
-    // ✅ Listen to Real-Time Status Stream
+    // Listen to Real-Time Status Stream
     _statusSubscription = SocketService().userStatusStream.listen((data) {
       if (!mounted) return;
       
@@ -257,46 +256,38 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     final primaryColor = Theme.of(context).primaryColor;
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     
-    // ✅ WRAPPED WITH POPSCOPE
-    return PopScope(
-      canPop: false, 
-      onPopInvoked: (didPop) {
-        if (didPop) return;
-        context.go('/home'); // Go to Home Tab
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            "Alumni Directory", 
-            style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
-          ),
-          automaticallyImplyLeading: false,
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          bottom: TabBar(
-            controller: _tabController,
-            indicatorColor: const Color(0xFFD4AF37), // Gold
-            indicatorWeight: 3,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold),
-            tabs: const [
-              Tab(text: "All"),
-              Tab(text: "Smart Match"),
-              Tab(text: "Near Me"),
-            ],
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          "Alumni Directory", 
+          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
         ),
-        backgroundColor: bgColor,
-        body: TabBarView(
+        automaticallyImplyLeading: false,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        bottom: TabBar(
           controller: _tabController,
-          children: [
-            _buildDirectoryTab(),
-            _buildSmartMatchesTab(),
-            _buildNearMeTab(),
+          indicatorColor: const Color(0xFFD4AF37), // Gold
+          indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold),
+          tabs: const [
+            Tab(text: "All"),
+            Tab(text: "Smart Match"),
+            Tab(text: "Near Me"),
           ],
         ),
+      ),
+      backgroundColor: bgColor,
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildDirectoryTab(),
+          _buildSmartMatchesTab(),
+          _buildNearMeTab(),
+        ],
       ),
     );
   }
@@ -463,7 +454,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     final primaryColor = Theme.of(context).primaryColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ NEW: Apply Local Filter logic
+    // Apply Local Filter logic
     final filteredList = _nearbyAlumni.where((user) {
       if (_nearMeFilter.isEmpty) return true;
       final name = (user['fullName'] ?? '').toLowerCase();
@@ -497,7 +488,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
           ),
         ),
 
-        // 2. ✅ Local Name Filter (Only visible if results exist)
+        // 2. Local Name Filter (Only visible if results exist)
         if (_nearbyAlumni.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

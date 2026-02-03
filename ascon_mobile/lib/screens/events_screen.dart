@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 import '../services/data_service.dart'; 
 import '../widgets/skeleton_loader.dart'; 
 import 'event_detail_screen.dart';
@@ -116,47 +115,39 @@ class _EventsScreenState extends State<EventsScreen> {
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
-    // ✅ WRAPPED WITH POPSCOPE
-    return PopScope(
-      canPop: false, 
-      onPopInvoked: (didPop) {
-        if (didPop) return;
-        context.go('/home'); // Go to Home Tab
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            "News & Events", 
-            style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
-          ),
-          backgroundColor: primaryColor,
-          foregroundColor: Colors.white,
-          automaticallyImplyLeading: false,
-          elevation: 0,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          "News & Events", 
+          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
         ),
-        backgroundColor: scaffoldBg,
-        
-        body: RefreshIndicator(
-          onRefresh: _loadEvents,
-          color: primaryColor,
-          child: _isLoading
-              ? const EventSkeletonList() 
-              : _events.isEmpty
-                  ? _buildEmptyState()
-                  : GridView.builder( 
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 220, 
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 0.72, 
-                      ),
-                      itemCount: _events.length,
-                      itemBuilder: (context, index) {
-                        return _buildImmersiveEventCard(_events[index]);
-                      },
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+        elevation: 0,
+      ),
+      backgroundColor: scaffoldBg,
+      
+      body: RefreshIndicator(
+        onRefresh: _loadEvents,
+        color: primaryColor,
+        child: _isLoading
+            ? const EventSkeletonList() 
+            : _events.isEmpty
+                ? _buildEmptyState()
+                : GridView.builder( 
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 220, 
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                      childAspectRatio: 0.72, 
                     ),
-        ),
+                    itemCount: _events.length,
+                    itemBuilder: (context, index) {
+                      return _buildImmersiveEventCard(_events[index]);
+                    },
+                  ),
       ),
     );
   }

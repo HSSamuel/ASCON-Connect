@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:intl_phone_field/intl_phone_field.dart'; // ✅ IMPORTED PHONE FIELD
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import '../widgets/loading_dialog.dart'; // ✅ CHANGED: Import the new Dialog widget
+import '../widgets/loading_dialog.dart';
 
 class RegisterScreen extends StatefulWidget {
   final String? prefilledName;
@@ -25,11 +26,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Controllers
   late TextEditingController _nameController;
   late TextEditingController _emailController;
-  final _phoneController = TextEditingController();
   final _yearController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _customProgrammeController = TextEditingController();
+
+  // ✅ New variable to store the complete phone number (Code + Number)
+  String _completePhoneNumber = ""; 
 
   bool _obscurePassword = true;
 
@@ -57,7 +60,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _emailController = TextEditingController(text: widget.prefilledEmail ?? '');
   }
 
-  // ✅ Success Dialog (Kept exactly as is)
   void _showSuccessDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = Theme.of(context).cardColor;
@@ -104,7 +106,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context); 
-                      // ✅ Clear stack to prevent back button loops
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -131,6 +132,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
     
+    // ✅ Ensure a valid phone number is entered
+    if (_completePhoneNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a valid phone number"), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Passwords do not match"), backgroundColor: Colors.red),
@@ -138,7 +147,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // ✅ 1. Show the Loading Dialog (Blocks interaction)
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -158,7 +166,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: _nameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        phoneNumber: _phoneController.text.trim(),
+        phoneNumber: _completePhoneNumber, // ✅ Sends full country code + number
         programmeTitle: finalProgrammeTitle,
         yearOfAttendance: _yearController.text.trim(),
         googleToken: widget.googleToken,
@@ -166,7 +174,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      // ✅ 2. Close Loading Dialog
       Navigator.of(context).pop(); 
 
       if (result['success']) {
@@ -177,8 +184,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         );
       }
     } catch (e) {
-      // Handle crash/network error properly
-      if (mounted) Navigator.of(context).pop(); // Close dialog if open
+      if (mounted) Navigator.of(context).pop(); 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red),
       );
@@ -192,7 +198,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ✅ REMOVED LoadingOverlay wrapper. Standard Scaffold used.
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -211,7 +216,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 
-                // LOGO
                 Center(
                   child: Container(
                     height: 100, width: 100,
@@ -254,10 +258,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 16),
                 _buildTextField("Email Address", _emailController, Icons.email_outlined),
                 const SizedBox(height: 16),
-                _buildTextField("Phone Number", _phoneController, Icons.phone_outlined, isNumber: true),
+
+                // ✅ NEW: INTERNATIONAL PHONE FIELD
+                IntlPhoneField(
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                  ),
+                  initialCountryCode: 'NG', // Defaults to Nigeria (+234)
+                  style: TextStyle(fontSize: 14, color: textColor),
+                  dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
+                  onChanged: (phone) {
+                    _completePhoneNumber = phone.completeNumber; // Captures +23480...
+                  },
+                ),
                 const SizedBox(height: 16),
                 
-                // DROPDOWN
                 DropdownButtonFormField<String>(
                   value: _selectedProgramme,
                   dropdownColor: Theme.of(context).cardColor, 
@@ -301,7 +319,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 SizedBox(
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: _handleRegister, // ✅ Logic moved inside function
+                    onPressed: _handleRegister, 
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
