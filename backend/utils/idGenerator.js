@@ -1,7 +1,8 @@
 const Counter = require("../models/Counter");
 // User model is no longer needed for the unsafe check, but kept if you need it elsewhere.
 // If not used elsewhere in this file, you can remove it.
-const User = require("../models/User");
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
 const crypto = require("crypto");
 const logger = require("./logger");
 

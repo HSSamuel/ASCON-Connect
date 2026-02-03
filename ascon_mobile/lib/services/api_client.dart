@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
+import '../config/storage_config.dart';
 
 /// ✅ Custom Exception for typed error handling in ViewModels
 class ApiException implements Exception {
@@ -20,9 +22,8 @@ class ApiClient {
   factory ApiClient() => _instance;
   ApiClient._internal();
 
-  final Map<String, String> _headers = {
-    'Content-Type': 'application/json',
-  };
+  // ✅ ENCRYPTED VAULT FOR TOKENS
+  final _secureStorage = StorageConfig.storage;
 
   // Increased timeout for slower networks
   static const Duration _timeoutDuration = Duration(seconds: 90);
@@ -34,44 +35,60 @@ class ApiClient {
   bool _isRefreshing = false;
   Completer<String?>? _refreshCompleter;
 
+  // =========================================================
+  // 🔐 DYNAMIC SECURE HEADER GENERATOR
+  // =========================================================
+  Future<Map<String, String>> _getSecureHeaders() async {
+    final token = await _secureStorage.read(key: 'auth_token');
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'auth-token': token, 
+    };
+  }
+
+  // ✅ Legacy method kept for backward compatibility with AuthService
   void setAuthToken(String token) {
-    _headers['auth-token'] = token;
+    // No longer needs to set a static map, as _getSecureHeaders reads dynamically
   }
 
   void clearAuthToken() {
-    _headers.remove('auth-token');
+    // Tokens are now cleared directly in AuthService via secureStorage.delete()
   }
 
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
+    final headers = await _getSecureHeaders();
     final response = await _request(() => http.post(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: _headers,
+      headers: headers,
       body: jsonEncode(body),
     ));
     return response as Map<String, dynamic>; 
   }
 
   Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body) async {
+    final headers = await _getSecureHeaders();
     final response = await _request(() => http.put(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: _headers,
+      headers: headers,
       body: jsonEncode(body),
     ));
     return response as Map<String, dynamic>;
   }
 
   Future<dynamic> get(String endpoint) async {
+    final headers = await _getSecureHeaders();
     return _request(() => http.get(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: _headers,
+      headers: headers,
     ));
   }
 
   // ✅ NEW: DELETE METHOD (Added for Chat Deletion)
   Future<dynamic> delete(String endpoint) async {
+    final headers = await _getSecureHeaders();
     return _request(() => http.delete(
       Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: _headers,
+      headers: headers,
     ));
   }
 
@@ -109,7 +126,7 @@ class ApiClient {
         // If we got a valid token (either from our refresh or the waiting one), retry
         if (newToken != null) {
           print("✅ Token Refreshed. Retrying Request...");
-          setAuthToken(newToken); 
+          // No need to call setAuthToken, the new req() will fetch headers again
           response = await req().timeout(_timeoutDuration); 
         }
       }

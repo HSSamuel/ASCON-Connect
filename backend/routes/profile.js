@@ -1,25 +1,29 @@
 const router = require("express").Router();
-const User = require("../models/User");
+// ✅ NEW: Import the 3 separated models
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
+const UserSettings = require("../models/UserSettings");
+
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
 
+// =========================================================
+// 1. UPDATE PROFILE & SETTINGS
+// =========================================================
 // @route   PUT /api/profile/update
 // @desc    Update profile info AND upload image
 router.put("/update", verifyToken, (req, res) => {
-  // ✅ WRAP THE UPLOAD IN A FUNCTION TO CATCH CONFIG ERRORS
   const uploadMiddleware = upload.single("profilePicture");
 
   uploadMiddleware(req, res, async (err) => {
-    // 1. CATCH UPLOAD ERRORS (Missing Keys, File too large, etc.)
     if (err) {
       console.error("❌ UPLOAD CRASH:", err);
       return res.status(500).json({
-        message: "Image upload failed. Check Cloudinary keys on Render.",
+        message: "Image upload failed. Check Cloudinary keys.",
         error: err.message,
       });
     }
 
-    // 2. IF UPLOAD SUCCEEDS, UPDATE DATABASE
     try {
       console.log("📥 RECEIVED DATA:", req.body);
 
@@ -29,14 +33,11 @@ router.put("/update", verifyToken, (req, res) => {
         year = null;
       }
 
-      // ✅ HANDLE BOOLEAN TOGGLES
-      // Mobile app sends "true" or "false" as string via multipart/form-data
+      // Handle Boolean Toggles
       const isMentor = req.body.isOpenToMentorship === "true";
       const isLocationVisible = req.body.isLocationVisible === "true";
 
-      // ✅ HANDLE SKILLS ARRAY
-      // Input: "Leadership, Project Management, Coding" (String)
-      // Output: ["Leadership", "Project Management", "Coding"] (Array)
+      // Handle Skills Array
       let skillsArray = [];
       if (req.body.skills && typeof req.body.skills === "string") {
         skillsArray = req.body.skills
@@ -45,7 +46,8 @@ router.put("/update", verifyToken, (req, res) => {
           .filter((s) => s.length > 0);
       }
 
-      const updateData = {
+      // ✅ 1. PREPARE PROFILE DATA
+      const profileUpdateData = {
         fullName: req.body.fullName,
         bio: req.body.bio,
         jobTitle: req.body.jobTitle,
@@ -55,35 +57,45 @@ router.put("/update", verifyToken, (req, res) => {
         yearOfAttendance: year,
         programmeTitle: req.body.programmeTitle,
         customProgramme: req.body.customProgramme,
-
-        // ✅ NEW FIELDS FOR SMART MATCH & LOCATION
         industry: req.body.industry || "",
         city: req.body.city || "",
         skills: skillsArray,
-        isLocationVisible: isLocationVisible,
+      };
 
+      if (req.file) {
+        console.log("📸 NEW IMAGE:", req.file.path);
+        profileUpdateData.profilePicture = req.file.path;
+      }
+
+      // ✅ 2. PREPARE SETTINGS DATA
+      const settingsUpdateData = {
+        isLocationVisible: isLocationVisible,
         isOpenToMentorship: isMentor,
       };
 
-      // Add Image URL if file exists
-      if (req.file) {
-        console.log("📸 NEW IMAGE:", req.file.path);
-        updateData.profilePicture = req.file.path;
-      }
+      // ✅ 3. RUN BOTH UPDATES IN PARALLEL FOR SPEED
+      const [updatedProfile, updatedSettings] = await Promise.all([
+        UserProfile.findOneAndUpdate(
+          { userId: req.user._id },
+          { $set: profileUpdateData },
+          { new: true, runValidators: true },
+        ),
+        UserSettings.findOneAndUpdate(
+          { userId: req.user._id },
+          { $set: settingsUpdateData },
+          { new: true },
+        ),
+      ]);
 
-      const updatedUser = await User.findByIdAndUpdate(
-        req.user._id,
-        { $set: updateData },
-        { new: true, runValidators: true },
-      ).select("-password");
-
-      // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
+      if (!updatedProfile) {
+        return res.status(404).json({ message: "User profile not found" });
       }
 
       console.log("✅ PROFILE UPDATED");
-      res.status(200).json(updatedUser);
+      // Merge results to send back to mobile app
+      res
+        .status(200)
+        .json({ ...updatedProfile.toObject(), ...updatedSettings.toObject() });
     } catch (dbError) {
       console.error("❌ DATABASE ERROR:", dbError);
       res
@@ -93,32 +105,54 @@ router.put("/update", verifyToken, (req, res) => {
   });
 });
 
+// =========================================================
+// 2. GET MY PROFILE (Merged)
+// =========================================================
 // @route   GET /api/profile/me
 router.get("/me", verifyToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("-password");
+    // ✅ Fetch from all 3 tables in parallel
+    const [auth, profile, settings] = await Promise.all([
+      UserAuth.findById(req.user._id).select("-password"),
+      UserProfile.findOne({ userId: req.user._id }),
+      UserSettings.findOne({ userId: req.user._id }),
+    ]);
 
-    // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404
-    if (!user) {
+    if (!auth || !profile) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json(user);
+    // ✅ Merge the objects so the Mobile App doesn't need to change its code
+    const fullProfile = {
+      _id: auth._id,
+      email: auth.email,
+      isVerified: auth.isVerified,
+      isAdmin: auth.isAdmin,
+      isOnline: auth.isOnline,
+      lastSeen: auth.lastSeen,
+      ...profile.toObject(),
+      ...settings.toObject(),
+    };
+
+    res.status(200).json(fullProfile);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
+// =========================================================
+// 3. WELCOME STATUS
+// =========================================================
 // @route   PUT /api/profile/welcome-seen
-// @desc    Mark the user as having seen the welcome dialog
 router.put("/welcome-seen", verifyToken, async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.user._id, {
-      hasSeenWelcome: true,
-    });
+    const settings = await UserSettings.findOneAndUpdate(
+      { userId: req.user._id },
+      { hasSeenWelcome: true },
+    );
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    if (!settings) {
+      return res.status(404).json({ message: "User settings not found" });
     }
 
     res.status(200).json({ message: "Welcome status updated" });

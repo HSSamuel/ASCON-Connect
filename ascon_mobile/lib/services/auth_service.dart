@@ -21,7 +21,8 @@ class AuthService {
   
   static String? _tokenCache; 
   
-  final _storage = StorageConfig.storage;
+  // ✅ ENCRYPTED VAULT FOR TOKENS
+  final _secureStorage = StorageConfig.storage;
 
   AuthService() {
     _api.onTokenRefresh = _performSilentRefresh;
@@ -194,7 +195,8 @@ class AuthService {
   Future<String?> _performSilentRefresh() async {
     try {
       print("🔄 Attempting Silent Refresh...");
-      String? refreshToken = await _storage.read(key: 'refresh_token');
+      // ✅ Read securely
+      String? refreshToken = await _secureStorage.read(key: 'refresh_token');
       if (refreshToken == null) {
         print("❌ No refresh token found.");
         return null;
@@ -212,9 +214,8 @@ class AuthService {
         
         if (newToken != null) {
           _tokenCache = newToken;
-          await _storage.write(key: 'auth_token', value: newToken);
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', newToken);
+          // ✅ Save securely
+          await _secureStorage.write(key: 'auth_token', value: newToken);
 
           _api.setAuthToken(newToken);
           print("✅ Silent Refresh Successful!");
@@ -233,7 +234,7 @@ class AuthService {
   }
 
   // =================================================
-  // 🔐 SESSION MANAGEMENT
+  // 🔐 SESSION MANAGEMENT (Upgraded Security)
   // =================================================
   
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
@@ -241,15 +242,15 @@ class AuthService {
     _tokenCache = token;
     _api.setAuthToken(token);
 
-    await _storage.write(key: 'auth_token', value: token);
+    // ✅ 1. STORE TOKENS STRICTLY IN ENCRYPTED STORAGE
+    await _secureStorage.write(key: 'auth_token', value: token);
     if (refreshToken != null) {
-      await _storage.write(key: 'refresh_token', value: refreshToken);
+      await _secureStorage.write(key: 'refresh_token', value: refreshToken);
     }
 
-    // ✅ FIX: Check for both 'id' (API response) and '_id' (Raw Mongo Object)
     final userId = user['id'] ?? user['_id']; 
     if (userId != null) {
-      await _storage.write(key: 'userId', value: userId);
+      await _secureStorage.write(key: 'userId', value: userId);
 
       // ========================================================
       // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Background Connection)
@@ -261,16 +262,16 @@ class AuthService {
       debugPrint("⚠️ Warning: User ID not found in session data");
     }
 
+    // ✅ 2. STORE UI CACHE IN STANDARD SHARED PREFS (No security risk here)
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
     await prefs.setString('cached_user', jsonEncode(user));
       
-      if (user['fullName'] != null) {
-        await prefs.setString('user_name', user['fullName']);
-      }
-      if (user['alumniId'] != null) {
-        await prefs.setString('alumni_id', user['alumniId']);
-      }
+    if (user['fullName'] != null) {
+      await prefs.setString('user_name', user['fullName']);
+    }
+    if (user['alumniId'] != null) {
+      await prefs.setString('alumni_id', user['alumniId']);
+    }
       
     } catch (e) {
       print("⚠️ Session Save Error: $e");
@@ -283,12 +284,19 @@ class AuthService {
         return _tokenCache;
       }
 
-      String? token = await _storage.read(key: 'auth_token');
-      String? refreshToken = await _storage.read(key: 'refresh_token');
+      // ✅ Read securely from encrypted vault
+      String? token = await _secureStorage.read(key: 'auth_token');
+      String? refreshToken = await _secureStorage.read(key: 'refresh_token');
 
+      // (Legacy Check: If user is updating from an old app version, migrate token)
       if (token == null) {
         final prefs = await SharedPreferences.getInstance();
         token = prefs.getString('auth_token');
+        if (token != null) {
+          // Move to secure storage and delete from shared prefs
+          await _secureStorage.write(key: 'auth_token', value: token);
+          await prefs.remove('auth_token');
+        }
       }
 
       if (token == null) return null;
@@ -306,11 +314,9 @@ class AuthService {
               final newToken = result['data']['token'];
               
               _tokenCache = newToken;
-              await _storage.write(key: 'auth_token', value: newToken);
+              // ✅ Save securely
+              await _secureStorage.write(key: 'auth_token', value: newToken);
               
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('auth_token', newToken);
-
               _api.setAuthToken(newToken);
               return newToken;
             }
@@ -378,25 +384,28 @@ class AuthService {
       }
     }
 
-    // 2. Clear Local Storage
+    // 2. Clear Encrypted Tokens First
     try {
       _tokenCache = null; 
-      await _storage.deleteAll();
+      await _secureStorage.delete(key: 'auth_token');
+      await _secureStorage.delete(key: 'refresh_token');
+      await _secureStorage.delete(key: 'userId');
     } catch (e) {
       debugPrint("Storage clear error: $e");
     }
     
+    // 3. Clear UI Cache
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
     
     _api.clearAuthToken();
     
-    // ✅ 3. Small Delay for Web Stability
+    // ✅ 4. Small Delay for Web Stability
     if (kIsWeb) {
       await Future.delayed(const Duration(milliseconds: 200));
     }
 
-    // 4. Navigate to Login
+    // 5. Navigate to Login
     navigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false, 

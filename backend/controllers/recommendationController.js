@@ -1,79 +1,118 @@
-const User = require("../models/User");
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
+const UserSettings = require("../models/UserSettings");
 const asyncHandler = require("../utils/asyncHandler");
 
-// 🧠 AI SMART MATCH
-exports.getSmartMatches = asyncHandler(async (req, res) => {
-  const currentUser = await User.findById(req.user._id);
-  if (!currentUser) return res.status(404).json({ message: "User not found" });
+// =========================================================
+// 1. GET SMART RECOMMENDATIONS (Aggregated)
+// =========================================================
+exports.getRecommendations = asyncHandler(async (req, res) => {
+  try {
+    const userId = req.user._id;
 
-  // 1. Get all other verified users
-  const allUsers = await User.find({
-    _id: { $ne: currentUser._id },
-    isVerified: true,
-  }).select(
-    "fullName jobTitle organization profilePicture industry skills city state",
-  );
+    // 1. Fetch current user's profile and settings
+    const [currentUserProfile, currentUserSettings] = await Promise.all([
+      UserProfile.findOne({ userId }),
+      UserSettings.findOne({ userId }),
+    ]);
 
-  // 2. Calculate Similarity Score
-  const matches = allUsers.map((user) => {
-    let score = 0;
-
-    // A. Industry Match (High Weight)
-    if (
-      currentUser.industry &&
-      user.industry &&
-      currentUser.industry.toLowerCase() === user.industry.toLowerCase()
-    ) {
-      score += 10;
+    if (!currentUserProfile) {
+      return res.status(404).json({ message: "User profile not found." });
     }
 
-    // B. Skill Overlap (Medium Weight)
-    if (currentUser.skills.length > 0 && user.skills.length > 0) {
-      const commonSkills = user.skills.filter((skill) =>
-        currentUser.skills.includes(skill),
-      );
-      score += commonSkills.length * 2;
+    const {
+      yearOfAttendance,
+      programmeTitle,
+      industry,
+      skills = [],
+    } = currentUserProfile;
+
+    // 2. Determine match criteria based on what the user has filled out
+    const matchCriteria = { userId: { $ne: userId } };
+    const orConditions = [];
+
+    if (yearOfAttendance) orConditions.push({ yearOfAttendance });
+    if (programmeTitle) orConditions.push({ programmeTitle });
+    if (industry) orConditions.push({ industry });
+    if (skills.length > 0) orConditions.push({ skills: { $in: skills } });
+
+    if (orConditions.length > 0) {
+      matchCriteria.$or = orConditions;
     }
 
-    // C. Programme Match (Low Weight)
-    if (currentUser.programmeTitle === user.programmeTitle) {
-      score += 1;
-    }
+    // 3. Aggregate query to fetch matching profiles, auth (for online status), and settings (for mentorship)
+    const recommendations = await UserProfile.aggregate([
+      { $match: matchCriteria },
 
-    return { ...user.toObject(), matchScore: score };
-  });
+      // Join Auth table to check if verified and get online status
+      {
+        $lookup: {
+          from: "userauths",
+          localField: "userId",
+          foreignField: "_id",
+          as: "auth",
+        },
+      },
+      { $unwind: "$auth" },
+      { $match: { "auth.isVerified": true } }, // Exclude unverified users
 
-  // 3. Sort by Score (Descending) and take top 10
-  const topMatches = matches
-    .filter((m) => m.matchScore > 0)
-    .sort((a, b) => b.matchScore - a.matchScore)
-    .slice(0, 10);
+      // Join Settings table to check privacy/mentorship settings
+      {
+        $lookup: {
+          from: "usersettings",
+          localField: "userId",
+          foreignField: "userId",
+          as: "settings",
+        },
+      },
+      { $unwind: "$settings" },
 
-  res.json({ success: true, data: topMatches });
-});
+      // Scoring Algorithm
+      {
+        $addFields: {
+          score: {
+            $add: [
+              { $cond: [{ $eq: ["$programmeTitle", programmeTitle] }, 3, 0] },
+              {
+                $cond: [{ $eq: ["$yearOfAttendance", yearOfAttendance] }, 2, 0],
+              },
+              { $cond: [{ $eq: ["$industry", industry] }, 2, 0] },
+              {
+                $size: {
+                  $setIntersection: [{ $ifNull: ["$skills", []] }, skills],
+                },
+              },
+              { $cond: ["$auth.isOnline", 1, 0] }, // Bonus point if online
+            ],
+          },
+        },
+      },
 
-// 📍 ALUMNI NEAR ME (Travel Mode)
-exports.getAlumniNearMe = asyncHandler(async (req, res) => {
-  const { city } = req.query; // Allow manual "Travel Mode" override
-  const currentUser = await User.findById(req.user._id);
+      // Sort by best match score
+      { $sort: { score: -1, "auth.isOnline": -1 } },
+      { $limit: 10 },
 
-  const targetCity = city || currentUser.city;
+      // Project final fields to match Mobile App expectations
+      {
+        $project: {
+          _id: "$userId", // Map userId to _id for mobile compatibility
+          fullName: 1,
+          jobTitle: 1,
+          organization: 1,
+          profilePicture: 1,
+          bio: 1,
+          programmeTitle: 1,
+          yearOfAttendance: 1,
+          isOnline: "$auth.isOnline",
+          lastSeen: "$auth.lastSeen",
+          isOpenToMentorship: "$settings.isOpenToMentorship",
+          score: 1,
+        },
+      },
+    ]);
 
-  if (!targetCity) {
-    return res.json({ success: true, data: [], message: "No location set." });
+    res.status(200).json({ success: true, matches: recommendations });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
-
-  // Find users in the same city who have OPTED IN to location sharing
-  const nearbyUsers = await User.find({
-    _id: { $ne: currentUser._id },
-    isVerified: true,
-    isLocationVisible: true, // ✅ Privacy Check
-    city: { $regex: new RegExp(`^${targetCity}$`, "i") }, // Case-insensitive match
-  })
-    .select(
-      "_id fullName profilePicture yearOfAttendance jobTitle organization programmeTitle bio isOnline lastSeen isOpenToMentorship isPhoneVisible phoneNumber email linkedin",
-    )
-    .limit(10);
-
-  res.json({ success: true, data: nearbyUsers, location: targetCity });
 });

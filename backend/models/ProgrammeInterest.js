@@ -29,7 +29,7 @@ const programmeInterestSchema = new mongoose.Schema({
   // --- Meta ---
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    ref: "UserAuth",
     required: false,
   },
   status: {

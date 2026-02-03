@@ -1,5 +1,6 @@
 const router = require("express").Router();
-const User = require("../models/User");
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
 const Notification = require("../models/Notification");
 const verify = require("./verifyToken");
 const Joi = require("joi");

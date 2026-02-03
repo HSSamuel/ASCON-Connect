@@ -1,4 +1,8 @@
-const User = require("../models/User");
+// ✅ NEW: Import all three separated models
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
+const UserSettings = require("../models/UserSettings");
+
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -34,13 +38,13 @@ const loginSchema = Joi.object({
   fcmToken: Joi.string().optional().allow(""),
 });
 
-// ✅ HELPER: Manage Tokens (Cap at 5)
+// ✅ HELPER: Manage Tokens in the Auth Schema (Cap at 5)
 const manageFcmToken = async (userId, token) => {
   if (!token) return;
-  await User.findByIdAndUpdate(userId, {
+  await UserAuth.findByIdAndUpdate(userId, {
     $pull: { fcmTokens: token },
   });
-  await User.findByIdAndUpdate(userId, {
+  await UserAuth.findByIdAndUpdate(userId, {
     $push: {
       fcmTokens: {
         $each: [token],
@@ -52,7 +56,7 @@ const manageFcmToken = async (userId, token) => {
 };
 
 // --------------------------------------------------------------------------
-// 1. REGISTER (Manual Creation)
+// 1. REGISTER (Manual Creation - Refactored for 3 Schemas)
 // --------------------------------------------------------------------------
 exports.register = asyncHandler(async (req, res) => {
   const { error } = registerSchema.validate(req.body);
@@ -72,7 +76,8 @@ exports.register = asyncHandler(async (req, res) => {
     fcmToken,
   } = req.body;
 
-  const emailExist = await User.findOne({ email });
+  // 1. Check if Auth exists
+  const emailExist = await UserAuth.findOne({ email });
   if (emailExist) {
     res.status(400);
     throw new Error("Email already registered. Please Login.");
@@ -80,34 +85,57 @@ exports.register = asyncHandler(async (req, res) => {
 
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
-
   const newAlumniId = await generateAlumniId(yearOfAttendance);
 
-  const newUser = new User({
-    fullName,
+  // ✅ STEP 1: Create the AUTH Document
+  const newUserAuth = new UserAuth({
     email,
     password: hashedPassword,
+    isVerified: true,
+    provider: "local",
+    fcmTokens: fcmToken ? [fcmToken] : [],
+    isOnline: true, // Mark online immediately
+  });
+  const savedAuth = await newUserAuth.save();
+
+  // ✅ STEP 2: Create the PROFILE Document using the Auth ID
+  const newUserProfile = new UserProfile({
+    userId: savedAuth._id, // LINK TO AUTH
+    fullName,
     phoneNumber,
     yearOfAttendance,
     programmeTitle,
     customProgramme: customProgramme || "",
-    isVerified: true,
     alumniId: newAlumniId,
-    hasSeenWelcome: false,
-    provider: "local",
-    fcmTokens: fcmToken ? [fcmToken] : [],
   });
+  const savedProfile = await newUserProfile.save();
 
-  const savedUser = await newUser.save();
+  // ✅ STEP 3: Create the SETTINGS Document
+  const newUserSettings = new UserSettings({
+    userId: savedAuth._id, // LINK TO AUTH
+    hasSeenWelcome: false,
+    isEmailVisible: true,
+    isPhoneVisible: false,
+  });
+  await newUserSettings.save();
+
+  // Broadcast presence
+  if (req.io) {
+    req.io.emit("user_status_update", {
+      userId: savedAuth._id,
+      isOnline: true,
+      lastSeen: new Date(),
+    });
+  }
 
   const token = jwt.sign(
-    { _id: savedUser._id, isAdmin: false, canEdit: false },
+    { _id: savedAuth._id, isAdmin: false, canEdit: false },
     process.env.JWT_SECRET,
     { expiresIn: "2h" },
   );
 
   const refreshToken = jwt.sign(
-    { _id: savedUser._id },
+    { _id: savedAuth._id },
     process.env.REFRESH_SECRET,
     { expiresIn: "30d" },
   );
@@ -117,17 +145,17 @@ exports.register = asyncHandler(async (req, res) => {
     token: token,
     refreshToken: refreshToken,
     user: {
-      id: savedUser._id,
-      fullName: savedUser.fullName,
-      email: savedUser.email,
-      alumniId: savedUser.alumniId,
+      id: savedAuth._id,
+      fullName: savedProfile.fullName,
+      email: savedAuth.email,
+      alumniId: savedProfile.alumniId,
       hasSeenWelcome: false,
     },
   });
 });
 
 // --------------------------------------------------------------------------
-// 2. LOGIN (Manual Credentials)
+// 2. LOGIN (Refactored for Auth Schema)
 // --------------------------------------------------------------------------
 exports.login = asyncHandler(async (req, res) => {
   const { error } = loginSchema.validate(req.body);
@@ -137,78 +165,82 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   const { email, password, fcmToken } = req.body;
-  let user = await User.findOne({ email });
-  if (!user) {
+
+  // ✅ Query ONLY the UserAuth table (Much faster)
+  let userAuth = await UserAuth.findOne({ email });
+  if (!userAuth) {
     res.status(400);
     throw new Error("Email is not found.");
   }
 
-  const validPass = await bcrypt.compare(password, user.password);
+  const validPass = await bcrypt.compare(password, userAuth.password);
   if (!validPass) {
     res.status(400);
     throw new Error("Invalid Password.");
   }
 
-  if (user.isVerified === false) {
+  if (userAuth.isVerified === false) {
     res.status(403);
     throw new Error("Account pending approval.");
   }
 
-  // Auto-Repair Alumni ID
-  if (!user.alumniId || user.alumniId === "PENDING" || user.alumniId === "") {
-    const yearToUse = user.yearOfAttendance || new Date().getFullYear();
-    user.alumniId = await generateAlumniId(yearToUse);
-  }
+  // Fetch Public Profile and Settings Details
+  const userProfile = await UserProfile.findOne({ userId: userAuth._id });
+  const userSettings = await UserSettings.findOne({ userId: userAuth._id });
 
   if (fcmToken) {
-    await manageFcmToken(user._id, fcmToken);
+    await manageFcmToken(userAuth._id, fcmToken);
   }
 
   // ========================================================
   // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Immediate Online Status)
   // ========================================================
-  user.isOnline = true;
-  user.lastSeen = new Date();
-  await user.save(); // Save ID repair AND online status at once
+  userAuth.isOnline = true;
+  userAuth.lastSeen = new Date();
+  await userAuth.save();
 
   // Broadcast instantly to global IO instance
   if (req.io) {
     req.io.emit("user_status_update", {
-      userId: user._id,
+      userId: userAuth._id,
       isOnline: true,
-      lastSeen: user.lastSeen,
+      lastSeen: userAuth.lastSeen,
     });
   }
   // ========================================================
 
   const token = jwt.sign(
-    { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
+    { _id: userAuth._id, isAdmin: userAuth.isAdmin, canEdit: userAuth.canEdit },
     process.env.JWT_SECRET,
     { expiresIn: "2h" },
   );
 
-  const refreshToken = jwt.sign({ _id: user._id }, process.env.REFRESH_SECRET, {
-    expiresIn: "30d",
-  });
+  const refreshToken = jwt.sign(
+    { _id: userAuth._id },
+    process.env.REFRESH_SECRET,
+    {
+      expiresIn: "30d",
+    },
+  );
 
   res.json({
     token,
     refreshToken,
     user: {
-      id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      canEdit: user.canEdit,
-      profilePicture: user.profilePicture,
-      hasSeenWelcome: user.hasSeenWelcome || false,
-      alumniId: user.alumniId,
+      id: userAuth._id,
+      fullName: userProfile.fullName,
+      email: userAuth.email,
+      isAdmin: userAuth.isAdmin,
+      canEdit: userAuth.canEdit,
+      profilePicture: userProfile.profilePicture,
+      hasSeenWelcome: userSettings.hasSeenWelcome || false,
+      alumniId: userProfile.alumniId,
     },
   });
 });
 
 // --------------------------------------------------------------------------
-// 3. GOOGLE LOGIN (Universal Support)
+// 3. GOOGLE LOGIN (Refactored)
 // --------------------------------------------------------------------------
 exports.googleLogin = asyncHandler(async (req, res) => {
   const { token, fcmToken } = req.body;
@@ -235,84 +267,101 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     picture = response.data.picture;
   }
 
-  let user = await User.findOne({ email });
+  let userAuth = await UserAuth.findOne({ email });
+  let userProfile, userSettings;
 
-  if (!user) {
+  if (!userAuth) {
     const currentYear = new Date().getFullYear();
     const randomPassword = crypto.randomBytes(16).toString("hex");
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(randomPassword, salt);
     const newAlumniId = await generateAlumniId(currentYear);
 
-    user = new User({
-      fullName: name,
+    // 1. Create Auth
+    userAuth = new UserAuth({
       email: email,
       password: hashedPassword,
-      phoneNumber: "",
-      yearOfAttendance: currentYear,
-      profilePicture: picture,
       isVerified: true,
-      alumniId: newAlumniId,
-      hasSeenWelcome: false,
       provider: "google",
       fcmTokens: fcmToken ? [fcmToken] : [],
+      isOnline: true,
     });
+    await userAuth.save();
 
-    await user.save();
+    // 2. Create Profile
+    userProfile = new UserProfile({
+      userId: userAuth._id,
+      fullName: name,
+      profilePicture: picture,
+      yearOfAttendance: currentYear,
+      alumniId: newAlumniId,
+    });
+    await userProfile.save();
+
+    // 3. Create Settings
+    userSettings = new UserSettings({
+      userId: userAuth._id,
+      hasSeenWelcome: false,
+    });
+    await userSettings.save();
+  } else {
+    // If existing user, fetch their profile and settings
+    userProfile = await UserProfile.findOne({ userId: userAuth._id });
+    userSettings = await UserSettings.findOne({ userId: userAuth._id });
   }
 
-  if (!user.isVerified) {
+  if (!userAuth.isVerified) {
     res.status(403);
     throw new Error("Account pending approval.");
   }
 
   if (fcmToken) {
-    await manageFcmToken(user._id, fcmToken);
+    await manageFcmToken(userAuth._id, fcmToken);
   }
 
   // ========================================================
   // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Google Auth)
   // ========================================================
-  user.isOnline = true;
-  user.lastSeen = new Date();
-  await user.save();
+  userAuth.isOnline = true;
+  userAuth.lastSeen = new Date();
+  await userAuth.save();
 
   // Broadcast instantly to global IO instance
   if (req.io) {
     req.io.emit("user_status_update", {
-      userId: user._id,
+      userId: userAuth._id,
       isOnline: true,
-      lastSeen: user.lastSeen,
+      lastSeen: userAuth.lastSeen,
     });
   }
   // ========================================================
 
   const authToken = jwt.sign(
-    {
-      _id: user._id,
-      isAdmin: user.isAdmin || false,
-      canEdit: user.canEdit || false,
-    },
+    { _id: userAuth._id, isAdmin: userAuth.isAdmin, canEdit: userAuth.canEdit },
     process.env.JWT_SECRET,
     { expiresIn: "2h" },
   );
 
-  const refreshToken = jwt.sign({ _id: user._id }, process.env.REFRESH_SECRET, {
-    expiresIn: "30d",
-  });
+  const refreshToken = jwt.sign(
+    { _id: userAuth._id },
+    process.env.REFRESH_SECRET,
+    {
+      expiresIn: "30d",
+    },
+  );
 
   return res.json({
     token: authToken,
     refreshToken: refreshToken,
     user: {
-      id: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      isAdmin: user.isAdmin,
-      canEdit: user.canEdit,
-      profilePicture: user.profilePicture,
-      hasSeenWelcome: user.hasSeenWelcome || false,
-      alumniId: user.alumniId,
+      id: userAuth._id,
+      fullName: userProfile.fullName,
+      email: userAuth.email,
+      isAdmin: userAuth.isAdmin,
+      canEdit: userAuth.canEdit,
+      profilePicture: userProfile.profilePicture,
+      hasSeenWelcome: userSettings.hasSeenWelcome || false,
+      alumniId: userProfile.alumniId,
     },
   });
 });
@@ -329,10 +378,14 @@ exports.refreshToken = asyncHandler(async (req, res) => {
 
   try {
     const verified = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
-    const user = await User.findById(verified._id);
+    const userAuth = await UserAuth.findById(verified._id);
 
     const newAccessToken = jwt.sign(
-      { _id: user._id, isAdmin: user.isAdmin, canEdit: user.canEdit },
+      {
+        _id: userAuth._id,
+        isAdmin: userAuth.isAdmin,
+        canEdit: userAuth.canEdit,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "2h" },
     );
@@ -353,16 +406,18 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     throw new Error("Email is required");
   }
 
-  const user = await User.findOne({ email: req.body.email });
-  if (!user) {
+  const userAuth = await UserAuth.findOne({ email: req.body.email });
+  if (!userAuth) {
     res.status(400);
     throw new Error("Email not found");
   }
 
+  const userProfile = await UserProfile.findOne({ userId: userAuth._id });
+
   const token = crypto.randomBytes(20).toString("hex");
-  user.resetPasswordToken = token;
-  user.resetPasswordExpires = Date.now() + 3600000;
-  await user.save();
+  userAuth.resetPasswordToken = token;
+  userAuth.resetPasswordExpires = Date.now() + 3600000;
+  await userAuth.save();
 
   const resetUrl = `https://asconadmin.netlify.app/reset-password?token=${token}`;
 
@@ -370,11 +425,11 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     "https://api.brevo.com/v3/smtp/email",
     {
       sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
-      to: [{ email: user.email, name: user.fullName }],
+      to: [{ email: userAuth.email, name: userProfile.fullName }],
       subject: "ASCON Alumni - Password Reset",
       htmlContent: `
         <h3>Password Reset Request</h3>
-        <p>Hello ${user.fullName},</p>
+        <p>Hello ${userProfile.fullName},</p>
         <p>You requested a password reset. Click the link below:</p>
         <p><a href="${resetUrl}">Reset Password</a></p>
       `,
@@ -400,11 +455,11 @@ exports.resetPassword = asyncHandler(async (req, res) => {
     throw new Error("Password too short.");
   }
 
-  const user = await User.findOne({
+  const userAuth = await UserAuth.findOne({
     resetPasswordToken: token,
     resetPasswordExpires: { $gt: Date.now() },
   });
-  if (!user) {
+  if (!userAuth) {
     res.status(400);
     throw new Error("Invalid or expired token.");
   }
@@ -412,11 +467,11 @@ exports.resetPassword = asyncHandler(async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-  user.password = hashedPassword;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpires = undefined;
+  userAuth.password = hashedPassword;
+  userAuth.resetPasswordToken = undefined;
+  userAuth.resetPasswordExpires = undefined;
 
-  await user.save();
+  await userAuth.save();
   res.json({ message: "Password updated successfully! Please login." });
 });
 
@@ -426,7 +481,10 @@ exports.resetPassword = asyncHandler(async (req, res) => {
 exports.logout = asyncHandler(async (req, res) => {
   const { userId, fcmToken } = req.body;
   if (userId && fcmToken) {
-    await User.updateOne({ _id: userId }, { $pull: { fcmTokens: fcmToken } });
+    await UserAuth.updateOne(
+      { _id: userId },
+      { $pull: { fcmTokens: fcmToken } },
+    );
   }
   res.status(200).json({ message: "Logged out successfully" });
 });

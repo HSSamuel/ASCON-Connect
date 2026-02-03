@@ -1,5 +1,6 @@
 const admin = require("../config/firebase");
-const User = require("../models/User");
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
 const Notification = require("../models/Notification");
 const logger = require("./logger");
 

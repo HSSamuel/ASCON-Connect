@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const notificationSchema = new mongoose.Schema({
   recipientId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    ref: "UserAuth",
     default: null, // Null = Broadcast
   },
   title: {
@@ -26,14 +26,14 @@ const notificationSchema = new mongoose.Schema({
   readBy: [
     {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "UserAuth",
     },
   ],
   // ✅ NEW: Who deleted it? (Soft Delete)
   deletedBy: [
     {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "UserAuth",
     },
   ],
   // Legacy field for personal notifications

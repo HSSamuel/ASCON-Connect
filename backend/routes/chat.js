@@ -1,7 +1,8 @@
 const router = require("express").Router();
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
-const User = require("../models/User");
+const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile");
 const verify = require("./verifyToken");
 
 // ✅ FIX: Extract the actual Cloudinary object from the config wrapper

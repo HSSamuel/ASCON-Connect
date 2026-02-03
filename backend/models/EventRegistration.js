@@ -23,11 +23,11 @@ const eventRegistrationSchema = new mongoose.Schema(
 
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "UserAuth",
       required: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("EventRegistration", eventRegistrationSchema);

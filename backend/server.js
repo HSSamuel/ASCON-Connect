@@ -14,7 +14,10 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 
-const User = require("./models/User");
+// ✅ FIX: Replaced old 'User' model with the new separated models
+const UserAuth = require("./models/UserAuth");
+const UserProfile = require("./models/UserProfile");
+
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
@@ -183,7 +186,8 @@ io.on("connection", (socket) => {
     // ✅ ONLY update DB and Emit if this is the FIRST connection
     if (previousSocketCount === 0) {
       try {
-        await User.findByIdAndUpdate(userId, { isOnline: true });
+        // ✅ FIX: Switched from User to UserAuth
+        await UserAuth.findByIdAndUpdate(userId, { isOnline: true });
         io.emit("user_status_update", { userId, isOnline: true });
         logger.info(`🟢 User ${userId} is now Online`);
       } catch (e) {
@@ -202,7 +206,8 @@ io.on("connection", (socket) => {
     let lastSeen = null;
     if (!isOnline) {
       try {
-        const user = await User.findById(userId).select("lastSeen");
+        // ✅ FIX: Switched from User to UserAuth
+        const user = await UserAuth.findById(userId).select("lastSeen");
         if (user) lastSeen = user.lastSeen;
       } catch (e) {
         console.error("Status check error", e);
@@ -255,7 +260,8 @@ io.on("connection", (socket) => {
 
     try {
       const lastSeen = new Date();
-      await User.findByIdAndUpdate(userId, {
+      // ✅ FIX: Switched from User to UserAuth
+      await UserAuth.findByIdAndUpdate(userId, {
         isOnline: false,
         lastSeen: lastSeen,
       });
@@ -292,7 +298,8 @@ io.on("connection", (socket) => {
           disconnectTimers.delete(userId);
 
           const lastSeen = new Date();
-          await User.findByIdAndUpdate(userId, {
+          // ✅ FIX: Switched from User to UserAuth
+          await UserAuth.findByIdAndUpdate(userId, {
             isOnline: false,
             lastSeen: lastSeen,
           });
@@ -356,9 +363,9 @@ mongoose
   .then(async () => {
     logger.info("✅ Connected to MongoDB Successfully!");
 
-    // ✅ Reset all users to offline on server restart (Cleanup)
+    // ✅ FIX: Switched from User to UserAuth for the server reset query
     try {
-      await User.updateMany({}, { isOnline: false });
+      await UserAuth.updateMany({}, { isOnline: false });
       logger.info("🧹 Reset all user statuses to Offline");
     } catch (err) {
       logger.error("⚠️ Failed to reset user statuses:", err);

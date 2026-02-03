@@ -4,12 +4,12 @@ const MentorshipRequestSchema = new mongoose.Schema(
   {
     mentor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "UserAuth",
       required: true,
     },
     mentee: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "UserAuth",
       required: true,
     },
     status: {

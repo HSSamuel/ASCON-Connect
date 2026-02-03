@@ -1485,3 +1485,71 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 16:07:32"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 16:07:34"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 16:07:34"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 16:21:32"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 16:21:33"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 16:21:33"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 16:21:38"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 16:21:40"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 16:21:40"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 17:46:19"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 17:46:23"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 17:46:24"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 17:46:47"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 17:46:51"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 17:46:53"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 17:46:59"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 17:47:02"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 17:47:03"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 17:47:18"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 17:47:22"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 17:47:24"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 17:47:45"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 17:47:46"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 17:47:47"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 17:48:04"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 17:48:07"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 17:48:07"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 17:52:09"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 17:52:11"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 17:52:11"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 17:52:17"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 17:52:19"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 17:52:19"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:10:59"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:15:39"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:16:19"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:16:41"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:17:06"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:17:27"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:17:56"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:18:19"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:18:32"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:21:32"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:23:10"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:23:33"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:23:55"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:25:07"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:25:16"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:26:36"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:27:29"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:28:28"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:28:50"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:29:25"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:29:35"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 18:29:36"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 18:29:37"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 18:29:40"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 18:29:42"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 18:29:42"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:30:23"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 18:30:25"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 18:30:25"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 18:30:29"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 18:30:31"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 18:30:31"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.","timestamp":"2026-02-03 18:33:08"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-03 18:33:14"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-03 18:33:16"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-03 18:33:21"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-03 18:33:23"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-03 18:33:23"}
