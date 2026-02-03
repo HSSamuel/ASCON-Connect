@@ -2,9 +2,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart'; 
-import 'package:cached_network_image/cached_network_image.dart'; // ✅ 1. ADDED PACKAGE
+import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 import '../services/data_service.dart'; 
-import '../widgets/skeleton_loader.dart'; // ✅ 2. IMPORTED SKELETON
+import '../widgets/skeleton_loader.dart'; 
 import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -37,7 +38,6 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  // ✅ FIXED: Robust Title Casing (Preserves ASCON)
   String _toTitleCase(String text) {
     if (text.isEmpty) return text;
     
@@ -70,7 +70,6 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
-  // ✅ 3. SMART IMAGE CACHING LOGIC
   Widget _buildSafeImage(String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(
@@ -79,12 +78,10 @@ class _EventsScreenState extends State<EventsScreen> {
       );
     }
 
-    // A. Use Cached Image for URLs
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl,
         fit: BoxFit.cover,
-        // ✅ Show Shimmer Skeleton while downloading
         placeholder: (context, url) => const SkeletonImage(),
         errorWidget: (context, url, error) => Container(
           color: Colors.grey[900],
@@ -93,7 +90,6 @@ class _EventsScreenState extends State<EventsScreen> {
       );
     }
 
-    // B. Use Memory Image for Base64 (already local)
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) {
@@ -120,40 +116,47 @@ class _EventsScreenState extends State<EventsScreen> {
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "News & Events", 
-          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+    // ✅ WRAPPED WITH POPSCOPE
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        context.go('/home'); // Go to Home Tab
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            "News & Events", 
+            style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+          ),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          automaticallyImplyLeading: false,
+          elevation: 0,
         ),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
-        elevation: 0,
-      ),
-      backgroundColor: scaffoldBg,
-      
-      body: RefreshIndicator(
-        onRefresh: _loadEvents,
-        color: primaryColor,
-        // ✅ SKELETON LOADING STATE
-        child: _isLoading
-            ? const EventSkeletonList() 
-            : _events.isEmpty
-                ? _buildEmptyState()
-                : GridView.builder( 
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 220, 
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 0.72, 
+        backgroundColor: scaffoldBg,
+        
+        body: RefreshIndicator(
+          onRefresh: _loadEvents,
+          color: primaryColor,
+          child: _isLoading
+              ? const EventSkeletonList() 
+              : _events.isEmpty
+                  ? _buildEmptyState()
+                  : GridView.builder( 
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 220, 
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.72, 
+                      ),
+                      itemCount: _events.length,
+                      itemBuilder: (context, index) {
+                        return _buildImmersiveEventCard(_events[index]);
+                      },
                     ),
-                    itemCount: _events.length,
-                    itemBuilder: (context, index) {
-                      return _buildImmersiveEventCard(_events[index]);
-                    },
-                  ),
+        ),
       ),
     );
   }
@@ -181,11 +184,9 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // ✅ 100% PRO: IMMERSIVE CARD DESIGN
   Widget _buildImmersiveEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // Data Parsing
     String formattedDate = 'TBA';
     String rawDate = event['date']?.toString() ?? '';
     try {
@@ -217,7 +218,7 @@ class _EventsScreenState extends State<EventsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // 1. BACKGROUND IMAGE (Cached)
+            // 1. BACKGROUND IMAGE
             _buildSafeImage(imageUrl),
 
             // 2. GRADIENT OVERLAY
@@ -237,7 +238,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
             ),
 
-            // 3. TYPE BADGE (Top Right)
+            // 3. TYPE BADGE
             Positioned(
               top: 10,
               right: 10,
@@ -262,7 +263,7 @@ class _EventsScreenState extends State<EventsScreen> {
               ),
             ),
 
-            // 4. CONTENT (Bottom)
+            // 4. CONTENT
             Positioned(
               bottom: 0,
               left: 0,
@@ -273,7 +274,6 @@ class _EventsScreenState extends State<EventsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center, 
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Date (Centered Row)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -293,7 +293,6 @@ class _EventsScreenState extends State<EventsScreen> {
                     
                     const SizedBox(height: 6),
 
-                    // Title (Centered & 3 Lines)
                     Text(
                       _toTitleCase(title),
                       maxLines: 3, 

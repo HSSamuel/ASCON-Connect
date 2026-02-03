@@ -334,7 +334,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // ==========================================
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text("Location (For 'Near Me' feature)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
+                child: Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
               ),
               const SizedBox(height: 10),
               Row(

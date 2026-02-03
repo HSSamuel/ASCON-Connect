@@ -303,6 +303,25 @@ class DataService {
   // ==========================================
   // 5. DIRECTORY
   // ==========================================
+
+  // ✅ NEW: Fetch full details for a single alumni by ID
+  Future<Map<String, dynamic>?> fetchAlumniById(String userId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/directory/$userId'); 
+      final response = await http.get(url, headers: headers);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data'] ?? data; 
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ Error fetching full alumni profile: $e");
+      return null;
+    }
+  }
+
   Future<List<dynamic>> fetchDirectory({String query = ""}) async {
     final bool isDefaultFetch = query.isEmpty;
     const String cacheKey = 'cached_directory';

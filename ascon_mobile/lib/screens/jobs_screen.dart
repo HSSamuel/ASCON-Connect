@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 import '../services/data_service.dart';
 import '../widgets/skeleton_loader.dart'; 
 import 'job_detail_screen.dart';
@@ -20,23 +21,21 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
   late TabController _tabController;
   final DataService _dataService = DataService();
   
-  // ✅ NEW: Future variable to handle refresh logic
   late Future<List<dynamic>> _jobsFuture;
   
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _jobsFuture = _dataService.fetchJobs(); // Initial load
+    _jobsFuture = _dataService.fetchJobs(); 
   }
 
-  // ✅ NEW: Refresh Logic
   Future<void> _refreshJobs() async {
     final newJobs = _dataService.fetchJobs();
     setState(() {
       _jobsFuture = newJobs;
     });
-    await newJobs; // Wait for completion
+    await newJobs; 
   }
 
   Color _getCompanyColor(String name) {
@@ -52,73 +51,77 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
-    return Scaffold(
-      backgroundColor: scaffoldBg,
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white, 
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          "Opportunities & Facilities",
-          style: GoogleFonts.lato(
-            fontWeight: FontWeight.w800,
-            color: Colors.white,
-            fontSize: 22,
-          ),
-        ),
-        centerTitle: false,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(70),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.black26 : Colors.white, 
-              borderRadius: BorderRadius.circular(16),
+    // ✅ WRAPPED WITH POPSCOPE
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        context.go('/home'); // Go to Home Tab
+      },
+      child: Scaffold(
+        backgroundColor: scaffoldBg,
+        appBar: AppBar(
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white, 
+          iconTheme: const IconThemeData(color: Colors.white),
+          title: Text(
+            "Opportunities & Facilities",
+            style: GoogleFonts.lato(
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              fontSize: 22,
             ),
-            child: TabBar(
-              controller: _tabController,
-              indicator: BoxDecoration(
-                color: isDark ? primaryColor : primaryColor.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(12),
+          ),
+          centerTitle: false,
+          elevation: 0,
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(70),
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.black26 : Colors.white, 
+                borderRadius: BorderRadius.circular(16),
               ),
-              labelColor: isDark ? Colors.white : primaryColor,
-              unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
-              labelStyle: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 13),
-              tabs: const [
-                Tab(text: "JOBS", height: 40),
-                Tab(text: "FACILITIES", height: 40),
-              ],
+              child: TabBar(
+                controller: _tabController,
+                indicator: BoxDecoration(
+                  color: isDark ? primaryColor : primaryColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                labelColor: isDark ? Colors.white : primaryColor,
+                unselectedLabelColor: isDark ? Colors.white70 : Colors.grey[600],
+                labelStyle: GoogleFonts.lato(fontWeight: FontWeight.w700, fontSize: 13),
+                tabs: const [
+                  Tab(text: "JOBS", height: 40),
+                  Tab(text: "FACILITIES", height: 40),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildJobsList(isDark, primaryColor),
-          const FacilitiesTab(), 
-        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildJobsList(isDark, primaryColor),
+            const FacilitiesTab(), 
+          ],
+        ),
       ),
     );
   }
 
-  // ==========================================
-  // 💼 JOBS LIST (With Pull-to-Refresh)
-  // ==========================================
   Widget _buildJobsList(bool isDark, Color primaryColor) {
     return RefreshIndicator(
-      onRefresh: _refreshJobs, // ✅ Pull-to-Refresh Trigger
+      onRefresh: _refreshJobs, 
       color: primaryColor,
       child: FutureBuilder(
-        future: _jobsFuture, // ✅ Use the state variable
+        future: _jobsFuture, 
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const JobSkeletonList();
           }
           if (!snapshot.hasData || (snapshot.data as List).isEmpty) {
-            // Wrap empty state in ListView to allow pull-to-refresh even when empty
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
@@ -132,7 +135,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 
           final jobs = snapshot.data as List;
           return ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(), // Ensure scroll works for refresh
+            physics: const AlwaysScrollableScrollPhysics(), 
             padding: const EdgeInsets.all(16),
             itemCount: jobs.length,
             itemBuilder: (context, index) {
@@ -323,7 +326,7 @@ class _JobsScreenState extends State<JobsScreen> with SingleTickerProviderStateM
 }
 
 // ==========================================
-// 🏢 FACILITIES TAB (UNCHANGED but included for completeness)
+// 🏢 FACILITIES TAB 
 // ==========================================
 class FacilitiesTab extends StatefulWidget {
   const FacilitiesTab({super.key});
@@ -550,9 +553,6 @@ class _FacilitiesTabState extends State<FacilitiesTab> {
   }
 }
 
-// ==========================================
-// 🎬 VIDEO POPUP DIALOG (UNCHANGED)
-// ==========================================
 class VideoPopupDialog extends StatefulWidget {
   const VideoPopupDialog({super.key});
 
@@ -641,7 +641,6 @@ class _VideoPopupDialogState extends State<VideoPopupDialog> {
   }
 }
 
-// ✅ HELPER EXTENSION
 extension ColorDarken on Color {
   Color darken([double amount = .1]) {
     assert(amount >= 0 && amount <= 1);

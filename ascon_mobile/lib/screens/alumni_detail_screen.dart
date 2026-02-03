@@ -24,8 +24,13 @@ class AlumniDetailScreen extends StatefulWidget {
 }
 
 class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
-  // ✅ State for Mentorship Logic
   final DataService _dataService = DataService();
+  
+  // ✅ NEW: Mutable state to hold the alumni data
+  late Map<String, dynamic> _currentAlumniData;
+  bool _isLoadingFullProfile = true;
+
+  // ✅ State for Mentorship Logic
   String _mentorshipStatus = "Loading"; // None, Pending, Accepted, Rejected
   String? _requestId; // Store ID to allow cancellation
   bool _isLoadingStatus = false;
@@ -41,12 +46,18 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   void initState() {
     super.initState();
     
-    // Initialize Status from passed data first
-    _isOnline = widget.alumniData['isOnline'] == true;
-    _lastSeen = widget.alumniData['lastSeen'];
+    // ✅ 1. Initialize with passed data (lightweight) so UI loads instantly
+    _currentAlumniData = Map<String, dynamic>.from(widget.alumniData);
+
+    // Initialize Status from current data
+    _isOnline = _currentAlumniData['isOnline'] == true;
+    _lastSeen = _currentAlumniData['lastSeen'];
+
+    // ✅ 2. Fetch full details in the background
+    _fetchFullDetails();
 
     // Only fetch mentorship status if they are actually a mentor
-    if (widget.alumniData['isOpenToMentorship'] == true) {
+    if (_currentAlumniData['isOpenToMentorship'] == true) {
       _checkStatus();
     } else {
       _mentorshipStatus = "None"; 
@@ -62,11 +73,25 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     super.dispose();
   }
 
+  // ✅ NEW: Method to fetch full profile and merge it
+  Future<void> _fetchFullDetails() async {
+    final fullData = await _dataService.fetchAlumniById(_currentAlumniData['_id']);
+    if (fullData != null && mounted) {
+      setState(() {
+        // Merge the new full data with existing data
+        _currentAlumniData.addAll(fullData);
+        _isLoadingFullProfile = false;
+      });
+    } else if (mounted) {
+      setState(() => _isLoadingFullProfile = false);
+    }
+  }
+
   // ✅ REAL-TIME PRESENCE LOGIC
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     if (socket == null) return;
-    final targetUserId = widget.alumniData['_id'];
+    final targetUserId = _currentAlumniData['_id'];
 
     // 1. Initial Check
     SocketService().checkUserStatus(targetUserId);
@@ -89,7 +114,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     if (_mentorshipStatus == "Loading") setState(() => _isLoadingStatus = true);
     
     // Uses the new Phase 4 method that returns a Map {status, requestId}
-    final result = await _dataService.getMentorshipStatusFull(widget.alumniData['_id']);
+    final result = await _dataService.getMentorshipStatusFull(_currentAlumniData['_id']);
     if (mounted) {
       setState(() {
         _mentorshipStatus = result['status'];
@@ -101,16 +126,19 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
   // ✅ 2. Handle Pull-to-Refresh
   Future<void> _onRefresh() async {
-    // 1. Refresh Mentorship Status
-    if (widget.alumniData['isOpenToMentorship'] == true) {
+    // 1. Fetch latest profile data
+    await _fetchFullDetails();
+
+    // 2. Refresh Mentorship Status
+    if (_currentAlumniData['isOpenToMentorship'] == true) {
       await _checkStatus();
     }
 
-    // 2. Force Refresh Presence
-    final targetUserId = widget.alumniData['_id'];
+    // 3. Force Refresh Presence
+    final targetUserId = _currentAlumniData['_id'];
     SocketService().checkUserStatus(targetUserId);
     
-    // 3. Small artificial delay for better UX (so the spinner doesn't disappear instantly)
+    // 4. Small artificial delay for better UX (so the spinner doesn't disappear instantly)
     await Future.delayed(const Duration(milliseconds: 800));
   }
 
@@ -152,7 +180,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     // If user clicked Send
     if (send == true) {
       setState(() => _isLoadingStatus = true);
-      final success = await _dataService.sendMentorshipRequest(widget.alumniData['_id'], pitchCtrl.text);
+      final success = await _dataService.sendMentorshipRequest(_currentAlumniData['_id'], pitchCtrl.text);
       
       if (mounted) {
         // Refresh status immediately to get the new Request ID
@@ -197,31 +225,36 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
-    // ✅ Access via widget.alumniData
-    final String fullName = widget.alumniData['fullName'] ?? 'Unknown Alumnus';
-    final String job = widget.alumniData['jobTitle'] ?? '';
-    final String org = widget.alumniData['organization'] ?? '';
+    // ✅ Use _currentAlumniData for all display logic
+    final String fullName = _currentAlumniData['fullName'] ?? 'Unknown Alumnus';
+    final String job = _currentAlumniData['jobTitle'] ?? '';
+    final String org = _currentAlumniData['organization'] ?? '';
     
-    String rawBio = widget.alumniData['bio'] ?? '';
-    final String bio = rawBio.trim().isNotEmpty ? rawBio : 'No biography provided.';
+    String rawBio = _currentAlumniData['bio'] ?? '';
+    
+    // ✅ ADD: Show a loading message if bio is empty but we are still fetching
+    final String bio = rawBio.trim().isNotEmpty 
+        ? rawBio 
+        : (_isLoadingFullProfile ? 'Loading biography...' : 'No biography provided.');
 
-    final bool showPhone = widget.alumniData['isPhoneVisible'] == true;
-    final bool isMentor = widget.alumniData['isOpenToMentorship'] == true;
+    final bool showPhone = _currentAlumniData['isPhoneVisible'] == true;
+    final bool isMentor = _currentAlumniData['isOpenToMentorship'] == true;
     
     // ✅ Use Live State for Status
     final String statusText = _isOnline ? "Active Now" : _formatLastSeen(_lastSeen);
 
-    final String phone = widget.alumniData['phoneNumber'] ?? '';
-    final String linkedin = widget.alumniData['linkedin'] ?? '';
-    final String email = widget.alumniData['email'] ?? '';
-    final String year = widget.alumniData['yearOfAttendance']?.toString() ?? 'Unknown';
-    final String imageString = widget.alumniData['profilePicture'] ?? '';
+    final String phone = _currentAlumniData['phoneNumber'] ?? '';
+    final String linkedin = _currentAlumniData['linkedin'] ?? '';
+    final String email = _currentAlumniData['email'] ?? '';
+    final String year = _currentAlumniData['yearOfAttendance']?.toString() ?? 'Unknown';
+    final String imageString = _currentAlumniData['profilePicture'] ?? '';
     
-    final String zoomHeroTag = "zoom_profile_${widget.alumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
+    final String zoomHeroTag = "zoom_profile_${_currentAlumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
 
-    final String programme = (widget.alumniData['programmeTitle'] != null && widget.alumniData['programmeTitle'].toString().isNotEmpty) 
-        ? widget.alumniData['programmeTitle'] 
-        : 'Not Specified';
+    // ✅ ADD: Show Loading... if programme is empty and we are still fetching
+    final String programme = (_currentAlumniData['programmeTitle'] != null && _currentAlumniData['programmeTitle'].toString().isNotEmpty) 
+        ? _currentAlumniData['programmeTitle'] 
+        : (_isLoadingFullProfile ? 'Loading...' : 'Not Specified');
 
     // ✅ 4. Helper to Build the Smart Button
     Widget buildMentorshipButton() {
@@ -276,7 +309,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
            // ✅ FIX: Use rootNavigator to hide Bottom Nav Bar
            Navigator.of(context, rootNavigator: true).push(
              MaterialPageRoute(builder: (_) => ChatScreen(
-              receiverId: widget.alumniData['_id'],
+              receiverId: _currentAlumniData['_id'],
               receiverName: fullName,
               receiverProfilePic: imageString,
               isOnline: _isOnline, 
@@ -345,8 +378,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () {
-                              if (imageString.isNotEmpty && !imageString.contains('https://lh3.googleusercontent.com/a/ACg8ocLUAgz3dKVYY5ttmmjOi3u8H9kodBXwT0ZrOX2YK7DghVqRhopX=s96-c')) {
-                                // ✅ FIX: Use rootNavigator for Full Screen Image too
+                              // ✅ FIX: Simplified the image string check to accept ALL valid web URLs & Base64
+                              if (imageString.isNotEmpty && (imageString.startsWith('http') || imageString.length > 100)) {
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute(
                                     builder: (_) => FullScreenImage(
@@ -490,7 +523,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute(
                             builder: (_) => ChatScreen(
-                              receiverId: widget.alumniData['_id'] ?? '',
+                              receiverId: _currentAlumniData['_id'] ?? '',
                               receiverName: fullName,
                               receiverProfilePic: imageString,
                               isOnline: _isOnline, // ✅ Pass live status
@@ -541,12 +574,24 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                     "About Me",
                                     style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
                                   ),
+                                  const Spacer(),
+                                  // ✅ NEW: Show a mini loader if fetching
+                                  if (_isLoadingFullProfile)
+                                    SizedBox(
+                                      width: 14, height: 14, 
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor.withOpacity(0.5))
+                                    )
                                 ],
                               ),
                               const SizedBox(height: 12),
                               Text(
                                 bio,
-                                style: GoogleFonts.lato(fontSize: 14, height: 1.6, color: subTextColor),
+                                style: GoogleFonts.lato(
+                                  fontSize: 14, 
+                                  height: 1.6, 
+                                  color: _isLoadingFullProfile ? Colors.grey : subTextColor,
+                                  fontStyle: _isLoadingFullProfile ? FontStyle.italic : FontStyle.normal,
+                                ),
                                 textAlign: TextAlign.justify,
                               ),
                             ],
@@ -593,7 +638,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                       style: GoogleFonts.lato(
                                         fontSize: 14, 
                                         fontWeight: FontWeight.bold, 
-                                        color: programme == 'Not Specified' ? Colors.grey : textColor
+                                        color: (programme == 'Not Specified' || _isLoadingFullProfile) ? Colors.grey : textColor,
+                                        fontStyle: _isLoadingFullProfile ? FontStyle.italic : FontStyle.normal,
                                       ),
                                     ),
                                   ],
@@ -633,7 +679,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   }
 
   Widget _buildRobustAvatar(String imageString, bool isDark) {
-    if (imageString.isEmpty || imageString.contains('googleusercontent.com/profile/picture/0')) {
+    // ✅ FIX: Simplified to allow valid Google Avatar URLs to load successfully
+    if (imageString.isEmpty) {
       return _buildPlaceholder(isDark);
     }
 

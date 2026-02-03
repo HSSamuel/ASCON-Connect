@@ -69,7 +69,11 @@ exports.getAlumniNearMe = asyncHandler(async (req, res) => {
     isVerified: true,
     isLocationVisible: true, // ✅ Privacy Check
     city: { $regex: new RegExp(`^${targetCity}$`, "i") }, // Case-insensitive match
-  }).select("fullName jobTitle organization profilePicture city state");
+  })
+    .select(
+      "_id fullName profilePicture yearOfAttendance jobTitle organization programmeTitle bio isOnline lastSeen isOpenToMentorship isPhoneVisible phoneNumber email linkedin",
+    )
+    .limit(10);
 
   res.json({ success: true, data: nearbyUsers, location: targetCity });
 });

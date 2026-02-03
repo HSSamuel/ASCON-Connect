@@ -201,14 +201,13 @@ router.get("/near-me", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 4. OLD RECOMMENDATIONS (Keep for backward compatibility if needed)
+// 4. RECOMMENDATIONS (UPDATED FOR FULL PROFILE SUPPORT)
 // =========================================================
 router.get("/recommendations", verifyToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user._id);
     const { yearOfAttendance, programmeTitle } = currentUser;
 
-    // Fallback logic
     const matches = await User.find({
       _id: { $ne: currentUser._id },
       isVerified: true,
@@ -218,7 +217,10 @@ router.get("/recommendations", verifyToken, async (req, res) => {
       ],
     })
       .limit(10)
-      .select("fullName profilePicture jobTitle organization yearOfAttendance");
+      // ✅ FIX: Added bio, programmeTitle, and contact/presence fields
+      .select(
+        "fullName profilePicture jobTitle organization yearOfAttendance bio programmeTitle isOnline lastSeen isOpenToMentorship phoneNumber email linkedin isPhoneVisible"
+      );
 
     res.json({ success: true, matches });
   } catch (err) {

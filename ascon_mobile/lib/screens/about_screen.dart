@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // ✅ REQUIRED
+import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -15,202 +16,209 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ AUTO-DETECT THEME COLORS
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final dividerColor = Theme.of(context).dividerColor;
 
-    return Scaffold(
-      backgroundColor: scaffoldBg, 
-      appBar: AppBar(
-        title: Text("About ASCON", style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 18)),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // --- 1. ENHANCED HERO SECTION ---
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+    // ✅ WRAPPED WITH POPSCOPE
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        context.go('/home'); // Go to Home Tab
+      },
+      child: Scaffold(
+        backgroundColor: scaffoldBg, 
+        appBar: AppBar(
+          title: Text("About ASCON", style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 18)),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              // --- 1. ENHANCED HERO SECTION ---
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
                 ),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Image.asset('assets/logo.png', height: 60, width: 60),
                     ),
-                    child: Image.asset('assets/logo.png', height: 60, width: 60),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "Administrative Staff College of Nigeria",
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.lato(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      "...the natural place for human capacity building.",
+                    const SizedBox(height: 16),
+                    Text(
+                      "Administrative Staff College of Nigeria",
                       textAlign: TextAlign.center,
                       style: GoogleFonts.lato(
-                        color: const Color(0xFFFFD700), // Gold
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic, 
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1.2,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // --- 2. CENTERED CONTENT CARDS ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  // Vision Card
-                  _buildInfoCard(
-                    context,
-                    icon: Icons.visibility_outlined,
-                    title: "Our Vision",
-                    content: "To be the leading public administration training institution in Africa, setting the benchmark for excellence in civil service education, enhancing governmental effectiveness, and contributing to Nigeria’s sustainable development through capacity-building programs, leadership training, and policy research.",
-                  ),
-                  
-                  const SizedBox(height: 16),
-
-                  // Mission Card
-                  _buildInfoCard(
-                    context,
-                    icon: Icons.track_changes_outlined,
-                    title: "Our Mission",
-                    content: "To provide cutting-edge administrative training, policy research, and advisory services that foster efficiency, accountability, and innovation in Nigeria’s public sector. We strive to equip government officials with the right skills, ethical standards, and strategic thinking capabilities to meet the demands of modern governance.",
-                  ),
-                  
-                  const SizedBox(height: 16),
-
-                  // Contact Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: cardColor, 
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        if (!isDark)
-                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                          Text(
-                          "Contact Information",
-                          style: GoogleFonts.lato(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: primaryColor,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        _buildContactRow(context, Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
-                        Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        _buildContactRow(context, Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
-                        Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        _buildContactRow(context, Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
-                        Divider(height: 24, thickness: 0.5, color: dividerColor),
-                        _buildContactRow(context, Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // ✅ 3. NEW SOCIAL MEDIA SECTION
-                  Text(
-                    "Connect with ASCON", 
-                    style: GoogleFonts.lato(
-                      fontSize: 14, 
-                      fontWeight: FontWeight.bold, 
-                      color: Colors.grey[600]
-                    )
-                  ),
-                  const SizedBox(height: 15),
-                  
-                  // Social Icons Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildSocialIcon(FontAwesomeIcons.facebook, const Color(0xFF1877F2), "https://web.facebook.com/ascontopobadagry"),
-                      const SizedBox(width: 20),
-                      _buildSocialIcon(FontAwesomeIcons.xTwitter, isDark ? Colors.white : Colors.black, "https://x.com/AsconBadagry"),
-                      const SizedBox(width: 20),
-                      _buildSocialIcon(FontAwesomeIcons.linkedin, const Color(0xFF0077B5), "https://www.linkedin.com/company/administrative-staff-college-of-nigeria-ascon/about"),
-                      const SizedBox(width: 20),
-                      _buildSocialIcon(FontAwesomeIcons.instagram, const Color(0xFFE4405F), "https://www.instagram.com/asconbadagry"),
-                      const SizedBox(width: 20),
-                      _buildSocialIcon(FontAwesomeIcons.youtube, const Color(0xFFFF0000), "https://www.youtube.com/@asconbadagry9403"),
-                    ],
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // Visit Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () => _launchURL("https://ascon.gov.ng"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        "VISIT OFFICIAL WEBSITE",
-                        style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14),
+                        "...the natural place for human capacity building.",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.lato(
+                          color: const Color(0xFFFFD700), // Gold
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic, 
+                        ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-                  
-                  Text(
-                    "ASCON Alumni App v1.1.0",
-                    style: GoogleFonts.lato(color: Colors.grey[400], fontSize: 12),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 20),
+
+              // --- 2. CENTERED CONTENT CARDS ---
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    // Vision Card
+                    _buildInfoCard(
+                      context,
+                      icon: Icons.visibility_outlined,
+                      title: "Our Vision",
+                      content: "To be the leading public administration training institution in Africa, setting the benchmark for excellence in civil service education, enhancing governmental effectiveness, and contributing to Nigeria’s sustainable development through capacity-building programs, leadership training, and policy research.",
+                    ),
+                    
+                    const SizedBox(height: 16),
+
+                    // Mission Card
+                    _buildInfoCard(
+                      context,
+                      icon: Icons.track_changes_outlined,
+                      title: "Our Mission",
+                      content: "To provide cutting-edge administrative training, policy research, and advisory services that foster efficiency, accountability, and innovation in Nigeria’s public sector. We strive to equip government officials with the right skills, ethical standards, and strategic thinking capabilities to meet the demands of modern governance.",
+                    ),
+                    
+                    const SizedBox(height: 16),
+
+                    // Contact Card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardColor, 
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          if (!isDark)
+                            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                            Text(
+                            "Contact Information",
+                            style: GoogleFonts.lato(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          _buildContactRow(context, Icons.location_on_outlined, "Topo, Badagry, Lagos State, Nigeria"),
+                          Divider(height: 24, thickness: 0.5, color: dividerColor),
+                          _buildContactRow(context, Icons.email_outlined, "info@ascon.gov.ng", onTap: () => _launchURL("mailto:info@ascon.gov.ng")),
+                          Divider(height: 24, thickness: 0.5, color: dividerColor),
+                          _buildContactRow(context, Icons.phone_outlined, "09010121012", onTap: () => _launchURL("tel:09010121012")),
+                          Divider(height: 24, thickness: 0.5, color: dividerColor),
+                          _buildContactRow(context, Icons.language, "www.ascon.gov.ng", onTap: () => _launchURL("https://ascon.gov.ng")),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Connect with ASCON
+                    Text(
+                      "Connect with ASCON", 
+                      style: GoogleFonts.lato(
+                        fontSize: 14, 
+                        fontWeight: FontWeight.bold, 
+                        color: Colors.grey[600]
+                      )
+                    ),
+                    const SizedBox(height: 15),
+                    
+                    // Social Icons Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildSocialIcon(FontAwesomeIcons.facebook, const Color(0xFF1877F2), "https://web.facebook.com/ascontopobadagry"),
+                        const SizedBox(width: 20),
+                        _buildSocialIcon(FontAwesomeIcons.xTwitter, isDark ? Colors.white : Colors.black, "https://x.com/AsconBadagry"),
+                        const SizedBox(width: 20),
+                        _buildSocialIcon(FontAwesomeIcons.linkedin, const Color(0xFF0077B5), "https://www.linkedin.com/company/administrative-staff-college-of-nigeria-ascon/about"),
+                        const SizedBox(width: 20),
+                        _buildSocialIcon(FontAwesomeIcons.instagram, const Color(0xFFE4405F), "https://www.instagram.com/asconbadagry"),
+                        const SizedBox(width: 20),
+                        _buildSocialIcon(FontAwesomeIcons.youtube, const Color(0xFFFF0000), "https://www.youtube.com/@asconbadagry9403"),
+                      ],
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // Visit Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: () => _launchURL("https://ascon.gov.ng"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: Text(
+                          "VISIT OFFICIAL WEBSITE",
+                          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    
+                    Text(
+                      "ASCON Alumni App v1.1.0",
+                      style: GoogleFonts.lato(color: Colors.grey[400], fontSize: 12),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

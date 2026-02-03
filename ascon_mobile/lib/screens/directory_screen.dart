@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
 
 import '../services/data_service.dart';
 import '../services/api_client.dart'; 
@@ -66,7 +67,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     _loadDirectory();
     _loadRecommendations(); 
     _loadSmartMatches();
-    _loadNearMe(); // Loads current user's city default if available
+    _loadNearMe(); 
     
     // ✅ Listen to Real-Time Status Stream
     _statusSubscription = SocketService().userStatusStream.listen((data) {
@@ -101,7 +102,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   void dispose() {
     _searchController.dispose();
     _cityController.dispose();
-    _nearMeFilterController.dispose(); // ✅ Dispose new controller
+    _nearMeFilterController.dispose(); 
     _mainScrollController.dispose(); 
     _tabController.dispose();
     _statusSubscription?.cancel(); 
@@ -122,16 +123,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
 
       final response = await _api.get(endpoint);
 
-      // ✅ FIX: Robustly handle backend response format via ApiClient
       if (response['success'] == true) {
-        final dynamic rawData = response['data']; // The actual body from backend
+        final dynamic rawData = response['data']; 
         List<dynamic> alumniList = [];
 
         if (rawData is List) {
-          // Case 1: Backend returns direct List [...]
           alumniList = rawData;
         } else if (rawData is Map && rawData.containsKey('data') && rawData['data'] is List) {
-          // Case 2: Backend returns Object { success: true, data: [...] }
           alumniList = rawData['data'];
         }
 
@@ -259,38 +257,46 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     final primaryColor = Theme.of(context).primaryColor;
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "Alumni Directory", 
-          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+    // ✅ WRAPPED WITH POPSCOPE
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        context.go('/home'); // Go to Home Tab
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            "Alumni Directory", 
+            style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+          ),
+          automaticallyImplyLeading: false,
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: const Color(0xFFD4AF37), // Gold
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold),
+            tabs: const [
+              Tab(text: "All"),
+              Tab(text: "Smart Match"),
+              Tab(text: "Near Me"),
+            ],
+          ),
         ),
-        automaticallyImplyLeading: false,
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        bottom: TabBar(
+        backgroundColor: bgColor,
+        body: TabBarView(
           controller: _tabController,
-          indicatorColor: const Color(0xFFD4AF37), // Gold
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold),
-          tabs: const [
-            Tab(text: "All"),
-            Tab(text: "Smart Match"),
-            Tab(text: "Near Me"),
+          children: [
+            _buildDirectoryTab(),
+            _buildSmartMatchesTab(),
+            _buildNearMeTab(),
           ],
         ),
-      ),
-      backgroundColor: bgColor,
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildDirectoryTab(),
-          _buildSmartMatchesTab(),
-          _buildNearMeTab(),
-        ],
       ),
     );
   }
@@ -669,7 +675,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
                 final user = _recommendedAlumni[index];
                 return GestureDetector(
                   onTap: () {
-                    // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
                     Navigator.of(context, rootNavigator: true).push(
                       MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: user))
                     );
@@ -784,9 +789,11 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
     final bool isMentor = user['isOpenToMentorship'] == true;
     final bool isOnline = user['isOnline'] == true;
 
-    String subtitle = user['programmeTitle'] ?? 'Member';
+    String subtitle = "Alumnus"; 
     if (user['jobTitle'] != null && user['jobTitle'].toString().isNotEmpty) {
-      subtitle = "${user['jobTitle']} • ${user['organization'] ?? ''}";
+      subtitle = "${user['jobTitle']} ${user['organization'] != null ? '• ${user['organization']}' : ''}";
+    } else if (user['programmeTitle'] != null && user['programmeTitle'].toString().isNotEmpty) {
+      subtitle = user['programmeTitle'];
     }
     
     String yearDisplay = "";
@@ -807,7 +814,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
             Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (context) => AlumniDetailScreen(alumniData: user))
             );
@@ -865,7 +871,6 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
                               ],
                             ),
                           ),
-                          // ✅ NEW: Show Badge if provided (For Smart Match)
                           if (badgeText != null)
                             Container(
                               margin: const EdgeInsets.only(left: 8),

@@ -1,14 +1,18 @@
 import 'dart:convert';
+import 'dart:async'; // ✅ Imported for StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
+
 import '../services/auth_service.dart';
 import '../services/data_service.dart'; 
+import '../services/socket_service.dart'; 
+import '../utils/presence_formatter.dart'; // ✅ Imported PresenceFormatter
+
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'document_request_screen.dart'; 
 import 'mentorship_dashboard_screen.dart'; 
-import '../services/socket_service.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   final String? userName; // ✅ Made Optional
@@ -25,10 +29,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _userProfile;
   bool _isLoading = true;
 
+  // ✅ STATE FOR REAL-TIME PRESENCE
+  bool _isOnline = false;
+  String? _lastSeen;
+  StreamSubscription? _statusSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _statusSubscription?.cancel(); // ✅ Clean up listener
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -37,8 +52,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         _userProfile = profile;
         _isLoading = false;
+        
+        // ✅ Initialize presence state from profile data
+        _isOnline = profile?['isOnline'] == true;
+        _lastSeen = profile?['lastSeen'];
       });
+
+      // ✅ Start listening for real-time connection status
+      _setupSocketListeners(profile?['_id']);
     }
+  }
+
+  // ✅ NEW: Listen to socket for real-time updates
+  void _setupSocketListeners(String? userId) {
+    if (userId == null) return;
+
+    _statusSubscription?.cancel();
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
+      if (!mounted) return;
+      if (data['userId'] == userId) {
+        setState(() {
+          _isOnline = data['isOnline'];
+          if (!_isOnline) _lastSeen = data['lastSeen'];
+        });
+      }
+    });
   }
 
   Future<void> _logout() async {
@@ -79,6 +117,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try { return MemoryImage(base64Decode(imagePath)); } catch (e) { return null; }
   }
 
+  // ✅ Helper to format Last Seen accurately
+  String _formatLastSeen(String? dateString) {
+    if (dateString == null) return "Offline";
+    final formatted = PresenceFormatter.format(dateString);
+    if (formatted == "Just now" || formatted == "Active just now") return "Active just now";
+    return "Last seen $formatted";
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -100,246 +146,285 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? _userProfile!['phoneNumber'] : 'Add Phone Number';
     final String bio = _userProfile?['bio'] ?? '';
 
-    return Scaffold(
-      backgroundColor: scaffoldBg,
-      extendBodyBehindAppBar: true, 
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            tooltip: "Logout",
-            onPressed: _logout,
-          ),
-        ],
-      ),
-      body: _isLoading 
-          ? Center(child: CircularProgressIndicator(color: primaryColor)) 
-          : RefreshIndicator(
-              onRefresh: _loadProfile, 
-              color: primaryColor,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  children: [
-                    // --- HEADER SECTION ---
-                    Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          height: 200,
-                          width: double.infinity,
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
-                          ),
-                        ),
-                        Positioned(
-                          top: 90, 
-                          child: Text("My Profile", style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 18, fontWeight: FontWeight.w600)),
-                        ),
-                        Positioned(
-                          top: 140, 
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: cardColor, width: 4),
-                              boxShadow: [
-                                if (!isDark) 
-                                  BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
-                              ],
-                            ),
-                            child: CircleAvatar(
-                              radius: 45,
-                              backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                              backgroundImage: getProfileImage(_userProfile?['profilePicture']),
-                              child: getProfileImage(_userProfile?['profilePicture']) == null
-                                  ? Icon(Icons.person, size: 60, color: Colors.grey[400])
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 60), 
-                    
-                    // --- NAME & BADGES ---
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16), 
-                      child: Column(
+    // ✅ Generate status text
+    final String statusText = _isOnline ? "Active Now" : _formatLastSeen(_lastSeen);
+
+    // ✅ Added PopScope to intercept the back button
+    return PopScope(
+      canPop: false, // Prevents the default app-closing behavior
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        // Routes the user back to the Home tab instead of exiting
+        context.go('/home'); 
+      },
+      child: Scaffold(
+        backgroundColor: scaffoldBg,
+        extendBodyBehindAppBar: true, 
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout, color: Colors.white),
+              tooltip: "Logout",
+              onPressed: _logout,
+            ),
+          ],
+        ),
+        body: _isLoading 
+            ? Center(child: CircularProgressIndicator(color: primaryColor)) 
+            : RefreshIndicator(
+                onRefresh: _loadProfile, 
+                color: primaryColor,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    children: [
+                      // --- HEADER SECTION ---
+                      Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
                         children: [
-                          Text(fullName, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
-                          const SizedBox(height: 4), 
-                          if (jobTitle.isNotEmpty || org.isNotEmpty)
-                            Text("$jobTitle ${org.isNotEmpty ? 'at $org' : ''}", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 12), 
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8, runSpacing: 8,
-                            children: [
-                              _buildBadge(Icons.school, programme, isPlaceholder: programme == 'Add Programme'),
-                              _buildBadge(Icons.calendar_today, "Class of $year", isPlaceholder: year == 'N/A'),
-                            ],
+                          Container(
+                            height: 200,
+                            width: double.infinity,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF1B5E3A), Color(0xFF2E8B57)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+                            ),
+                          ),
+                          Positioned(
+                            top: 90, 
+                            child: Text("My Profile", style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 18, fontWeight: FontWeight.w600)),
+                          ),
+                          Positioned(
+                            top: 140, 
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cardColor, width: 4),
+                                boxShadow: [
+                                  if (!isDark) 
+                                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                radius: 45,
+                                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                                backgroundImage: getProfileImage(_userProfile?['profilePicture']),
+                                child: getProfileImage(_userProfile?['profilePicture']) == null
+                                    ? Icon(Icons.person, size: 60, color: Colors.grey[400])
+                                    : null,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 25), 
+                      const SizedBox(height: 60), 
+                      
+                      // --- NAME & BADGES ---
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16), 
+                        child: Column(
+                          children: [
+                            Text(fullName, textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
+                            const SizedBox(height: 4), 
+                            if (jobTitle.isNotEmpty || org.isNotEmpty)
+                              Text("$jobTitle ${org.isNotEmpty ? 'at $org' : ''}", textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500)),
+                            
+                            const SizedBox(height: 8),
 
-                    // --- ABOUT ME SECTION ---
-                    if (bio.isNotEmpty) ...[
+                            // ✅ NEW: PRESENCE STATUS INDICATOR
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 8, height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _isOnline ? Colors.green : Colors.grey[400],
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  statusText, 
+                                  style: TextStyle(
+                                    color: _isOnline ? Colors.green[700] : Colors.grey[600],
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 12), 
+
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 8, runSpacing: 8,
+                              children: [
+                                _buildBadge(Icons.school, programme, isPlaceholder: programme == 'Add Programme'),
+                                _buildBadge(Icons.calendar_today, "Class of $year", isPlaceholder: year == 'N/A'),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 25), 
+
+                      // --- ABOUT ME SECTION ---
+                      if (bio.isNotEmpty) ...[
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.all(16),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              if (!isDark)
+                                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text("About Me", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
+                              const SizedBox(height: 8),
+                              Text(
+                                bio, 
+                                textAlign: TextAlign.justify,
+                                style: TextStyle(fontSize: 14, color: textColor, height: 1.4),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+
+                      // --- EDIT BUTTON ---
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: SizedBox(
+                          width: double.infinity,
+                          height: 45, 
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => EditProfileScreen(userData: _userProfile ?? {}),
+                                ),
+                              );
+                              if (result == true) _loadProfile(); 
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            label: const Text("Edit Details", style: TextStyle(fontSize: 14)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20), 
+
+                      // --- CONTACT INFO ---
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
-                        padding: const EdgeInsets.all(16),
-                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(horizontal: 16), 
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), 
                         decoration: BoxDecoration(
-                          color: cardColor,
+                          color: cardColor, 
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
-                            if (!isDark)
+                            if (!isDark) 
                               BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
                           ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("About Me", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
-                            const SizedBox(height: 8),
-                            Text(
-                              bio, 
-                              textAlign: TextAlign.justify,
-                              style: TextStyle(fontSize: 14, color: textColor, height: 1.4),
-                            ),
+                            Text("Contact Information", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
+                            const SizedBox(height: 12),
+                            _buildContactRow(Icons.email_outlined, "Email", email),
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Theme.of(context).dividerColor)),
+                            _buildContactRow(Icons.phone_outlined, "Phone", phone),
                           ],
                         ),
                       ),
                       const SizedBox(height: 20),
-                    ],
 
-                    // --- EDIT BUTTON ---
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 45, 
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => EditProfileScreen(userData: _userProfile ?? {}),
+                      // ALUMNI SERVICES
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16), 
+                        decoration: BoxDecoration(
+                          color: cardColor, 
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            if (!isDark) 
+                              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              child: Text("Alumni Services", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
+                            ),
+                            
+                            // Document Request
+                            ListTile(
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                child: const Icon(Icons.description_outlined, color: Colors.blue),
                               ),
-                            );
-                            if (result == true) _loadProfile(); 
-                          },
-                          icon: const Icon(Icons.edit_outlined, size: 18),
-                          label: const Text("Edit Details", style: TextStyle(fontSize: 14)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                            elevation: 1,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
+                              title: const Text("Document Requests", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                              subtitle: const Text("Transcripts, certificates, etc.", style: TextStyle(fontSize: 12)),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                              onTap: () {
+                                Navigator.push(context, MaterialPageRoute(builder: (c) => const DocumentRequestScreen()));
+                              },
+                            ),
+                            
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16),
+                              child: Divider(height: 1),
+                            ),
+
+                            // Mentorship Program
+                            ListTile(
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(color: const Color(0xFFD4AF37).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                child: const Icon(Icons.school_rounded, color: Color(0xFFD4AF37)), 
+                              ),
+                              title: const Text("Mentorship Program", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                              subtitle: const Text("Manage requests & connections", style: TextStyle(fontSize: 12)),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                              onTap: () {
+                                Navigator.push(context, MaterialPageRoute(builder: (c) => const MentorshipDashboardScreen()));
+                              },
+                            ),
+                            
+                            const SizedBox(height: 8),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20), 
 
-                    // --- CONTACT INFO ---
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16), 
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), 
-                      decoration: BoxDecoration(
-                        color: cardColor, 
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          if (!isDark) 
-                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Contact Information", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
-                          const SizedBox(height: 12),
-                          _buildContactRow(Icons.email_outlined, "Email", email),
-                          Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Theme.of(context).dividerColor)),
-                          _buildContactRow(Icons.phone_outlined, "Phone", phone),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // ALUMNI SERVICES
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16), 
-                      decoration: BoxDecoration(
-                        color: cardColor, 
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          if (!isDark) 
-                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                            child: Text("Alumni Services", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor)),
-                          ),
-                          
-                          // Document Request
-                          ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                              child: const Icon(Icons.description_outlined, color: Colors.blue),
-                            ),
-                            title: const Text("Document Requests", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            subtitle: const Text("Transcripts, certificates, etc.", style: TextStyle(fontSize: 12)),
-                            trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                            onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (c) => const DocumentRequestScreen()));
-                            },
-                          ),
-                          
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16),
-                            child: Divider(height: 1),
-                          ),
-
-                          // Mentorship Program
-                          ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: const Color(0xFFD4AF37).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                              child: const Icon(Icons.school_rounded, color: Color(0xFFD4AF37)), 
-                            ),
-                            title: const Text("Mentorship Program", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                            subtitle: const Text("Manage requests & connections", style: TextStyle(fontSize: 12)),
-                            trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-                            onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (c) => const MentorshipDashboardScreen()));
-                            },
-                          ),
-                          
-                          const SizedBox(height: 8),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
-                  ],
+                      const SizedBox(height: 30),
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
   }
 
