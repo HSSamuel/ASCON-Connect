@@ -23,15 +23,27 @@ router.put("/update", verifyToken, (req, res) => {
     try {
       console.log("📥 RECEIVED DATA:", req.body);
 
-      // Sanitize Year (Fixes the crashing bug from before)
+      // Sanitize Year
       let year = req.body.yearOfAttendance;
       if (!year || year === "null" || year === "" || isNaN(year)) {
         year = null;
       }
 
-      // ✅ NEW: Handle Mentorship Toggle
+      // ✅ HANDLE BOOLEAN TOGGLES
       // Mobile app sends "true" or "false" as string via multipart/form-data
       const isMentor = req.body.isOpenToMentorship === "true";
+      const isLocationVisible = req.body.isLocationVisible === "true";
+
+      // ✅ HANDLE SKILLS ARRAY
+      // Input: "Leadership, Project Management, Coding" (String)
+      // Output: ["Leadership", "Project Management", "Coding"] (Array)
+      let skillsArray = [];
+      if (req.body.skills && typeof req.body.skills === "string") {
+        skillsArray = req.body.skills
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      }
 
       const updateData = {
         fullName: req.body.fullName,
@@ -43,7 +55,14 @@ router.put("/update", verifyToken, (req, res) => {
         yearOfAttendance: year,
         programmeTitle: req.body.programmeTitle,
         customProgramme: req.body.customProgramme,
-        isOpenToMentorship: isMentor, // ✅ Saved to DB
+
+        // ✅ NEW FIELDS FOR SMART MATCH & LOCATION
+        industry: req.body.industry || "",
+        city: req.body.city || "",
+        skills: skillsArray,
+        isLocationVisible: isLocationVisible,
+
+        isOpenToMentorship: isMentor,
       };
 
       // Add Image URL if file exists
@@ -80,7 +99,6 @@ router.get("/me", verifyToken, async (req, res) => {
     const user = await User.findById(req.user._id).select("-password");
 
     // ✅ CRITICAL FIX: If user doesn't exist (deleted), return 404
-    // This tells the mobile app to trigger the "Account Not Found" dialog
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -95,7 +113,6 @@ router.get("/me", verifyToken, async (req, res) => {
 // @desc    Mark the user as having seen the welcome dialog
 router.put("/welcome-seen", verifyToken, async (req, res) => {
   try {
-    // We can also add a check here, though less critical for this specific route
     const user = await User.findByIdAndUpdate(req.user._id, {
       hasSeenWelcome: true,
     });

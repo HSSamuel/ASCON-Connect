@@ -9,12 +9,10 @@ class AppConfig {
     String? url = dotenv.env['API_URL'];
 
     if (url == null || url.isEmpty) {
-      // ⛔ FATAL ERROR: Fail loudly if env is missing.
       throw Exception("⛔ FATAL ERROR: API_URL not found in .env file.");
     }
 
     // ✅ FIX: Automatically swap 'localhost' for '10.0.2.2' on Android Emulator
-    // This allows you to use one .env file for both Web and Android.
     if (kDebugMode && defaultTargetPlatform == TargetPlatform.android) {
       if (url.contains('localhost')) {
         url = url.replaceAll('localhost', '10.0.2.2');
@@ -40,9 +38,11 @@ class AppConfig {
   // 🛡️ NOTIFICATION & NETWORK SETTINGS
   // =========================================================
   
-  // ✅ ADDED: Specific timeout for the notification heartbeat
   static const Duration connectionTimeout = Duration(seconds: 15);
-
-  // ✅ ADDED: Endpoint Helper for Notification Polling
   static String get unreadCountEndpoint => '$baseUrl/api/notifications/unread-count';
+
+  // ✅ IMPROVEMENT: Centralized Notification Config
+  static const String notificationChannelId = 'ascon_high_importance'; 
+  static const String notificationChannelName = 'ASCON Notifications';
+  static const String notificationChannelDesc = 'This channel is used for important ASCON updates.';
 }

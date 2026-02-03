@@ -574,4 +574,51 @@ class DataService {
       return {'success': false, 'matches': []};
     }
   }
+
+  // ==========================================
+  // 11. AI & LOCATION FEATURES
+  // ==========================================
+  
+  // 🧠 Fetch Smart Matches
+  Future<List<dynamic>> fetchSmartMatches() async {
+    const String cacheKey = 'cached_smart_matches';
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/directory/smart-matches');
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      if (data != null && data['success'] == true) {
+        await _cacheData(cacheKey, data['data']);
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      final cached = await _getCachedData(cacheKey);
+      if (cached != null && cached is List) return cached;
+      return [];
+    }
+  }
+
+  // 📍 Fetch Alumni Near Me (Optional city for "Travel Mode")
+  Future<List<dynamic>> fetchAlumniNearMe({String? city}) async {
+    try {
+      final headers = await _getHeaders();
+      String endpoint = '${AppConfig.baseUrl}/api/directory/near-me';
+      if (city != null && city.isNotEmpty) {
+        endpoint += '?city=$city';
+      }
+      
+      final url = Uri.parse(endpoint);
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      if (data != null && data['success'] == true) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
 }

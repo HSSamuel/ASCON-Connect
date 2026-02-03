@@ -49,16 +49,140 @@ router.get("/", verifyToken, async (req, res) => {
       isOnline: user.isOnline,
       lastSeen: user.lastSeen,
       isOpenToMentorship: user.isOpenToMentorship,
+      // New Fields
+      industry: user.industry,
+      city: user.city,
     }));
 
-    res.json(safeList);
+    res.json({ success: true, data: safeList });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 // =========================================================
-// 2. VERIFICATION ENDPOINT (PUBLIC)
+// 2. SMART CAREER MATCH (AI-LITE)
+// =========================================================
+// @route   GET /api/directory/smart-matches
+router.get("/smart-matches", verifyToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser)
+      return res.status(404).json({ message: "User not found" });
+
+    // 1. Get all other verified users
+    const allUsers = await User.find({
+      _id: { $ne: currentUser._id },
+      isVerified: true,
+    }).select(
+      "fullName jobTitle organization profilePicture industry skills city state programmeTitle yearOfAttendance isOpenToMentorship",
+    );
+
+    // 2. Calculate Similarity Score
+    const matches = allUsers.map((user) => {
+      let score = 0;
+
+      // A. Industry Match (High Weight: 10 pts)
+      if (
+        currentUser.industry &&
+        user.industry &&
+        currentUser.industry.toLowerCase() === user.industry.toLowerCase()
+      ) {
+        score += 10;
+      }
+
+      // B. Skill Overlap (Medium Weight: 2 pts per skill)
+      if (
+        currentUser.skills &&
+        currentUser.skills.length > 0 &&
+        user.skills &&
+        user.skills.length > 0
+      ) {
+        const commonSkills = user.skills.filter((skill) =>
+          currentUser.skills.includes(skill),
+        );
+        score += commonSkills.length * 2;
+      }
+
+      // C. Programme/Year Match (Low Weight: 1 pt)
+      if (currentUser.programmeTitle === user.programmeTitle) score += 1;
+      if (currentUser.yearOfAttendance === user.yearOfAttendance) score += 1;
+
+      return { ...user.toObject(), matchScore: score };
+    });
+
+    // 3. Sort by Score (Descending) and take top 15
+    const topMatches = matches
+      .filter((m) => m.matchScore > 0)
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 15);
+
+    res.json({ success: true, data: topMatches });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 3. ALUMNI NEAR ME (GEOLOCATION)
+// =========================================================
+// @route   GET /api/directory/near-me
+router.get("/near-me", verifyToken, async (req, res) => {
+  try {
+    const { city } = req.query; // Allow manual "Travel Mode" override
+    const currentUser = await User.findById(req.user._id);
+
+    const targetCity = city || currentUser.city;
+
+    if (!targetCity) {
+      return res.json({ success: true, data: [], message: "No location set." });
+    }
+
+    // Find users in the same city who have OPTED IN to location sharing
+    const nearbyUsers = await User.find({
+      _id: { $ne: currentUser._id },
+      isVerified: true,
+      isLocationVisible: true, // ✅ Privacy Check
+      // WITH THIS (Allows "Lagos" to match "Lagos State" or "Ikeja, Lagos"):
+      city: { $regex: new RegExp(targetCity, "i") },
+    }).select(
+      "fullName jobTitle organization profilePicture city state phoneNumber email isOnline",
+    );
+
+    res.json({ success: true, data: nearbyUsers, location: targetCity });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 4. OLD RECOMMENDATIONS (Keep for backward compatibility if needed)
+// =========================================================
+router.get("/recommendations", verifyToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user._id);
+    const { yearOfAttendance, programmeTitle } = currentUser;
+
+    // Fallback logic
+    const matches = await User.find({
+      _id: { $ne: currentUser._id },
+      isVerified: true,
+      $or: [
+        { yearOfAttendance: yearOfAttendance },
+        { programmeTitle: programmeTitle },
+      ],
+    })
+      .limit(10)
+      .select("fullName profilePicture jobTitle organization yearOfAttendance");
+
+    res.json({ success: true, matches });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 5. VERIFICATION ENDPOINT (PUBLIC)
 // =========================================================
 router.get("/verify/:id", async (req, res) => {
   try {
@@ -91,118 +215,5 @@ router.get("/verify/:id", async (req, res) => {
     res.status(500).json({ message: "Server Error" });
   }
 });
-
-// =========================================================
-// 3. SMART RECOMMENDATIONS (AI-LITE V2.0)
-// =========================================================
-// @route   GET /api/directory/recommendations
-router.get("/recommendations", verifyToken, async (req, res) => {
-  try {
-    // 1. Get Current User's Details
-    const currentUser = await User.findById(req.user._id);
-    if (!currentUser)
-      return res.status(404).json({ message: "User not found" });
-
-    const { yearOfAttendance, programmeTitle, organization } = currentUser;
-
-    let matches = [];
-    // Keep track of IDs we already found to avoid duplicates
-    let excludedIds = [currentUser._id];
-
-    // --- 🕵️ STRATEGY 1: HIGH RELEVANCE (The "Perfect" Matches) ---
-    // Finds active colleagues or classmates with "Fuzzy" text matching.
-    // e.g. "Chevron" matches "Chevron Nigeria Limited"
-
-    const highQualityMatches = await User.find({
-      _id: { $nin: excludedIds },
-      isVerified: true,
-      $or: [
-        // A. Colleagues (Fuzzy Organization Match)
-        organization && organization.length > 3
-          ? {
-              organization: {
-                $regex: new RegExp(escapeRegex(organization), "i"),
-              },
-            }
-          : null,
-
-        // B. Classmates (Exact Year + Fuzzy Programme)
-        yearOfAttendance && programmeTitle
-          ? {
-              yearOfAttendance: yearOfAttendance,
-              programmeTitle: {
-                $regex: new RegExp(escapeRegex(programmeTitle), "i"),
-              },
-            }
-          : null,
-      ].filter(Boolean), // Filter out nulls if user profile is incomplete
-    })
-      .sort({ isOnline: -1, lastSeen: -1 }) // ✅ Prioritize Active Users
-      .limit(10)
-      .select(
-        "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
-      );
-
-    matches = [...highQualityMatches];
-    matches.forEach((m) => excludedIds.push(m._id));
-
-    // --- 🕵️ STRATEGY 2: FALLBACK (The "Cohort" Matches) ---
-    // If Strategy 1 found fewer than 10 people, fill the rest with Classmates (Same Year).
-    // This ensures the list is rarely empty.
-
-    if (matches.length < 10 && yearOfAttendance) {
-      const limit = 10 - matches.length;
-
-      const cohortMatches = await User.find({
-        _id: { $nin: excludedIds },
-        isVerified: true,
-        yearOfAttendance: yearOfAttendance,
-      })
-        .sort({ isOnline: -1, lastSeen: -1 }) // Show online classmates first
-        .limit(limit)
-        .select(
-          "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
-        );
-
-      matches = [...matches, ...cohortMatches];
-      cohortMatches.forEach((m) => excludedIds.push(m._id));
-    }
-
-    // --- 🕵️ STRATEGY 3: LAST RESORT (Broad Interest Match) ---
-    // If still empty (e.g. user from unique year), find people with same Programme from ANY year.
-
-    if (matches.length < 5 && programmeTitle) {
-      const limit = 10 - matches.length;
-
-      const progMatches = await User.find({
-        _id: { $nin: excludedIds },
-        isVerified: true,
-        programmeTitle: {
-          $regex: new RegExp(escapeRegex(programmeTitle), "i"),
-        },
-      })
-        .sort({ yearOfAttendance: -1 }) // Recent grads first
-        .limit(limit)
-        .select(
-          "fullName profilePicture jobTitle organization yearOfAttendance programmeTitle isOnline",
-        );
-
-      matches = [...matches, ...progMatches];
-    }
-
-    res.json({
-      success: true,
-      userYear: yearOfAttendance,
-      matches: matches,
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// ✅ Helper: Safely escape characters for Regex (prevents crashes with special chars)
-function escapeRegex(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-}
 
 module.exports = router;

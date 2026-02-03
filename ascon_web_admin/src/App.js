@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -8,11 +8,35 @@ import {
 import AdminDashboard from "./AdminDashboard";
 import Login from "./Login";
 import ResetPassword from "./pages/ResetPassword";
-import VerificationPage from "./pages/VerificationPage"; // ✅ Import the new page
+import VerificationPage from "./pages/VerificationPage";
+import { jwtDecode } from "jwt-decode"; // Ensure this is installed
 
 function App() {
-  // Initialize state directly from localStorage
-  const [token, setToken] = useState(localStorage.getItem("auth_token"));
+  const [token, setToken] = useState(null);
+  // ✅ IMPROVEMENT: Add loading state to prevent "Flash of Unauthenticated Content"
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const storedToken = localStorage.getItem("auth_token");
+    if (storedToken) {
+      try {
+        // Optional: Check expiration before setting
+        const decoded = jwtDecode(storedToken);
+        const currentTime = Date.now() / 1000;
+
+        if (decoded.exp < currentTime) {
+          console.warn("Stored token is expired.");
+          localStorage.removeItem("auth_token");
+        } else {
+          setToken(storedToken);
+        }
+      } catch (e) {
+        console.error("Invalid token format in storage.");
+        localStorage.removeItem("auth_token");
+      }
+    }
+    setIsLoading(false);
+  }, []);
 
   const handleLogin = (newToken) => {
     localStorage.setItem("auth_token", newToken);
@@ -24,19 +48,36 @@ function App() {
     setToken(null);
   };
 
+  // ✅ Show simple loader while checking session
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+          background: "#f4f6f9",
+        }}
+      >
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Router>
       <div className="App">
         <Routes>
-          {/* ✅ PUBLIC ROUTE: Verification Page 
-             This allows anyone (Security Guards) to scan the QR code without logging in.
-          */}
+          {/* Public Verification Route */}
           <Route path="/verify/:id" element={<VerificationPage />} />
 
-          {/* Route: Reset Password */}
+          {/* Reset Password */}
           <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* Route: Login */}
+          {/* Login */}
           <Route
             path="/login"
             element={
@@ -48,7 +89,7 @@ function App() {
             }
           />
 
-          {/* Route: Dashboard (Protected) */}
+          {/* Protected Dashboard */}
           <Route
             path="/"
             element={

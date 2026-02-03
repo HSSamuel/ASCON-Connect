@@ -9,15 +9,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'services/notification_service.dart';
 import 'services/socket_service.dart'; 
 import 'config/theme.dart';
-import 'config.dart'; // Import for AppConfig if needed
-import 'router.dart'; // ✅ Import the Router
+import 'config.dart'; // ✅ AppConfig contains channel constants
+import 'router.dart'; 
 
-// ✅ Global Key: Aliased to the Router's key so NotificationService works
+// ✅ Global Key
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
-
-// ✅ DEFINE CHANNEL ID
-const String channelId = 'ascon_high_importance'; 
-const String channelName = 'ASCON Notifications';
 
 // ✅ GLOBAL THEME CONTROLLER
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -36,7 +32,6 @@ void main() async {
   await dotenv.load(fileName: ".env");
 
   // ✅ Initialize Socket Service Early
-  // This prepares the socket controller so it is ready for connections/updates immediately.
   SocketService().initSocket();
 
   // 1. INITIALIZE FIREBASE
@@ -64,10 +59,11 @@ void main() async {
   // 2. INITIALIZE NOTIFICATIONS (Mobile Only)
   if (!kIsWeb) {
     try {
+      // ✅ IMPROVEMENT: Use constants from AppConfig
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        channelId, 
-        channelName, 
-        description: 'This channel is used for important ASCON updates.',
+        AppConfig.notificationChannelId, 
+        AppConfig.notificationChannelName, 
+        description: AppConfig.notificationChannelDesc,
         importance: Importance.max, 
         playSound: true,
         enableVibration: true,
@@ -99,16 +95,12 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
-        // ✅ CHANGED: Use MaterialApp.router
         return MaterialApp.router(
-          routerConfig: appRouter, // Connects GoRouter
+          routerConfig: appRouter, 
           title: 'ASCON Alumni',
           debugShowCheckedModeBanner: false,
-
-          // Themes
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          
           themeMode: currentMode, 
         );
       },

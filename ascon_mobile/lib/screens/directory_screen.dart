@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ Added for Frequency Capping
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../services/data_service.dart';
 import '../services/api_client.dart'; 
@@ -18,21 +18,38 @@ class DirectoryScreen extends StatefulWidget {
   State<DirectoryScreen> createState() => _DirectoryScreenState();
 }
 
-class _DirectoryScreenState extends State<DirectoryScreen> {
+class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProviderStateMixin {
   final ApiClient _api = ApiClient(); 
   final DataService _dataService = DataService(); 
   
+  late TabController _tabController;
+
+  // --- TAB 1: DIRECTORY STATE ---
   List<dynamic> _allAlumni = [];
   List<dynamic> _searchResults = [];
   Map<String, List<dynamic>> _groupedAlumni = {};
   
-  // Recommendation State
+  // Recommendation State (Carousel in Tab 1)
   List<dynamic> _recommendedAlumni = [];
   bool _hasRecommendations = false;
   
-  bool _isLoading = false;
+  bool _isLoadingDirectory = false;
   bool _isSearching = false;
   bool _showMentorsOnly = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  // --- TAB 2: SMART MATCHES STATE ---
+  List<dynamic> _smartMatches = [];
+  bool _isLoadingMatches = false;
+
+  // --- TAB 3: NEAR ME STATE ---
+  List<dynamic> _nearbyAlumni = [];
+  bool _isLoadingNearMe = false;
+  final TextEditingController _cityController = TextEditingController();
+  
+  // ✅ NEW: Local Filter for Near Me Tab
+  final TextEditingController _nearMeFilterController = TextEditingController();
+  String _nearMeFilter = "";
   
   // ✅ STREAM SUBSCRIPTION (Presence System)
   StreamSubscription? _statusSubscription;
@@ -40,13 +57,16 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   // ✅ Scroll Controller for Smart Action
   final ScrollController _mainScrollController = ScrollController();
 
-  final TextEditingController _searchController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+
+    // Load Data for all tabs
     _loadDirectory();
     _loadRecommendations(); 
+    _loadSmartMatches();
+    _loadNearMe(); // Loads current user's city default if available
     
     // ✅ Listen to Real-Time Status Stream
     _statusSubscription = SocketService().userStatusStream.listen((data) {
@@ -55,25 +75,24 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       setState(() {
         final userId = data['userId'];
         final isOnline = data['isOnline'];
+        final lastSeen = data['lastSeen'];
         
-        // 1. Update in main list
-        for (var user in _allAlumni) {
-          if (user['_id'] == userId) {
-            user['isOnline'] = isOnline;
-            user['lastSeen'] = data['lastSeen'];
+        // Helper to update a list in-place
+        void updateList(List<dynamic> list) {
+          for (var user in list) {
+            if (user['_id'] == userId) {
+              user['isOnline'] = isOnline;
+              user['lastSeen'] = lastSeen;
+            }
           }
         }
-        
-        // 2. Update in search results (if active)
-        for (var user in _searchResults) {
-           if (user['_id'] == userId) {
-            user['isOnline'] = isOnline;
-            user['lastSeen'] = data['lastSeen'];
-          }
-        }
-        
-        // Note: _groupedAlumni references the same map objects, 
-        // so we don't need to rebuild the map, just setState.
+
+        // Update all data sources
+        updateList(_allAlumni);
+        updateList(_searchResults);
+        updateList(_recommendedAlumni);
+        updateList(_smartMatches);
+        updateList(_nearbyAlumni);
       });
     });
   }
@@ -81,14 +100,58 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _mainScrollController.dispose(); // ✅ Dispose Scroll Controller
+    _cityController.dispose();
+    _nearMeFilterController.dispose(); // ✅ Dispose new controller
+    _mainScrollController.dispose(); 
+    _tabController.dispose();
     _statusSubscription?.cancel(); 
     super.dispose();
   }
 
-  // ---------------------------------------------------------
-  // 🧠 SMART RECOMMENDATIONS (With Frequency Cap)
-  // ---------------------------------------------------------
+  // ========================================================
+  // 📥 DATA LOADING METHODS
+  // ========================================================
+
+  // --- TAB 1: DIRECTORY ---
+  Future<void> _loadDirectory({String query = ""}) async {
+    setState(() => _isLoadingDirectory = true);
+    
+    try {
+      String endpoint = '/api/directory?search=$query';
+      if (_showMentorsOnly) endpoint += '&mentorship=true';
+
+      final response = await _api.get(endpoint);
+
+      // ✅ FIX: Robustly handle backend response format via ApiClient
+      if (response['success'] == true) {
+        final dynamic rawData = response['data']; // The actual body from backend
+        List<dynamic> alumniList = [];
+
+        if (rawData is List) {
+          // Case 1: Backend returns direct List [...]
+          alumniList = rawData;
+        } else if (rawData is Map && rawData.containsKey('data') && rawData['data'] is List) {
+          // Case 2: Backend returns Object { success: true, data: [...] }
+          alumniList = rawData['data'];
+        }
+
+        if (mounted) {
+          setState(() {
+            _allAlumni = alumniList;
+            _searchResults = alumniList; 
+            _groupedAlumni = _groupUsersByYear(alumniList);
+            _isLoadingDirectory = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoadingDirectory = false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingDirectory = false);
+    }
+  }
+
+  // --- TAB 1: RECOMMENDATIONS CAROUSEL ---
   Future<void> _loadRecommendations() async {
     final result = await _dataService.fetchRecommendations();
     if (result['success'] == true && mounted) {
@@ -97,18 +160,16 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         _hasRecommendations = _recommendedAlumni.isNotEmpty;
       });
 
-      // ✅ NEW: Check if we have shown this recently
       if (_hasRecommendations) {
         final prefs = await SharedPreferences.getInstance();
         final lastShown = prefs.getInt('last_recommendation_popup_time') ?? 0;
         final now = DateTime.now().millisecondsSinceEpoch;
         
-        // Only show if 24 hours (86400000 ms) have passed
+        // Show only if 24 hours have passed
         if (now - lastShown > 86400000) { 
           Future.delayed(const Duration(seconds: 1), () {
             if (mounted) {
               _showSmartMatchPopup();
-              // Save current time as last shown
               prefs.setInt('last_recommendation_popup_time', now);
             }
           });
@@ -116,6 +177,361 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
       }
     }
   }
+
+  // --- TAB 2: SMART MATCHES ---
+  Future<void> _loadSmartMatches() async {
+    setState(() => _isLoadingMatches = true);
+    try {
+      final matches = await _dataService.fetchSmartMatches();
+      if (mounted) setState(() {
+        _smartMatches = matches;
+        _isLoadingMatches = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingMatches = false);
+    }
+  }
+
+  // --- TAB 3: NEAR ME ---
+  Future<void> _loadNearMe({String? city}) async {
+    setState(() => _isLoadingNearMe = true);
+    try {
+      final nearby = await _dataService.fetchAlumniNearMe(city: city);
+      if (mounted) setState(() {
+        _nearbyAlumni = nearby;
+        _isLoadingNearMe = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingNearMe = false);
+    }
+  }
+
+  // ========================================================
+  // 🧩 HELPER METHODS
+  // ========================================================
+
+  Map<String, List<dynamic>> _groupUsersByYear(List<dynamic> users) {
+    Map<String, List<dynamic>> groups = {};
+    for (var user in users) {
+      String year = user['yearOfAttendance']?.toString() ?? 'Others';
+      if (!groups.containsKey(year)) {
+        groups[year] = [];
+      }
+      groups[year]!.add(user);
+    }
+    var sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+    Map<String, List<dynamic>> sortedGroups = {};
+    for (var key in sortedKeys) {
+      sortedGroups[key] = groups[key]!;
+    }
+    return sortedGroups;
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _isSearching = query.isNotEmpty;
+      
+      if (query.isEmpty) {
+        _searchResults = _allAlumni;
+      } else {
+        final lowerQuery = query.toLowerCase();
+        _searchResults = _allAlumni.where((user) {
+          final name = (user['fullName'] ?? '').toString().toLowerCase();
+          final org = (user['organization'] ?? '').toString().toLowerCase();
+          final year = (user['yearOfAttendance'] ?? '').toString().toLowerCase();
+          final job = (user['jobTitle'] ?? '').toString().toLowerCase();
+          
+          return name.contains(lowerQuery) || 
+                 org.contains(lowerQuery) || 
+                 year.contains(lowerQuery) ||
+                 job.contains(lowerQuery);
+        }).toList();
+      }
+    });
+  }
+
+  // ========================================================
+  // 🎨 WIDGETS
+  // ========================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).primaryColor;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          "Alumni Directory", 
+          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
+        ),
+        automaticallyImplyLeading: false,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: const Color(0xFFD4AF37), // Gold
+          indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold),
+          tabs: const [
+            Tab(text: "All"),
+            Tab(text: "Smart Match"),
+            Tab(text: "Near Me"),
+          ],
+        ),
+      ),
+      backgroundColor: bgColor,
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildDirectoryTab(),
+          _buildSmartMatchesTab(),
+          _buildNearMeTab(),
+        ],
+      ),
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // TAB 1: DIRECTORY (Existing Functionality)
+  // ----------------------------------------------------------------
+  Widget _buildDirectoryTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return Column(
+      children: [
+        // --- 1. SEARCH & FILTER ---
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          color: Theme.of(context).cardColor, 
+          child: Column(
+            children: [
+              Container(
+                height: 45,
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: _onSearchChanged,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color), 
+                  decoration: InputDecoration(
+                    hintText: 'Search Name, Company, or Year...',
+                    hintStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
+                    prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey : primaryColor, size: 20),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              
+              Padding(
+                padding: const EdgeInsets.only(top: 10.0),
+                child: Row(
+                  children: [
+                    FilterChip(
+                      label: const Text("Mentors Only"),
+                      selected: _showMentorsOnly,
+                      showCheckmark: false,
+                      avatar: Icon(
+                        _showMentorsOnly ? Icons.check : Icons.handshake_outlined,
+                        size: 18,
+                        color: _showMentorsOnly ? Colors.white : primaryColor,
+                      ),
+                      backgroundColor: isDark ? Colors.grey[800] : Colors.white,
+                      selectedColor: const Color(0xFFD4AF37),
+                      labelStyle: GoogleFonts.lato(
+                        color: _showMentorsOnly ? Colors.white : primaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(color: isDark ? Colors.transparent : Colors.grey[300]!), 
+                      ),
+                      onSelected: (bool selected) {
+                        setState(() {
+                          _showMentorsOnly = selected;
+                          _loadDirectory(query: _searchController.text);
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // --- 2. MAIN LIST ---
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              await _loadDirectory();
+              await _loadRecommendations();
+            }, 
+            color: primaryColor,
+            child: SingleChildScrollView(
+              controller: _mainScrollController, 
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                children: [
+                  // A. RECOMMENDATION SECTION
+                  if (_hasRecommendations && !_isSearching)
+                    _buildRecommendationsSection(),
+
+                  // B. STANDARD LIST
+                  if (_isLoadingDirectory)
+                    const DirectorySkeletonList() 
+                  else if (_allAlumni.isEmpty)
+                    _buildEmptyState()
+                  else if (_isSearching)
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) => _buildAlumniCard(_searchResults[index]),
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _groupedAlumni.keys.length,
+                      itemBuilder: (context, index) {
+                        String year = _groupedAlumni.keys.elementAt(index);
+                        List<dynamic> classMembers = _groupedAlumni[year]!;
+                        return _buildGroupedTile(year, classMembers);
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // TAB 2: SMART MATCHES (New Feature)
+  // ----------------------------------------------------------------
+  Widget _buildSmartMatchesTab() {
+    final primaryColor = Theme.of(context).primaryColor;
+
+    return RefreshIndicator(
+      onRefresh: _loadSmartMatches,
+      color: primaryColor,
+      child: _isLoadingMatches
+          ? const Center(child: CircularProgressIndicator())
+          : _smartMatches.isEmpty
+              ? _buildEmptyState("No matches found.\nUpdate your Industry & Skills in Profile.")
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _smartMatches.length,
+                  itemBuilder: (context, index) {
+                    final user = _smartMatches[index];
+                    final score = user['matchScore'] ?? 0;
+                    return Column(
+                      children: [
+                        _buildAlumniCard(user, badgeText: "$score% Match"),
+                      ],
+                    );
+                  },
+                ),
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // TAB 3: NEAR ME (New Feature)
+  // ----------------------------------------------------------------
+  Widget _buildNearMeTab() {
+    final primaryColor = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // ✅ NEW: Apply Local Filter logic
+    final filteredList = _nearbyAlumni.where((user) {
+      if (_nearMeFilter.isEmpty) return true;
+      final name = (user['fullName'] ?? '').toLowerCase();
+      final job = (user['jobTitle'] ?? '').toLowerCase();
+      return name.contains(_nearMeFilter.toLowerCase()) || job.contains(_nearMeFilter.toLowerCase());
+    }).toList();
+
+    return Column(
+      children: [
+        // 1. City Input (Fetches from Server)
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: Theme.of(context).cardColor,
+          child: TextField(
+            controller: _cityController,
+            style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+            decoration: InputDecoration(
+              labelText: "Travel Mode: Enter City",
+              hintText: "e.g. Abuja, Lagos, London",
+              labelStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+              prefixIcon: Icon(Icons.flight_takeoff, color: primaryColor),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.arrow_forward),
+                onPressed: () => _loadNearMe(city: _cityController.text.trim()),
+              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+            ),
+            onSubmitted: (val) => _loadNearMe(city: val),
+          ),
+        ),
+
+        // 2. ✅ Local Name Filter (Only visible if results exist)
+        if (_nearbyAlumni.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _nearMeFilterController,
+              style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+              decoration: InputDecoration(
+                labelText: "Filter by Name or Job",
+                prefixIcon: Icon(Icons.person_search, color: Colors.grey[600]),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              ),
+              onChanged: (val) => setState(() => _nearMeFilter = val),
+            ),
+          ),
+
+        // 3. Filtered List
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => _loadNearMe(city: _cityController.text),
+            color: primaryColor,
+            child: _isLoadingNearMe
+                ? const Center(child: CircularProgressIndicator())
+                : filteredList.isEmpty
+                    ? _buildEmptyState("No one found.")
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredList.length,
+                        itemBuilder: (context, index) => _buildAlumniCard(filteredList[index]),
+                      ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------
+  // 🎨 COMMON WIDGETS
+  // ---------------------------------------------------------
 
   void _showSmartMatchPopup() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -200,7 +616,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  // ✅ Scroll to top to show the recommendations section
+                  // Go to recommendations
                   if (_mainScrollController.hasClients) {
                     _mainScrollController.animateTo(
                       0, 
@@ -223,260 +639,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  // ---------------------------------------------------------
-  // 📂 DIRECTORY LOGIC
-  // ---------------------------------------------------------
-  Future<void> _loadDirectory({String query = ""}) async {
-    setState(() => _isLoading = true);
-    
-    try {
-      String endpoint = '/api/directory?search=$query';
-      if (_showMentorsOnly) endpoint += '&mentorship=true';
-
-      final response = await _api.get(endpoint);
-
-      if (response['success'] == true && response['data'] is List) {
-        final List<dynamic> data = response['data'];
-
-        if (mounted) {
-          setState(() {
-            _allAlumni = data;
-            _searchResults = data; 
-            _groupedAlumni = _groupUsersByYear(data);
-            _isLoading = false;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Map<String, List<dynamic>> _groupUsersByYear(List<dynamic> users) {
-    Map<String, List<dynamic>> groups = {};
-    for (var user in users) {
-      String year = user['yearOfAttendance']?.toString() ?? 'Others';
-      if (!groups.containsKey(year)) {
-        groups[year] = [];
-      }
-      groups[year]!.add(user);
-    }
-    var sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
-    Map<String, List<dynamic>> sortedGroups = {};
-    for (var key in sortedKeys) {
-      sortedGroups[key] = groups[key]!;
-    }
-    return sortedGroups;
-  }
-
-  void _onSearchChanged(String query) {
-    setState(() {
-      _isSearching = query.isNotEmpty;
-      
-      if (query.isEmpty) {
-        _searchResults = _allAlumni;
-      } else {
-        final lowerQuery = query.toLowerCase();
-        
-        _searchResults = _allAlumni.where((user) {
-          final name = (user['fullName'] ?? '').toString().toLowerCase();
-          final org = (user['organization'] ?? '').toString().toLowerCase();
-          final year = (user['yearOfAttendance'] ?? '').toString().toLowerCase();
-          final job = (user['jobTitle'] ?? '').toString().toLowerCase();
-          
-          return name.contains(lowerQuery) || 
-                 org.contains(lowerQuery) || 
-                 year.contains(lowerQuery) ||
-                 job.contains(lowerQuery);
-        }).toList();
-      }
-    });
-  }
-
-  // ---------------------------------------------------------
-  // 🎨 WIDGETS
-  // ---------------------------------------------------------
-  Widget _buildAvatar(String? imagePath, bool isDark) {
-    if (imagePath == null || imagePath.isEmpty || imagePath.contains('profile/picture/0')) { 
-      return _buildPlaceholder(isDark);
-    }
-
-    if (imagePath.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: imagePath,
-        imageBuilder: (context, imageProvider) => CircleAvatar(
-          radius: 24,
-          backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-          backgroundImage: imageProvider,
-        ),
-        placeholder: (context, url) => _buildPlaceholder(isDark),
-        errorWidget: (context, url, error) => _buildPlaceholder(isDark),
-      );
-    }
-
-    try {
-      return CircleAvatar(
-        radius: 24,
-        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-        backgroundImage: MemoryImage(base64Decode(imagePath)),
-      );
-    } catch (e) {
-      return _buildPlaceholder(isDark);
-    }
-  }
-
-  Widget _buildPlaceholder(bool isDark) {
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
-      child: const Icon(Icons.person, color: Colors.grey, size: 26),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = Theme.of(context).primaryColor;
-    final bgColor = Theme.of(context).scaffoldBackgroundColor;
-    
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "Alumni Directory", 
-          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)
-        ),
-        automaticallyImplyLeading: false,
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      backgroundColor: bgColor,
-      body: Column(
-        children: [
-          // --- 1. SEARCH & FILTER ---
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            color: Theme.of(context).cardColor, 
-            child: Column(
-              children: [
-                Container(
-                  height: 45,
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[100],
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    textAlignVertical: TextAlignVertical.center,
-                    style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color), 
-                    decoration: InputDecoration(
-                      hintText: 'Search Name, Company, or Year...',
-                      hintStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color, fontSize: 13),
-                      prefixIcon: Icon(Icons.search, color: isDark ? Colors.grey : primaryColor, size: 20),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                
-                Padding(
-                  padding: const EdgeInsets.only(top: 10.0),
-                  child: Row(
-                    children: [
-                      FilterChip(
-                        label: const Text("Mentors Only"),
-                        selected: _showMentorsOnly,
-                        showCheckmark: false,
-                        avatar: Icon(
-                          _showMentorsOnly ? Icons.check : Icons.handshake_outlined,
-                          size: 18,
-                          color: _showMentorsOnly ? Colors.white : primaryColor,
-                        ),
-                        backgroundColor: isDark ? Colors.grey[800] : Colors.white,
-                        selectedColor: const Color(0xFFD4AF37),
-                        labelStyle: GoogleFonts.lato(
-                          color: _showMentorsOnly ? Colors.white : primaryColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(color: isDark ? Colors.transparent : Colors.grey[300]!), 
-                        ),
-                        onSelected: (bool selected) {
-                          setState(() {
-                            _showMentorsOnly = selected;
-                            _loadDirectory(query: _searchController.text);
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // --- 2. MAIN LIST ---
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                await _loadDirectory();
-                await _loadRecommendations();
-              }, 
-              color: primaryColor,
-              child: SingleChildScrollView(
-                controller: _mainScrollController, // ✅ Attached ScrollController
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  children: [
-                    // A. RECOMMENDATION SECTION
-                    if (_hasRecommendations && !_isSearching)
-                      _buildRecommendationsSection(),
-
-                    // B. STANDARD LIST
-                    if (_isLoading)
-                      const DirectorySkeletonList() 
-                    else if (_allAlumni.isEmpty)
-                      _buildEmptyState()
-                    else if (_isSearching)
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) => _buildAlumniCard(_searchResults[index]),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _groupedAlumni.keys.length,
-                        itemBuilder: (context, index) {
-                          String year = _groupedAlumni.keys.elementAt(index);
-                          List<dynamic> classMembers = _groupedAlumni[year]!;
-                          return _buildGroupedTile(year, classMembers);
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ✅ WIDGET: Smart Recommendations Carousel
   Widget _buildRecommendationsSection() {
     final primaryColor = Theme.of(context).primaryColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     
     return Container(
       padding: const EdgeInsets.only(left: 16, top: 16, bottom: 8),
@@ -489,7 +655,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
               const SizedBox(width: 8),
               Text(
                 "Suggested for You",
-                style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold),
+                style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
               ),
             ],
           ),
@@ -503,7 +669,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                 final user = _recommendedAlumni[index];
                 return GestureDetector(
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: user)));
+                    // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
+                    Navigator.of(context, rootNavigator: true).push(
+                      MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: user))
+                    );
                   },
                   child: Container(
                     width: 80, 
@@ -524,7 +693,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                         const SizedBox(height: 8),
                         Text(
                           user['fullName'].toString().split(' ')[0], 
-                          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 12),
+                          style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 12, color: textColor),
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
                         ),
@@ -590,7 +759,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState([String message = "No alumni found."]) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -598,13 +767,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           const SizedBox(height: 50),
           const Icon(Icons.people_outline, size: 50, color: Colors.grey),
           const SizedBox(height: 12),
-          Text("No alumni found.", style: GoogleFonts.lato(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold)),
+          Text(message, textAlign: TextAlign.center, style: GoogleFonts.lato(fontSize: 15, color: Colors.grey, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
-  Widget _buildAlumniCard(dynamic user) {
+  Widget _buildAlumniCard(dynamic user, {String? badgeText}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -638,7 +807,10 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => AlumniDetailScreen(alumniData: user)));
+            // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(builder: (context) => AlumniDetailScreen(alumniData: user))
+            );
           },
           child: Padding(
             padding: const EdgeInsets.all(12.0),
@@ -693,7 +865,18 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
                               ],
                             ),
                           ),
-                          if (yearDisplay.isNotEmpty)
+                          // ✅ NEW: Show Badge if provided (For Smart Match)
+                          if (badgeText != null)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                              child: Text(
+                                badgeText,
+                                style: GoogleFonts.lato(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 10),
+                              ),
+                            )
+                          else if (yearDisplay.isNotEmpty)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
@@ -722,6 +905,43 @@ class _DirectoryScreenState extends State<DirectoryScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildAvatar(String? imagePath, bool isDark) {
+    if (imagePath == null || imagePath.isEmpty || imagePath.contains('profile/picture/0')) { 
+      return _buildPlaceholder(isDark);
+    }
+
+    if (imagePath.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: imagePath,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: 24,
+          backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+          backgroundImage: imageProvider,
+        ),
+        placeholder: (context, url) => _buildPlaceholder(isDark),
+        errorWidget: (context, url, error) => _buildPlaceholder(isDark),
+      );
+    }
+
+    try {
+      return CircleAvatar(
+        radius: 24,
+        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+        backgroundImage: MemoryImage(base64Decode(imagePath)),
+      );
+    } catch (e) {
+      return _buildPlaceholder(isDark);
+    }
+  }
+
+  Widget _buildPlaceholder(bool isDark) {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+      child: const Icon(Icons.person, color: Colors.grey, size: 26),
     );
   }
 }

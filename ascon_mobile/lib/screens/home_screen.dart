@@ -339,7 +339,10 @@ class _DashboardViewState extends State<DashboardView> {
 
                             return GestureDetector(
                               onTap: () {
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni)));
+                                // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
+                                Navigator.of(context, rootNavigator: true).push(
+                                  MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
+                                );
                               },
                               child: Padding(
                                 padding: const EdgeInsets.only(right: 20.0),

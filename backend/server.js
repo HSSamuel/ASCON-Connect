@@ -59,7 +59,7 @@ const swaggerOptions = {
     openapi: "3.0.0",
     info: {
       title: "ASCON Alumni API",
-      version: "1.1.0",
+      version: "2.0.0",
       description: "Official API documentation for the ASCON Alumni Platform",
     },
     servers: [
@@ -105,7 +105,8 @@ app.use(express.json());
 // ⚡ SOCKET.IO SCALABLE PRESENCE SYSTEM
 // ==========================================
 
-const io = new Server(server, {
+// ✅ FIX: Define configuration first
+const ioConfig = {
   cors: {
     origin: "*",
     methods: ["GET", "POST"],
@@ -113,10 +114,9 @@ const io = new Server(server, {
   // ⚡ FASTER HEARTBEAT ⚡
   pingTimeout: 10000, // Detect disconnect in 10 seconds (was 60000)
   pingInterval: 5000, // Send ping every 5 seconds (was 25000)
-});
+};
 
 // ✅ FIX: Only initialize Redis if explicitly enabled in .env
-// Add USE_REDIS=true to your .env file only if you have Redis running.
 if (process.env.USE_REDIS === "true") {
   logger.info("🔌 Redis Enabled. Attempting to connect...");
 
@@ -145,6 +145,7 @@ if (process.env.USE_REDIS === "true") {
   );
 }
 
+// ✅ FIX: Initialize IO once with the correct config
 const io = new Server(server, ioConfig);
 
 // 🧠 IN-MEMORY STATE (The "Brain" of the Presence System)
@@ -236,8 +237,11 @@ io.on("connection", (socket) => {
   });
 
   // ✅ 3. EXPLICIT LOGOUT (Immediate Offline Status)
-  socket.on("user_logout", async (userId) => {
+  // 🔒 SECURE FIX: Do not accept 'userId' from client. Use socket.userId.
+  socket.on("user_logout", async () => {
+    const userId = socket.userId;
     if (!userId) return;
+
     logger.info(`👋 User ${userId} logging out explicitly`);
 
     // Clear all sockets and timers immediately

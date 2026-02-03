@@ -6,25 +6,37 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, max: 255, min: 6 },
     password: { type: String, required: true, max: 1024, min: 6 },
     phoneNumber: { type: String, default: "" },
-    
+
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: Date.now },
-    isPhoneVisible: { type: Boolean, default: false }, // Privacy
-    isEmailVisible: { type: Boolean, default: true }, // Show Email in Directory
-    isOpenToMentorship: { type: Boolean, default: false }, // Mentorship Feature
+    isPhoneVisible: { type: Boolean, default: false },
+    isEmailVisible: { type: Boolean, default: true },
+
+    // ✅ NEW: Location Privacy Toggle
+    isLocationVisible: { type: Boolean, default: false },
+
+    isOpenToMentorship: { type: Boolean, default: false },
 
     programmeTitle: { type: String, required: false },
     customProgramme: { type: String, default: "" },
     yearOfAttendance: { type: Number, required: false },
 
+    // ✅ NEW: Career & Skills for AI Matching
+    industry: { type: String, default: "" }, // e.g. "Tech", "Finance", "Public Service"
+    skills: { type: [String], default: [] }, // e.g. ["Leadership", "Project Management"]
+
     jobTitle: { type: String, default: "" },
     organization: { type: String, default: "" },
+
+    // Address fields (Already existed in registration, but ensuring they are here)
+    city: { type: String, default: "" },
+    state: { type: String, default: "" },
+    country: { type: String, default: "" },
+
     bio: { type: String, default: "" },
     linkedin: { type: String, default: "" },
 
-    // Store the Phone's Notification Tokens
     fcmTokens: { type: [String], default: [] },
-
     alumniId: { type: String, unique: true, sparse: true },
     hasSeenWelcome: { type: Boolean, default: false },
 
@@ -33,14 +45,12 @@ const userSchema = new mongoose.Schema(
     canEdit: { type: Boolean, default: false },
     profilePicture: { type: String, default: "" },
 
-    // ✅ NEW: Tracks origin ("local" or "google"), but we allow cross-login
     provider: {
       type: String,
       default: "local",
       enum: ["local", "google"],
     },
 
-    // Password Reset
     resetPasswordToken: { type: String },
     resetPasswordExpires: { type: Date },
 
@@ -56,8 +66,10 @@ userSchema.index({
   fullName: "text",
   jobTitle: "text",
   organization: "text",
-  email: "text",     
-  alumniId: "text"
+  email: "text",
+  alumniId: "text",
+  industry: "text", // ✅ Index for faster search
+  city: "text", // ✅ Index for location search
 });
 
 module.exports = mongoose.model("User", userSchema);

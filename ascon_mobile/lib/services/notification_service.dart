@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 import '../config.dart';
 import '../main.dart'; 
 
@@ -16,7 +17,7 @@ import '../screens/programme_detail_screen.dart';
 import '../screens/facility_detail_screen.dart'; 
 import '../screens/mentorship_dashboard_screen.dart'; 
 import '../screens/chat_screen.dart'; 
-import '../screens/login_screen.dart'; // ✅ Import Login Screen
+import '../screens/login_screen.dart'; 
 import '../services/socket_service.dart';
 
 @pragma('vm:entry-point')
@@ -73,10 +74,11 @@ class NotificationService {
       },
     );
 
+    // ✅ FIX: Use constants from AppConfig for consistency
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'ascon_high_importance', 
-      'ASCON Notifications',
-      description: 'This channel is used for important ASCON updates.',
+      AppConfig.notificationChannelId, 
+      AppConfig.notificationChannelName,
+      description: AppConfig.notificationChannelDesc,
       importance: Importance.max,
       enableVibration: true,
       playSound: true,
@@ -157,7 +159,6 @@ class NotificationService {
 
         if (conversationId != null && senderId != null) {
           // ✅ CRITICAL: Warm up socket before ChatScreen loads
-          // This ensures the initial "check_user_status" call in ChatScreen succeeds
           SocketService().initSocket(); 
 
           navigatorKey.currentState?.push(
@@ -217,18 +218,12 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    String type = message.data['type'] ?? 'Update';
+    // String type = message.data['type'] ?? 'Update'; // Unused now
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
     
-    // ✅ FIX: Clean Title Logic
-    String formattedTitle;
-    if (type == 'chat_message' || type == 'chat') {
-      // Don't add "New chat_message:", just show sender name
-      formattedTitle = originalTitle; 
-    } else {
-      formattedTitle = '<b>New $type:</b> $originalTitle';
-    }
+    // ✅ FIX: Removed ALL prefix logic. Use title exactly as sent.
+    String formattedTitle = originalTitle;
 
     final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
 
@@ -240,8 +235,8 @@ class NotificationService {
     );
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'ascon_high_importance',
-      'ASCON Notifications',
+      AppConfig.notificationChannelId, 
+      AppConfig.notificationChannelName, 
       importance: Importance.max,
       priority: Priority.high,
       color: const Color(0xFF1B5E3A),
@@ -272,9 +267,13 @@ class NotificationService {
 
       String? fcmToken;
       if (kIsWeb) {
-        fcmToken = await _firebaseMessaging.getToken(
-          vapidKey: "BG-mAsjcWNqfS9Brgh0alj3Cf7Q7FFgkl8kvu5zktPvt4Dt-Yu138tPE_z-INAganzw6BVb6Vjc9Nf37KzN0Rm8" 
-        );
+        // ✅ FIX: Load VAPID key securely from Env
+        String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
+        if (vapidKey != null) {
+          fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
+        } else {
+          debugPrint("⚠️ Warning: FIREBASE_VAPID_KEY missing in .env");
+        }
       } else {
         fcmToken = await _firebaseMessaging.getToken();
       }
