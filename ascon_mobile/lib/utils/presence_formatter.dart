@@ -1,16 +1,6 @@
 import 'package:intl/intl.dart';
 
 class PresenceFormatter {
-  /// Formats a date string into a "Presence" style string.
-  /// 
-  /// Logic:
-  /// - Online -> "Online"
-  /// - < 60 secs -> "Active just now"
-  /// - < 60 mins -> "Xm ago"
-  /// - < 24 hours -> "Xh ago"
-  /// - < 30 days -> "Xd ago"
-  /// - < 12 months -> "Xmo ago"
-  /// - > 1 year -> "Xy ago"
   static String format(String? dateString, {bool isOnline = false}) {
     if (isOnline) return "Online";
     if (dateString == null || dateString.isEmpty) return "Offline";

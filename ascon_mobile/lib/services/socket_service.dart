@@ -28,9 +28,6 @@ class SocketService with WidgetsBindingObserver {
         initSocket();
       }
     }
-    // 2️⃣ REMOVED: Do not disconnect on 'paused'. 
-    // Let the socket linger. The OS will kill it if needed, 
-    // or the server heartbeat will handle timeouts. This stops "Flickering".
   }
 
   void initSocket({String? userIdOverride}) async {

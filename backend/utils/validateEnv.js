@@ -8,6 +8,7 @@ const validateEnv = () => {
     "EMAIL_PASS",
     "GOOGLE_CLIENT_ID",
     "NODE_ENV",
+    "FIREBASE_VAPID_KEY",
   ];
 
   const missing = requiredEnv.filter((env) => !process.env[env]);

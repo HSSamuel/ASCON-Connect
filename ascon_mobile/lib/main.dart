@@ -1,4 +1,4 @@
-// ascon_mobile/lib/main.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_core/firebase_core.dart';
@@ -11,7 +11,7 @@ import 'services/socket_service.dart';
 import 'config/theme.dart';
 import 'config.dart';
 import 'router.dart'; 
-import 'utils/error_handler.dart'; // ✅ Import Error Handler
+import 'utils/error_handler.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
