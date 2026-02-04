@@ -29,7 +29,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const LoginScreen(),
     ),
 
-    // ✅ SHELL ROUTE (Wraps the Bottom Navigation)
+    // Shell Route Wraps the Bottom Navigation
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
         return HomeScreen(navigationShell: navigationShell);
@@ -57,13 +57,13 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 2: Updates
         StatefulShellBranch(
-  routes: [
-    GoRoute(
-      path: '/updates',
-      builder: (context, state) => const UpdatesScreen(),
-    ),
-  ],
-),
+          routes: [
+            GoRoute(
+              path: '/updates',
+              builder: (context, state) => const UpdatesScreen(),
+            ),
+          ],
+        ),
 
         // Tab 3: Directory
         StatefulShellBranch(
@@ -81,9 +81,7 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/profile',
               builder: (context, state) {
-                // ✅ Extract optional userName from extra data
                 final name = state.extra as String?;
-                // ProfileScreen handles null userName by fetching locally
                 return ProfileScreen(userName: name);
               },
             ),

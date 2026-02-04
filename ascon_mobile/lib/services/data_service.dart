@@ -89,7 +89,7 @@ class DataService {
   }
 
   // ==========================================
-  // 1. USER PROFILE (Updated Logic)
+  // 1. USER PROFILE
   // ==========================================
   Future<Map<String, dynamic>?> fetchProfile() async {
     try {
@@ -98,7 +98,6 @@ class DataService {
       final response = await http.get(url, headers: headers);
 
       // ✅ CASE 2: Account Deleted / Not Found (404)
-      // This happens if you wiped the database.
       if (response.statusCode == 404) {
         _forceLogout(message: "We could not find your account details. You may need to register again.");
         return null;
@@ -166,9 +165,9 @@ class DataService {
       List<dynamic> events = [];
       if (data is List) {
         events = data;
-      } else if (data is Map && data.containsKey('events')) {
+      } else if (data is Map && data.containsKey('events') && data['events'] is List) {
         events = data['events'];
-      } else if (data is Map && data.containsKey('data')) {
+      } else if (data is Map && data.containsKey('data') && data['data'] is List) {
         events = data['data'];
       }
       await _cacheData(cacheKey, events);
@@ -274,25 +273,26 @@ class DataService {
   }
 
   // ==========================================
-  // 4. JOBS / CAREERS
+  // 4. UPDATES (Social Feed) - REPLACES JOBS
   // ==========================================
-  Future<List<dynamic>> fetchJobs() async {
-    const String cacheKey = 'cached_jobs';
+  Future<List<dynamic>> fetchUpdates() async {
+    const String cacheKey = 'cached_updates';
     try {
       final headers = await _getHeaders();
-      final url = Uri.parse('${AppConfig.baseUrl}/api/jobs');
+      final url = Uri.parse('${AppConfig.baseUrl}/api/updates');
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      List<dynamic> jobs = [];
+      List<dynamic> updates = [];
+      // ✅ Strict Type Check to avoid _JsonMap error
       if (data is List) {
-        jobs = data;
-      } else if (data is Map && data.containsKey('data')) {
-        jobs = data['data'];
+        updates = data;
+      } else if (data is Map && data.containsKey('data') && data['data'] is List) {
+        updates = data['data'];
       }
       
-      await _cacheData(cacheKey, jobs);
-      return jobs;
+      await _cacheData(cacheKey, updates);
+      return updates;
     } catch (e) {
       final cached = await _getCachedData(cacheKey);
       if (cached != null && cached is List) return cached;
@@ -303,8 +303,6 @@ class DataService {
   // ==========================================
   // 5. DIRECTORY
   // ==========================================
-
-  // ✅ NEW: Fetch full details for a single alumni by ID
   Future<Map<String, dynamic>?> fetchAlumniById(String userId) async {
     try {
       final headers = await _getHeaders();
@@ -337,7 +335,7 @@ class DataService {
       List<dynamic> alumni = [];
       if (data is List) {
         alumni = data;
-      } else if (data is Map && data.containsKey('data')) {
+      } else if (data is Map && data.containsKey('data') && data['data'] is List) {
         alumni = data['data']; 
       }
       
@@ -363,7 +361,7 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      if (data != null && data['success'] == true) {
+      if (data != null && data['success'] == true && data['data'] is List) {
         return data['data'];
       }
       return [];
@@ -447,37 +445,8 @@ class DataService {
   }
 
   // ==========================================
-  // 8. FACILITIES (New)
+  // 8. MENTORSHIP
   // ==========================================
-  Future<List<dynamic>> fetchFacilities() async {
-    const String cacheKey = 'cached_facilities';
-    try {
-      final headers = await _getHeaders();
-      final url = Uri.parse('${AppConfig.baseUrl}/api/facilities');
-      final response = await http.get(url, headers: headers);
-      final data = _handleResponse(response);
-
-      List<dynamic> facilities = [];
-      if (data is List) {
-        facilities = data;
-      } else if (data is Map && data.containsKey('data')) {
-        facilities = data['data'];
-      }
-      
-      await _cacheData(cacheKey, facilities);
-      return facilities;
-    } catch (e) {
-      final cached = await _getCachedData(cacheKey);
-      if (cached != null && cached is List) return cached;
-      return [];
-    }
-  }
-
-  // ==========================================
-  // 9. MENTORSHIP (Phase 3)
-  // ==========================================
-
-  // A. Check Status with a specific user
   Future<String> getMentorshipStatus(String targetUserId) async {
     try {
       final headers = await _getHeaders();
@@ -486,7 +455,7 @@ class DataService {
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['status']; // "Pending", "Accepted", "Rejected", "None"
+        return data['status']; 
       }
       return "None";
     } catch (e) {
@@ -494,7 +463,6 @@ class DataService {
     }
   }
 
-  // B. Send a Request
   Future<bool> sendMentorshipRequest(String mentorId, String pitch) async {
     try {
       final headers = await _getHeaders();
@@ -513,7 +481,6 @@ class DataService {
     }
   }
 
-  // C. Respond to a Request (Accept/Reject)
   Future<bool> respondToMentorshipRequest(String requestId, String status) async {
     try {
       final headers = await _getHeaders();
@@ -531,7 +498,6 @@ class DataService {
     }
   }
 
-  // D. Get Dashboard Data
   Future<Map<String, dynamic>?> getMentorshipDashboard() async {
     try {
       final headers = await _getHeaders();
@@ -545,7 +511,6 @@ class DataService {
     }
   }
 
-  // A. Check Status (Updated to return Map)
   Future<Map<String, dynamic>> getMentorshipStatusFull(String targetUserId) async {
     try {
       final headers = await _getHeaders();
@@ -553,7 +518,7 @@ class DataService {
       final response = await http.get(url, headers: headers);
       
       if (response.statusCode == 200) {
-        return jsonDecode(response.body); // Returns {status: "Pending", requestId: "..."}
+        return jsonDecode(response.body);
       }
       return {'status': "None"};
     } catch (e) {
@@ -561,9 +526,7 @@ class DataService {
     }
   }
 
-  // B. Cancel/End Request (Generic Delete)
   Future<bool> deleteMentorshipInteraction(String requestId, String type) async {
-    // type is either 'cancel' or 'end'
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/$type/$requestId');
@@ -576,7 +539,7 @@ class DataService {
   }
 
   // ==========================================
-  // 10. SMART RECOMMENDATIONS
+  // 9. SMART RECOMMENDATIONS & AI
   // ==========================================
   Future<Map<String, dynamic>> fetchRecommendations() async {
     try {
@@ -594,11 +557,6 @@ class DataService {
     }
   }
 
-  // ==========================================
-  // 11. AI & LOCATION FEATURES
-  // ==========================================
-  
-  // 🧠 Fetch Smart Matches
   Future<List<dynamic>> fetchSmartMatches() async {
     const String cacheKey = 'cached_smart_matches';
     try {
@@ -607,7 +565,8 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      if (data != null && data['success'] == true) {
+      // ✅ Strict Type Check
+      if (data != null && data['success'] == true && data['data'] is List) {
         await _cacheData(cacheKey, data['data']);
         return data['data'];
       }
@@ -619,7 +578,6 @@ class DataService {
     }
   }
 
-  // 📍 Fetch Alumni Near Me (Optional city for "Travel Mode")
   Future<List<dynamic>> fetchAlumniNearMe({String? city}) async {
     try {
       final headers = await _getHeaders();
@@ -632,7 +590,8 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      if (data != null && data['success'] == true) {
+      // ✅ Strict Type Check
+      if (data != null && data['success'] == true && data['data'] is List) {
         return data['data'];
       }
       return [];

@@ -78,8 +78,6 @@ const DashboardContent = ({
           onClick={() => setActiveTab("updates")}
         />
 
-        {/* ❌ REMOVED: Facilities Stat Card */}
-
         <StatCard
           title="Registrations"
           value={stats.totalRegistrations}
@@ -108,8 +106,6 @@ const DashboardContent = ({
         {activeTab === "updates" && (
           <UpdatesManager token={token} canEdit={canEdit} />
         )}
-
-        {/* ❌ REMOVED: Facilities Tab Render Logic */}
 
         {activeTab === "registrations" && (
           <RegistrationsManager token={token} canEdit={canEdit} />

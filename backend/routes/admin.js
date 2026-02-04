@@ -1,5 +1,4 @@
 const router = require("express").Router();
-// ✅ NEW: Import 3 schemas instead of User
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
@@ -8,7 +7,7 @@ const Event = require("../models/Event");
 const Programme = require("../models/Programme");
 const ProgrammeInterest = require("../models/ProgrammeInterest");
 const EventRegistration = require("../models/EventRegistration");
-const UpdatePost = require("../models/UpdatePost"); // ✅ NEW IMPORT
+const UpdatePost = require("../models/UpdatePost");
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
 
@@ -104,14 +103,14 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       progCount,
       progInterestCount,
       eventRegCount,
-      updatesCount, // ✅ NEW VARIABLE
+      updatesCount,
     ] = await Promise.all([
-      UserAuth.countDocuments(), // Count Auth Docs for total users
+      UserAuth.countDocuments(),
       Event.countDocuments(),
       Programme.countDocuments(),
       ProgrammeInterest.countDocuments(),
       EventRegistration.countDocuments(),
-      UpdatePost.countDocuments(), // ✅ COUNT SOCIAL POSTS
+      UpdatePost.countDocuments(),
     ]);
 
     res.json({
@@ -119,7 +118,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       events: eventCount,
       programmes: progCount,
       totalRegistrations: progInterestCount + eventRegCount,
-      updates: updatesCount, // ✅ RETURN UPDATES COUNT
+      updates: updatesCount,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -148,7 +147,6 @@ router.get("/users", verifyAdmin, async (req, res) => {
       };
     }
 
-    // ✅ Aggregate 3 collections dynamically for the Admin List
     const users = await UserAuth.aggregate([
       {
         $lookup: {
@@ -174,12 +172,11 @@ router.get("/users", verifyAdmin, async (req, res) => {
       { $limit: limit },
       {
         $project: {
-          password: 0, // Exclude password
+          password: 0,
           "profile._id": 0,
           "settings._id": 0,
         },
       },
-      // Flatten the result so the frontend Dashboard works without changes
       {
         $addFields: {
           fullName: "$profile.fullName",
@@ -212,7 +209,6 @@ router.get("/users", verifyAdmin, async (req, res) => {
   }
 });
 
-// ✅ DELETE CASCADES ACROSS ALL 3 TABLES
 router.delete("/users/:id", verifyEditor, async (req, res) => {
   try {
     await Promise.all([
@@ -300,7 +296,7 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
 });
 
 // ==========================================
-// 2. EVENT MANAGEMENT (Unchanged)
+// 2. EVENT MANAGEMENT
 // ==========================================
 
 router.post("/events", verifyEditor, async (req, res) => {
@@ -363,7 +359,7 @@ router.delete("/events/:id", verifyEditor, async (req, res) => {
 });
 
 // ==========================================
-// 3. PROGRAMME MANAGEMENT (Unchanged)
+// 3. PROGRAMME MANAGEMENT
 // ==========================================
 
 router.get("/programmes", async (req, res) => {
@@ -461,7 +457,6 @@ router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   }
 });
 
-// ✅ FIX ID ON PROFILE TABLE
 router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
   try {
     const { year } = req.body;

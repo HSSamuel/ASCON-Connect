@@ -18,7 +18,7 @@ import '../widgets/digital_id_card.dart';
 import '../viewmodels/dashboard_view_model.dart';
 import '../services/socket_service.dart'; 
 import '../services/api_client.dart'; 
-import '../services/notification_service.dart'; // ✅ Import Notification Service
+import '../services/notification_service.dart';
 
 // ✅ RENAMED & REFACTORED: Now acts as the Shell for GoRouter
 class HomeScreen extends StatefulWidget {
@@ -195,6 +195,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         floatingActionButton: SizedBox(
           width: 58, height: 58,
           child: FloatingActionButton(
+            // ✅ FIX: Unique Hero Tag to prevent conflicts with other FABs
+            heroTag: "main_dashboard_fab",
             onPressed: () => _goBranch(2), // Updates Tab
             backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
             elevation: 6.0,
@@ -335,10 +337,21 @@ class _DashboardViewState extends State<DashboardView> {
 
                     const SizedBox(height: 20),
 
-                    // 1️⃣ ALUMNI NETWORK
+                    // ✅ 1. PROFILE COMPLETION ALERT (Pro Initiative)
+                    if (!_viewModel.isLoading && !_viewModel.isProfileComplete)
+                      _buildProfileAlert(context, primaryColor),
+
+                    // 2️⃣ ALUMNI NETWORK
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text("Alumni Network", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("Alumni Network", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                          // Suggest it's dynamic
+                          Icon(Icons.shuffle, size: 16, color: Colors.grey[400]), 
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
                     
@@ -394,7 +407,7 @@ class _DashboardViewState extends State<DashboardView> {
                     
                     const SizedBox(height: 25),
 
-                    // 2️⃣ UPCOMING EVENTS
+                    // 3️⃣ UPCOMING EVENTS
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -429,7 +442,7 @@ class _DashboardViewState extends State<DashboardView> {
 
                     const SizedBox(height: 25),
 
-                    // 3️⃣ NEWS & UPDATES
+                    // 4️⃣ NEWS & UPDATES
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -470,6 +483,78 @@ class _DashboardViewState extends State<DashboardView> {
           ),
         );
       },
+    );
+  }
+
+  // ✅ NEW: Profile Completion Alert Widget
+  Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final percent = _viewModel.profileCompletionPercent;
+    
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark 
+            ? [const Color(0xFF424242), const Color(0xFF303030)] 
+            : [const Color(0xFFFFF8E1), const Color(0xFFFFECB3)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(color: Colors.amber.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+        ]
+      ),
+      child: Row(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: percent,
+                backgroundColor: Colors.amber.withOpacity(0.2),
+                color: Colors.amber[800],
+                strokeWidth: 4,
+              ),
+              Text(
+                "${(percent * 100).toInt()}%", 
+                style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber[900])
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Complete your Profile", 
+                  style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 15, color: isDark ? Colors.white : Colors.black87)
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Add your job, bio & city to get better matches.", 
+                  style: GoogleFonts.lato(fontSize: 12, color: isDark ? Colors.grey[300] : Colors.grey[800])
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => context.go('/profile'), // Navigates to Profile Tab
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber[800],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text("Finish", style: TextStyle(fontSize: 12)),
+          )
+        ],
+      ),
     );
   }
 

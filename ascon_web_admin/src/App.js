@@ -1,4 +1,3 @@
-// ascon_web_admin/src/App.js
 import React from "react";
 import {
   BrowserRouter as Router,
@@ -12,7 +11,6 @@ import Login from "./Login";
 import ResetPassword from "./pages/ResetPassword";
 import VerificationPage from "./pages/VerificationPage";
 
-// Component to handle protected routes and loading state
 const ProtectedRoute = ({ children }) => {
   const { token, isLoading } = useAuth();
 
@@ -42,7 +40,7 @@ const ProtectedRoute = ({ children }) => {
 };
 
 const AppRoutes = () => {
-  const { token, login, logout } = useAuth(); // Access auth methods via hook
+  const { token, login, logout } = useAuth();
 
   return (
     <Routes>
@@ -60,7 +58,6 @@ const AppRoutes = () => {
         path="/"
         element={
           <ProtectedRoute>
-            {/* AdminDashboard can now use useAuth() internally too */}
             <AdminDashboard token={token} onLogout={logout} />
           </ProtectedRoute>
         }

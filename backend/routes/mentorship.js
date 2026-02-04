@@ -1,7 +1,9 @@
 const router = require("express").Router();
+const mongoose = require("mongoose");
 const MentorshipRequest = require("../models/MentorshipRequest");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
+const UserSettings = require("../models/UserSettings");
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const verifyToken = require("./verifyToken");
@@ -14,17 +16,53 @@ router.post("/request", verifyToken, async (req, res) => {
   try {
     const { mentorId, pitch } = req.body;
 
+    console.log(`[Mentorship] Request from ${req.user._id} to ${mentorId}`);
+
+    // 1. Validate ID Format
+    if (!mongoose.Types.ObjectId.isValid(mentorId)) {
+      console.log("[Mentorship] Invalid Mentor ID format");
+      return res.status(400).json({ message: "Invalid Mentor ID." });
+    }
+
+    // 2. Prevent Self-Mentoring
     if (mentorId === req.user._id) {
       return res.status(400).json({ message: "You cannot mentor yourself." });
     }
 
-    const mentor = await User.findById(mentorId);
-    if (!mentor || !mentor.isOpenToMentorship) {
-      return res
-        .status(400)
-        .json({ message: "This user is not accepting mentorship requests." });
+    // 3. Check Auth Existence (The Source of Truth)
+    const mentorAuth = await UserAuth.findOne({ _id: mentorId });
+    if (!mentorAuth) {
+      console.log(`[Mentorship] Mentor Auth NOT found for ID: ${mentorId}`);
+      return res.status(404).json({ message: "Mentor user not found." });
     }
 
+    // 4. Fetch or Create Settings (Self-Healing)
+    let mentorSettings = await UserSettings.findOne({ userId: mentorId });
+
+    if (!mentorSettings) {
+      console.log(
+        `[Mentorship] Settings missing for ${mentorId}. Auto-creating...`,
+      );
+      mentorSettings = new UserSettings({
+        userId: mentorId,
+        isOpenToMentorship: true, // Default to true if missing to allow connection
+        isPhoneVisible: false,
+        isEmailVisible: true,
+        hasSeenWelcome: true,
+      });
+      await mentorSettings.save();
+    }
+
+    // 5. Check Eligibility
+    if (!mentorSettings.isOpenToMentorship) {
+      return res
+        .status(400)
+        .json({
+          message: "This user is not currently accepting mentorship requests.",
+        });
+    }
+
+    // 6. Check for Existing Requests
     const existing = await MentorshipRequest.findOne({
       mentor: mentorId,
       mentee: req.user._id,
@@ -43,6 +81,7 @@ router.post("/request", verifyToken, async (req, res) => {
           .json({ message: "Your previous request was declined." });
     }
 
+    // 7. Create Request
     const newRequest = new MentorshipRequest({
       mentor: mentorId,
       mentee: req.user._id,
@@ -51,16 +90,21 @@ router.post("/request", verifyToken, async (req, res) => {
 
     await newRequest.save();
 
-    // ✅ NOTIFY MENTOR (ALWAYS)
-    await sendPersonalNotification(
-      mentorId,
-      "New Mentorship Request 🎓",
-      "Someone has requested your mentorship. Tap to review.",
-      { route: "mentorship_requests" },
-    );
+    // 8. Notify Mentor
+    try {
+      await sendPersonalNotification(
+        mentorId,
+        "New Mentorship Request 🎓",
+        "Someone has requested your mentorship. Tap to review.",
+        { route: "mentorship_requests" },
+      );
+    } catch (e) {
+      console.error("Notification failed:", e.message);
+    }
 
     res.status(201).json(newRequest);
   } catch (err) {
+    console.error("Mentorship Request Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -85,9 +129,8 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
     await request.save();
 
     if (status === "Accepted") {
-      // 1. Find/Create Chat
       let conversation = await Conversation.findOne({
-        participants: { $all: [request.mentor, request.mentee._id] }, // ✅ Fixed field name to 'participants' to match schema
+        participants: { $all: [request.mentor, request.mentee._id] },
       });
 
       if (!conversation) {
@@ -97,7 +140,6 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
         await conversation.save();
       }
 
-      // 2. Create System Message
       const systemMsg = new Message({
         conversationId: conversation._id,
         sender: request.mentor,
@@ -106,12 +148,10 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
       });
       await systemMsg.save();
 
-      // 3. Update Conversation Last Message
       conversation.lastMessage = "🎉 Mentorship Accepted";
       conversation.lastMessageAt = Date.now();
       await conversation.save();
 
-      // 4. ✅ EMIT SOCKET EVENT (So chat appears instantly for Mentee)
       if (req.io) {
         req.io.to(request.mentee._id.toString()).emit("new_message", {
           message: systemMsg,
@@ -119,7 +159,6 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
         });
       }
 
-      // 5. ✅ NOTIFY MENTEE (ALWAYS)
       await sendPersonalNotification(
         request.mentee._id.toString(),
         "Mentorship Accepted! 🎉",
@@ -136,42 +175,74 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 3. GET MY DASHBOARD (Both Roles)
+// 3. GET MY DASHBOARD
 // ==========================================
 router.get("/dashboard", verifyToken, async (req, res) => {
   try {
     const myId = req.user._id;
 
-    // 1. Requests I SENT (As a Mentee)
     const sentRequests = await MentorshipRequest.find({ mentee: myId })
-      .populate("mentor", "fullName profilePicture jobTitle organization")
-      .sort({ createdAt: -1 });
+      .populate("mentor")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // 2. Requests I RECEIVED (As a Mentor)
     const receivedRequests = await MentorshipRequest.find({
       mentor: myId,
       status: "Pending",
     })
-      .populate("mentee", "fullName profilePicture jobTitle organization")
-      .sort({ createdAt: -1 });
+      .populate("mentee")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    // 3. My Active Mentors (Accepted)
     const myMentors = await MentorshipRequest.find({
       mentee: myId,
       status: "Accepted",
-    }).populate("mentor", "fullName profilePicture");
+    })
+      .populate("mentor")
+      .lean();
 
-    // 4. My Active Mentees (Accepted)
     const myMentees = await MentorshipRequest.find({
       mentor: myId,
       status: "Accepted",
-    }).populate("mentee", "fullName profilePicture");
+    })
+      .populate("mentee")
+      .lean();
+
+    const enrichWithProfiles = async (list, field) => {
+      if (!list || list.length === 0) return [];
+
+      const ids = list
+        .map((item) => (item[field] ? item[field]._id : null))
+        .filter((id) => id !== null);
+      const profiles = await UserProfile.find({ userId: { $in: ids } }).lean();
+      const profileMap = {};
+      profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
+
+      return list.map((item) => {
+        if (!item[field]) return item;
+        const pid = item[field]._id.toString();
+        if (profileMap[pid]) {
+          item[field].fullName = profileMap[pid].fullName;
+          item[field].profilePicture = profileMap[pid].profilePicture;
+          item[field].jobTitle = profileMap[pid].jobTitle;
+        }
+        return item;
+      });
+    };
+
+    const sentEnriched = await enrichWithProfiles(sentRequests, "mentor");
+    const receivedEnriched = await enrichWithProfiles(
+      receivedRequests,
+      "mentee",
+    );
+    const mentorsEnriched = await enrichWithProfiles(myMentors, "mentor");
+    const menteesEnriched = await enrichWithProfiles(myMentees, "mentee");
 
     res.json({
-      sent: sentRequests,
-      received: receivedRequests,
-      activeMentors: myMentors,
-      activeMentees: myMentees,
+      sent: sentEnriched,
+      received: receivedEnriched,
+      activeMentors: mentorsEnriched,
+      activeMentees: menteesEnriched,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -201,7 +272,7 @@ router.get("/status/:targetUserId", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 5. CANCEL REQUEST
+// 5. DELETE REQUEST/MENTORSHIP
 // ==========================================
 router.delete("/cancel/:id", verifyToken, async (req, res) => {
   try {
@@ -222,9 +293,6 @@ router.delete("/cancel/:id", verifyToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 6. END MENTORSHIP
-// ==========================================
 router.delete("/end/:id", verifyToken, async (req, res) => {
   try {
     const request = await MentorshipRequest.findById(req.params.id);

@@ -1637,3 +1637,35 @@
 {"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-02-04 16:36:54"}
 {"level":"info","message":"📣 Preparing broadcast for 3 users...","timestamp":"2026-02-04 16:36:55"}
 {"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-02-04 16:37:00"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 17:35:31"}
+{"level":"info","message":"👤 Personal Notification sent to 69823a853b1e13ecb431136a: 3 success.","timestamp":"2026-02-04 17:35:42"}
+{"level":"info","message":"👤 Personal Notification sent to 69832792f25e8b5b10b45a0e: 1 success.","timestamp":"2026-02-04 17:35:43"}
+{"level":"info","message":"👤 Personal Notification sent to 69832865f25e8b5b10b45a31: 1 success.","timestamp":"2026-02-04 17:35:44"}
+{"level":"info","message":"👤 Personal Notification sent to 6983597a002d549aeda45411: 1 success.","timestamp":"2026-02-04 17:35:45"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-02-04 17:35:45"}
+{"level":"info","message":"📣 Preparing broadcast for 4 users...","timestamp":"2026-02-04 17:35:45"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-02-04 17:35:47"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-04 17:36:48"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 17:36:50"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-04 17:36:51"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-04 17:37:01"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-04 17:37:03"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-04 17:37:03"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-04 18:53:37"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 18:53:39"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-04 18:53:41"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-04 18:53:47"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-04 18:53:49"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-04 18:53:49"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-04 18:58:52"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 18:58:53"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-04 18:58:54"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-04 18:59:02"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-04 18:59:04"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-04 18:59:04"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-04 20:49:33"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 20:49:35"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-04 20:49:36"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-04 20:49:45"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-04 20:49:47"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-04 20:49:47"}

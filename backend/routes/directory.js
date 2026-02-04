@@ -1,9 +1,8 @@
 const router = require("express").Router();
-// ✅ NEW: Import the 3 separated models
+const mongoose = require("mongoose");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
-
 const verifyToken = require("./verifyToken");
 
 // =========================================================
@@ -39,10 +38,10 @@ router.get("/", verifyToken, async (req, res) => {
       }
     }
 
-    // ✅ NEW: MongoDB Aggregation Pipeline to join the 3 tables
+    // Aggregation Pipeline
     const alumniList = await UserProfile.aggregate([
       { $match: profileMatch },
-      // Join with Auth table to check if verified and get online status
+      // Join with Auth table to check verification & online status
       {
         $lookup: {
           from: "userauths",
@@ -51,8 +50,9 @@ router.get("/", verifyToken, async (req, res) => {
           as: "auth",
         },
       },
-      { $unwind: "$auth" },
+      { $unwind: "$auth" }, // ✅ Crucial: Drops profiles where Auth doesn't exist
       { $match: { "auth.isVerified": true } }, // Only show verified users
+
       // Join with Settings table
       {
         $lookup: {
@@ -64,6 +64,8 @@ router.get("/", verifyToken, async (req, res) => {
       },
       { $unwind: "$settings" },
       { $match: settingsMatch }, // Apply settings filters (e.g., mentorship)
+
+      // Sorting: Online first, then Mentors, then Year
       {
         $sort: {
           "auth.isOnline": -1,
@@ -72,10 +74,11 @@ router.get("/", verifyToken, async (req, res) => {
         },
       },
       { $limit: 50 },
-      // Project final fields to match mobile app expectations
+
+      // Project final fields
       {
         $project: {
-          _id: "$userId", // ✅ Crucial: Send Auth ID as the main _id
+          _id: "$userId", // ✅ Send Auth ID as the main _id for consistency
           fullName: 1,
           profilePicture: 1,
           programmeTitle: 1,
@@ -107,7 +110,9 @@ router.get("/", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/smart-matches", verifyToken, async (req, res) => {
   try {
-    const currentProfile = await UserProfile.findOne({ userId: req.user._id });
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
+
+    const currentProfile = await UserProfile.findOne({ userId: currentUserId });
     if (!currentProfile)
       return res.status(404).json({ message: "User not found" });
 
@@ -117,8 +122,7 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
       : "";
 
     const topMatches = await UserProfile.aggregate([
-      { $match: { userId: { $ne: req.user._id } } }, // Exclude self
-      // Join Auth to ensure verified
+      { $match: { userId: { $ne: currentUserId } } }, // ✅ FIX: Correct Exclusion
       {
         $lookup: {
           from: "userauths",
@@ -129,7 +133,6 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
       },
       { $unwind: "$auth" },
       { $match: { "auth.isVerified": true } },
-      // Join Settings for mentorship flag
       {
         $lookup: {
           from: "usersettings",
@@ -189,7 +192,7 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
       { $limit: 15 },
       {
         $project: {
-          _id: "$userId", // Map userId to _id
+          _id: "$userId",
           fullName: 1,
           jobTitle: 1,
           organization: 1,
@@ -218,22 +221,33 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/near-me", verifyToken, async (req, res) => {
   try {
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
     const { city } = req.query;
-    const currentProfile = await UserProfile.findOne({ userId: req.user._id });
 
-    const targetCity = city || currentProfile.city;
+    // Fetch profile to get default location
+    const currentProfile = await UserProfile.findOne({ userId: currentUserId });
 
-    if (!targetCity) {
-      return res.json({ success: true, data: [], message: "No location set." });
+    // ✅ IMPROVEMENT: Fallback to State if City is missing
+    const targetLocation = city || currentProfile.city || currentProfile.state;
+
+    if (!targetLocation) {
+      return res.json({
+        success: true,
+        data: [],
+        message: "No location set in your profile.",
+      });
     }
 
-    const safeCity = escapeRegex(targetCity);
+    const safeLocation = escapeRegex(targetLocation);
 
     const nearbyUsers = await UserProfile.aggregate([
       {
         $match: {
-          userId: { $ne: req.user._id },
-          city: { $regex: new RegExp(safeCity, "i") },
+          userId: { $ne: currentUserId }, // ✅ FIX: Correct Exclusion
+          $or: [
+            { city: { $regex: new RegExp(safeLocation, "i") } },
+            { state: { $regex: new RegExp(safeLocation, "i") } }, // ✅ Also check State
+          ],
         },
       },
       {
@@ -255,7 +269,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
         },
       },
       { $unwind: "$settings" },
-      { $match: { "settings.isLocationVisible": true } }, // Privacy Check
+      { $match: { "settings.isLocationVisible": true } },
       {
         $project: {
           _id: "$userId",
@@ -264,6 +278,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
           organization: 1,
           profilePicture: 1,
           city: 1,
+          state: 1, // ✅ Return State too
           phoneNumber: 1,
           email: "$auth.email",
           isOnline: "$auth.isOnline",
@@ -273,7 +288,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
       },
     ]);
 
-    res.json({ success: true, data: nearbyUsers, location: targetCity });
+    res.json({ success: true, data: nearbyUsers, location: targetLocation });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -284,7 +299,9 @@ router.get("/near-me", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/recommendations", verifyToken, async (req, res) => {
   try {
-    const currentProfile = await UserProfile.findOne({ userId: req.user._id });
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
+
+    const currentProfile = await UserProfile.findOne({ userId: currentUserId });
     if (!currentProfile)
       return res.status(404).json({ message: "Profile not found" });
 
@@ -293,7 +310,7 @@ router.get("/recommendations", verifyToken, async (req, res) => {
     const matches = await UserProfile.aggregate([
       {
         $match: {
-          userId: { $ne: req.user._id },
+          userId: { $ne: currentUserId }, // ✅ FIX: Correct Exclusion
           $or: [{ yearOfAttendance }, { programmeTitle }],
         },
       },
@@ -345,7 +362,7 @@ router.get("/recommendations", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 5. SINGLE ALUMNI DETAILS (NEW FIX)
+// 5. SINGLE ALUMNI DETAILS
 // =========================================================
 router.get("/:userId", verifyToken, async (req, res) => {
   try {
@@ -368,7 +385,7 @@ router.get("/:userId", verifyToken, async (req, res) => {
       lastSeen: auth.lastSeen,
       isVerified: auth.isVerified,
       ...profile.toObject(),
-      ...settings.toObject(),
+      ...settings?.toObject(), // Handle possibly missing settings gracefully
     };
 
     res.json({ success: true, data: fullDetails });

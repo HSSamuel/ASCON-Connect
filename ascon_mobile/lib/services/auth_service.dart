@@ -25,13 +25,34 @@ class AuthService {
     _api.onTokenRefresh = _performSilentRefresh;
   }
 
+  // ✅ NEW: Helper to check Admin Status
+  Future<bool> get isAdmin async {
+    try {
+      final userMap = await getCachedUser();
+      if (userMap != null && userMap['isAdmin'] == true) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ NEW: Helper to check current User ID (for "Delete my own post")
+  Future<String?> get currentUserId async {
+    try {
+      final userMap = await getCachedUser();
+      return userMap?['id'] ?? userMap?['_id'];
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<String?> _getFcmToken() async {
     try {
       if (kIsWeb) {
-        // ✅ WEB TOKEN FETCH (With VAPID)
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
         if (vapidKey == null || vapidKey.isEmpty) {
-           // debugPrint("⚠️ Missing VAPID Key for Web");
            return null;
         }
         return await FirebaseMessaging.instance.getToken(vapidKey: vapidKey);
@@ -62,7 +83,6 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
-        // ✅ Init Notifications regardless of platform (now handled safely inside)
         await NotificationService().init();
       }
       return result;
@@ -170,9 +190,6 @@ class AuthService {
     } catch (e) { /* Ignore */ }
   }
 
-  // =================================================
-  // 🔄 SILENT REFRESH LOGIC
-  // =================================================
   Future<String?> _performSilentRefresh() async {
     try {
       String? refreshToken = await _secureStorage.read(key: 'refresh_token');
@@ -207,9 +224,6 @@ class AuthService {
     return null;
   }
 
-  // =================================================
-  // 🔐 SESSION MANAGEMENT
-  // =================================================
   Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
     try {
       _tokenCache = token;

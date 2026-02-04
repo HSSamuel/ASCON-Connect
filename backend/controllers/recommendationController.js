@@ -1,3 +1,4 @@
+const mongoose = require("mongoose"); // ✅ Required
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
@@ -9,6 +10,7 @@ const asyncHandler = require("../utils/asyncHandler");
 exports.getRecommendations = asyncHandler(async (req, res) => {
   try {
     const userId = req.user._id;
+    const currentUserId = new mongoose.Types.ObjectId(userId); // ✅ Cast to ObjectId
 
     // 1. Fetch current user's profile and settings
     const [currentUserProfile, currentUserSettings] = await Promise.all([
@@ -28,7 +30,7 @@ exports.getRecommendations = asyncHandler(async (req, res) => {
     } = currentUserProfile;
 
     // 2. Determine match criteria based on what the user has filled out
-    const matchCriteria = { userId: { $ne: userId } };
+    const matchCriteria = { userId: { $ne: currentUserId } }; // ✅ Use Casted ID
     const orConditions = [];
 
     if (yearOfAttendance) orConditions.push({ yearOfAttendance });
@@ -40,11 +42,11 @@ exports.getRecommendations = asyncHandler(async (req, res) => {
       matchCriteria.$or = orConditions;
     }
 
-    // 3. Aggregate query to fetch matching profiles, auth (for online status), and settings (for mentorship)
+    // 3. Aggregate query to fetch matching profiles
     const recommendations = await UserProfile.aggregate([
       { $match: matchCriteria },
 
-      // Join Auth table to check if verified and get online status
+      // Join Auth table
       {
         $lookup: {
           from: "userauths",
@@ -54,9 +56,9 @@ exports.getRecommendations = asyncHandler(async (req, res) => {
         },
       },
       { $unwind: "$auth" },
-      { $match: { "auth.isVerified": true } }, // Exclude unverified users
+      { $match: { "auth.isVerified": true } },
 
-      // Join Settings table to check privacy/mentorship settings
+      // Join Settings table
       {
         $lookup: {
           from: "usersettings",
@@ -92,10 +94,10 @@ exports.getRecommendations = asyncHandler(async (req, res) => {
       { $sort: { score: -1, "auth.isOnline": -1 } },
       { $limit: 10 },
 
-      // Project final fields to match Mobile App expectations
+      // Project final fields
       {
         $project: {
-          _id: "$userId", // Map userId to _id for mobile compatibility
+          _id: "$userId",
           fullName: 1,
           jobTitle: 1,
           organization: 1,

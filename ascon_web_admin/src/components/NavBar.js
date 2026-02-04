@@ -27,12 +27,7 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
     { id: "users", label: "Users", icon: "👥" },
     { id: "events", label: "Events", icon: "📅" },
     { id: "programmes", label: "Programmes", icon: "🎓" },
-
-    // ✅ Social Feed (Replaced Jobs)
     { id: "updates", label: "Social Feed", icon: "💬" },
-
-    // ❌ REMOVED: Facilities
-
     { id: "registrations", label: "Registrations", icon: "📋" },
     { id: "documents", label: "Documents", icon: "📄" },
   ];

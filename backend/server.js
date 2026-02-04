@@ -11,13 +11,11 @@ const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const http = require("http");
 
-// ✅ FIX: Replaced old 'User' model with the new separated models
 const UserAuth = require("./models/UserAuth");
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
 
-// ✅ Import new Socket Service
 const { initializeSocket } = require("./services/socketService");
 
 // 1. Initialize the App
@@ -53,7 +51,7 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 
 // ==========================================
-// 📖 API DOCUMENTATION (RESTORED)
+// 📖 API DOCUMENTATION
 // ==========================================
 const swaggerOptions = {
   swaggerDefinition: {
@@ -81,7 +79,6 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // 2. CONFIGURATION & ROUTES
 // ==========================================
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
-// Fallback for dev if env var isn't set, or add hardcoded ones if you prefer
 const defaultOrigins = [
   "http://localhost:3000",
   "http://localhost:5000",
@@ -92,15 +89,11 @@ app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      // Check both env variable list and default list
       if (
         allowedOrigins.indexOf(origin) === -1 &&
         defaultOrigins.indexOf(origin) === -1
       ) {
-        // In production, you might want to be stricter
         if (process.env.NODE_ENV === "production") {
-          // return callback(new Error("CORS policy violation"), false);
-          // For now, allowing to prevent breakage until you set .env
           return callback(null, true);
         }
       }
@@ -114,10 +107,8 @@ app.use(
 
 app.use(express.json());
 
-// ✅ Initialize Socket.io (Logic moved to service)
 const ioPromise = initializeSocket(server);
 
-// Make IO available in routes
 app.use(async (req, res, next) => {
   req.io = await ioPromise;
   next();
@@ -153,7 +144,6 @@ mongoose
   .then(async () => {
     logger.info("✅ Connected to MongoDB Successfully!");
 
-    // Reset Online Status on restart
     try {
       await UserAuth.updateMany({}, { isOnline: false });
       logger.info("🧹 Reset all user statuses to Offline");

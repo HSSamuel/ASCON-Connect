@@ -45,6 +45,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   // --- TAB 3: NEAR ME STATE ---
   List<dynamic> _nearbyAlumni = [];
   bool _isLoadingNearMe = false;
+  String? _currentNearMeLocation;
   final TextEditingController _cityController = TextEditingController();
   
   // Local Filter for Near Me Tab
@@ -109,7 +110,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   }
 
   // ========================================================
-  // 📥 DATA LOADING METHODS
+  // 踏 DATA LOADING METHODS
   // ========================================================
 
   // --- TAB 1: DIRECTORY ---
@@ -193,7 +194,13 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   Future<void> _loadNearMe({String? city}) async {
     setState(() => _isLoadingNearMe = true);
     try {
+      // ✅ FIX: Removed the redundant `fetchAlumniNearMe` call that was assigned to `headers`
+      // and causing type errors because it expected metadata but got a List.
+      
+      _currentNearMeLocation = city; 
+      
       final nearby = await _dataService.fetchAlumniNearMe(city: city);
+      
       if (mounted) setState(() {
         _nearbyAlumni = nearby;
         _isLoadingNearMe = false;
@@ -204,7 +211,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   }
 
   // ========================================================
-  // 🧩 HELPER METHODS
+  // ｧｩ HELPER METHODS
   // ========================================================
 
   Map<String, List<dynamic>> _groupUsersByYear(List<dynamic> users) {
@@ -248,7 +255,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   }
 
   // ========================================================
-  // 🎨 WIDGETS
+  // 耳 WIDGETS
   // ========================================================
 
   @override
@@ -462,29 +469,51 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
       return name.contains(_nearMeFilter.toLowerCase()) || job.contains(_nearMeFilter.toLowerCase());
     }).toList();
 
+    // Determine what text to show in the header
+    String locationText = "Finding alumni near you...";
+    if (_currentNearMeLocation != null && _currentNearMeLocation!.isNotEmpty) {
+      locationText = "Showing alumni in ${_currentNearMeLocation!}";
+    } else if (_nearbyAlumni.isNotEmpty) {
+      final firstUserCity = _nearbyAlumni[0]['city'] ?? _nearbyAlumni[0]['state'] ?? "your area";
+      locationText = "Found alumni in $firstUserCity";
+    }
+
     return Column(
       children: [
         // 1. City Input (Fetches from Server)
         Container(
           padding: const EdgeInsets.all(16),
           color: Theme.of(context).cardColor,
-          child: TextField(
-            controller: _cityController,
-            style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
-            decoration: InputDecoration(
-              labelText: "Travel Mode: Enter City",
-              hintText: "e.g. Abuja, Lagos, London",
-              labelStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
-              prefixIcon: Icon(Icons.flight_takeoff, color: primaryColor),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: () => _loadNearMe(city: _cityController.text.trim()),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _cityController,
+                style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                decoration: InputDecoration(
+                  labelText: "Travel Mode: Enter City",
+                  hintText: "e.g. Abuja, Lagos, London",
+                  labelStyle: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                  prefixIcon: Icon(Icons.flight_takeoff, color: primaryColor),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.arrow_forward),
+                    onPressed: () => _loadNearMe(city: _cityController.text.trim()),
+                  ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                  fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                ),
+                onSubmitted: (val) => _loadNearMe(city: val),
               ),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-            ),
-            onSubmitted: (val) => _loadNearMe(city: val),
+              if (_nearbyAlumni.isNotEmpty || _currentNearMeLocation != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0, left: 4),
+                  child: Text(
+                    locationText,
+                    style: GoogleFonts.lato(fontSize: 12, color: primaryColor, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
           ),
         ),
 
@@ -514,7 +543,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
             child: _isLoadingNearMe
                 ? const Center(child: CircularProgressIndicator())
                 : filteredList.isEmpty
-                    ? _buildEmptyState("No one found.")
+                    ? _buildEmptyState("No alumni found nearby.\nTry entering a major city like 'Lagos'.")
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
                         itemCount: filteredList.length,
@@ -527,7 +556,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
   }
 
   // ---------------------------------------------------------
-  // 🎨 COMMON WIDGETS
+  // 耳 COMMON WIDGETS
   // ---------------------------------------------------------
 
   void _showSmartMatchPopup() {
@@ -782,7 +811,7 @@ class _DirectoryScreenState extends State<DirectoryScreen> with SingleTickerProv
 
     String subtitle = "Alumnus"; 
     if (user['jobTitle'] != null && user['jobTitle'].toString().isNotEmpty) {
-      subtitle = "${user['jobTitle']} ${user['organization'] != null ? '• ${user['organization']}' : ''}";
+      subtitle = "${user['jobTitle']} ${user['organization'] != null ? '窶｢ ${user['organization']}' : ''}";
     } else if (user['programmeTitle'] != null && user['programmeTitle'].toString().isNotEmpty) {
       subtitle = user['programmeTitle'];
     }

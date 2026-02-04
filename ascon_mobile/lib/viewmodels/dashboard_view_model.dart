@@ -1,4 +1,3 @@
-// File: ascon_mobile/lib/viewmodels/dashboard_view_model.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/data_service.dart';
@@ -11,12 +10,17 @@ class DashboardViewModel extends ChangeNotifier {
   // State Variables
   List<dynamic> events = [];
   List<dynamic> programmes = [];
-  List<dynamic> topAlumni = []; // ✅ NEW: For the "First Widget"
+  List<dynamic> topAlumni = []; 
 
   String profileImage = "";
   String programme = "Member";
   String year = "....";
   String alumniID = "PENDING";
+  String firstName = "Alumni"; // For personalized greeting
+  
+  // ✅ NEW: Profile Completion Logic
+  double profileCompletionPercent = 0.0;
+  bool isProfileComplete = false;
   
   bool isLoading = true;
 
@@ -35,7 +39,7 @@ class DashboardViewModel extends ChangeNotifier {
         _dataService.fetchEvents(),                  // Index 0
         _authService.getProgrammes(),                // Index 1
         _dataService.fetchProfile(),                 // Index 2
-        _dataService.fetchDirectory(query: ""),      // Index 3 ✅ Fetch Directory
+        _dataService.fetchDirectory(query: ""),      // Index 3
       ]);
 
       // 3. Process Events (Sort Newest First)
@@ -56,7 +60,7 @@ class DashboardViewModel extends ChangeNotifier {
       });
       programmes = fetchedProgrammes;
 
-      // 5. Process Profile Data
+      // 5. Process Profile Data & Completion Calculation
       final profile = results[2] as Map<String, dynamic>?;
       if (profile != null) {
         profileImage = profile['profilePicture'] ?? "";
@@ -64,17 +68,26 @@ class DashboardViewModel extends ChangeNotifier {
         if (programme.isEmpty) programme = "Member";
         year = profile['yearOfAttendance']?.toString() ?? "....";
         
+        String fullName = profile['fullName'] ?? "Alumni";
+        firstName = fullName.split(" ")[0];
+
         String? apiId = profile['alumniId'];
         if (apiId != null && apiId.isNotEmpty && apiId != "PENDING") {
           alumniID = apiId;
           await prefs.setString('alumni_id', apiId);
         }
+
+        _calculateProfileCompleteness(profile);
       }
 
-      // 6. Process Top 5 Alumni ✅
+      // 6. Process Alumni Network (Randomized) ✅
       var fetchedAlumni = List.from(results[3] as List);
-      // Optional: Shuffle or sort by relevance if needed
-      topAlumni = fetchedAlumni.take(5).toList(); 
+      
+      // ✅ RANDOMIZE SUGGESTIONS AT EVERY LOGIN
+      fetchedAlumni.shuffle(); 
+      
+      // Take top 8 for a fuller horizontal list
+      topAlumni = fetchedAlumni.take(8).toList(); 
 
     } catch (e) {
       debugPrint("⚠️ Error loading dashboard data: $e");
@@ -82,5 +95,21 @@ class DashboardViewModel extends ChangeNotifier {
       isLoading = false;
       notifyListeners(); 
     }
+  }
+
+  void _calculateProfileCompleteness(Map<String, dynamic> profile) {
+    int totalScore = 0;
+    int maxScore = 7; // Total number of fields we check
+
+    if ((profile['profilePicture'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['jobTitle'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['organization'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['industry'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['city'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['bio'] ?? "").toString().isNotEmpty) totalScore++;
+    if ((profile['linkedin'] ?? "").toString().isNotEmpty) totalScore++;
+
+    profileCompletionPercent = totalScore / maxScore;
+    isProfileComplete = profileCompletionPercent >= 0.85; // Consider "Complete" if 85% filled
   }
 }
