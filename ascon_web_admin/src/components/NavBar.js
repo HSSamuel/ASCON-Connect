@@ -2,13 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import "./NavBar.css";
 
 function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false); // Mobile Menu
-  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false); // Desktop Dropdown
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDesktopDropdownOpen, setIsDesktopDropdownOpen] = useState(false);
 
-  // Ref to close dropdown when clicking outside
   const dropdownRef = useRef(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -21,37 +19,35 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
 
   const handleTabClick = (tab) => {
     setActiveTab(tab);
-    setIsMenuOpen(false); // Close mobile menu
-    setIsDesktopDropdownOpen(false); // Close desktop dropdown
+    setIsMenuOpen(false);
+    setIsDesktopDropdownOpen(false);
   };
 
   const navItems = [
     { id: "users", label: "Users", icon: "👥" },
     { id: "events", label: "Events", icon: "📅" },
     { id: "programmes", label: "Programmes", icon: "🎓" },
-    { id: "jobs", label: "Jobs", icon: "💼" },
-    { id: "facilities", label: "Facilities", icon: "🏢" },
+
+    // ✅ Social Feed (Replaced Jobs)
+    { id: "updates", label: "Social Feed", icon: "💬" },
+
+    // ❌ REMOVED: Facilities
+
     { id: "registrations", label: "Registrations", icon: "📋" },
-    // ✅ DOCUMENTS TAB IS HERE
     { id: "documents", label: "Documents", icon: "📄" },
   ];
 
-  // Get the object for the currently active tab
   const activeItem =
     navItems.find((item) => item.id === activeTab) || navItems[0];
 
   return (
     <>
-      {/* ==============================
-          1. DESKTOP NAVIGATION (Top Bar)
-          ============================== */}
       <nav className="desktop-nav">
         <div className="nav-brand">
           <img src="/logo.png" alt="ASCON Logo" className="brand-logo" />
           <span className="brand-text">ASCON Admin</span>
         </div>
 
-        {/* ✅ DROPDOWN MENU CONTAINER */}
         <div className="nav-dropdown-container" ref={dropdownRef}>
           <span className="nav-label-text">Current View:</span>
 
@@ -67,7 +63,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
             </span>
           </button>
 
-          {/* THE DROPDOWN LIST */}
           {isDesktopDropdownOpen && (
             <div className="dropdown-menu">
               {navItems.map((item) => (
@@ -95,9 +90,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
         </div>
       </nav>
 
-      {/* ==============================
-          2. MOBILE MENU OVERLAY
-          ============================== */}
       {isMenuOpen && (
         <div className="mobile-menu-overlay">
           <div className="mobile-menu-content">
@@ -122,9 +114,6 @@ function NavBar({ activeTab, setActiveTab, onLogout, userRole }) {
         </div>
       )}
 
-      {/* ==============================
-          3. MOBILE BOTTOM BAR
-          ============================== */}
       <div className="mobile-bottom-bar">
         <div
           className="bottom-nav-item"

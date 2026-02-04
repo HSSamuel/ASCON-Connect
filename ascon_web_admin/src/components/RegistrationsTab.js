@@ -22,6 +22,15 @@ function RegistrationsTab({
   // Helper to choose which list to show based on the toggle
   const activeList = view === "programmes" ? registrations : eventRegistrations;
 
+  // ✅ HELPER: Format Phone Number
+  const formatPhone = (phone) => {
+    if (!phone) return "";
+    if (phone.startsWith("+234") && phone.length > 10) {
+      return `${phone.substring(0, 4)} ${phone.substring(4, 7)} ${phone.substring(7, 10)} ${phone.substring(10)}`;
+    }
+    return phone;
+  };
+
   // ✅ EXPORT TO EXCEL (CSV) FUNCTION
   const exportToCSV = () => {
     if (!activeList || activeList.length === 0) {
@@ -47,11 +56,12 @@ function RegistrationsTab({
       view === "events" ? "Event Type" : null,
       "Organization",
       "Job Title",
-      // ✅ LOGIC: Only include City/Country for Programmes
+      // ✅ UPDATED: Added State to Export
       view === "programmes" ? "City" : null,
+      view === "programmes" ? "State" : null,
       view === "programmes" ? "Country" : null,
       view === "events" ? "Special Requirements" : null,
-    ].filter((h) => h !== null); // Remove null headers
+    ].filter((h) => h !== null);
 
     // 2. Map Data to Rows
     const rows = activeList.map((reg) =>
@@ -64,11 +74,12 @@ function RegistrationsTab({
         view === "events" ? `"${reg.eventType || ""}"` : null,
         `"${reg.sponsoringOrganisation || reg.organization || ""}"`,
         `"${reg.jobTitle || ""}"`,
-        // ✅ LOGIC: Only include City/Country data for Programmes
+        // ✅ UPDATED: Include State in CSV
         view === "programmes" ? `"${reg.city || ""}"` : null,
+        view === "programmes" ? `"${reg.state || ""}"` : null,
         view === "programmes" ? `"${reg.country || ""}"` : null,
         view === "events" ? `"${reg.specialRequirements || ""}"` : null,
-      ].filter((cell) => cell !== null)
+      ].filter((cell) => cell !== null),
     );
 
     // 3. Combine Headers and Rows
@@ -84,7 +95,7 @@ function RegistrationsTab({
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `ascon_${view}_registrations_${new Date().toISOString().slice(0, 10)}.csv`
+      `ascon_${view}_registrations_${new Date().toISOString().slice(0, 10)}.csv`,
     );
     document.body.appendChild(link);
     link.click();
@@ -193,7 +204,7 @@ function RegistrationsTab({
               </th>
               <th>Organization</th>
 
-              {/* ✅ LOGIC: Show "Location" Header ONLY for Programmes */}
+              {/* Show "Location" Header ONLY for Programmes */}
               {view === "programmes" && <th>Location</th>}
 
               {/* Show "Special Req" ONLY for Events */}
@@ -206,7 +217,7 @@ function RegistrationsTab({
             {activeList.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7} // Both views now have exactly 7 columns
+                  colSpan={7}
                   style={{
                     textAlign: "center",
                     padding: "40px",
@@ -248,7 +259,8 @@ function RegistrationsTab({
                   <td>
                     <div style={{ fontSize: "13px" }}>📧 {reg.email}</div>
                     <div style={{ fontSize: "13px", marginTop: "2px" }}>
-                      📞 {reg.phone}
+                      {/* ✅ FORMATTED PHONE NUMBER */}
+                      📞 {formatPhone(reg.phone)}
                     </div>
                   </td>
 
@@ -293,10 +305,12 @@ function RegistrationsTab({
                     </div>
                   </td>
 
-                  {/* ✅ LOGIC: Show Location Data Cell ONLY for Programmes */}
+                  {/* ✅ UPDATED: Show City, State, Country */}
                   {view === "programmes" && (
                     <td style={{ fontSize: "13px" }}>
                       {reg.city ? `${reg.city}, ` : ""}
+                      {/* Show State if available */}
+                      {reg.state ? `${reg.state}, ` : ""}
                       <span style={{ fontWeight: "500" }}>
                         {reg.country || "N/A"}
                       </span>

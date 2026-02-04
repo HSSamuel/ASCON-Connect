@@ -343,8 +343,6 @@ app.use("/api/events", eventsRoute);
 app.use("/api/programme-interest", programmeInterestRoute);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/event-registration", eventRegistrationRoute);
-app.use("/api/jobs", require("./routes/jobs"));
-app.use("/api/facilities", require("./routes/facilities"));
 app.use("/api/chat", chatRoute);
 app.use("/api/documents", documentRoute);
 app.use("/api/mentorship", mentorshipRoute);

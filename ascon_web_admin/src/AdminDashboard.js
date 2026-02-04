@@ -3,19 +3,17 @@ import "./App.css";
 import NavBar from "./components/NavBar";
 import StatCard from "./components/StatCard";
 
-// ✅ Import ALL Smart Managers
+// ✅ Import Smart Managers
 import UsersManager from "./pages/UsersManager";
 import EventsManager from "./pages/EventsManager";
 import ProgrammesManager from "./pages/ProgrammesManager";
 import RegistrationsManager from "./pages/RegistrationsManager";
 import UpdatesManager from "./pages/UpdatesManager";
-import FacilitiesTab from "./components/FacilitiesTab";
 import DocumentsManager from "./pages/DocumentsManager";
 
 import { useAuth } from "./hooks/useAuth";
 import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 
-// Internal Component to consume Context
 const DashboardContent = ({
   token,
   onLogout,
@@ -26,7 +24,7 @@ const DashboardContent = ({
   canEdit,
   userRole,
 }) => {
-  const { stats } = useDashboard(); 
+  const { stats } = useDashboard();
 
   return (
     <div className="admin-container">
@@ -71,22 +69,16 @@ const DashboardContent = ({
           onClick={() => setActiveTab("programmes")}
         />
 
-        {/* ✅ RENAMED TO "Updates Feed" */}
+        {/* Social Feed */}
         <StatCard
           title="Social Feed"
-          value="View"
+          value={stats.updates || 0}
           icon="💬"
           color={theme === "light" ? "#e2e3e5" : "#3a3a3a"}
           onClick={() => setActiveTab("updates")}
         />
 
-        <StatCard
-          title="Facilities"
-          value={stats.facilities || 0}
-          icon="🏢"
-          color="#ffe5d0"
-          onClick={() => setActiveTab("facilities")}
-        />
+        {/* ❌ REMOVED: Facilities Stat Card */}
 
         <StatCard
           title="Registrations"
@@ -113,13 +105,11 @@ const DashboardContent = ({
           <ProgrammesManager token={token} canEdit={canEdit} />
         )}
 
-        {/* ✅ SWITCHED TO UPDATES MANAGER */}
         {activeTab === "updates" && (
           <UpdatesManager token={token} canEdit={canEdit} />
         )}
 
-        {/* ✅ RETAINED FACILITIES TAB */}
-        {activeTab === "facilities" && <FacilitiesTab />}
+        {/* ❌ REMOVED: Facilities Tab Render Logic */}
 
         {activeTab === "registrations" && (
           <RegistrationsManager token={token} canEdit={canEdit} />

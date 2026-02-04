@@ -1,46 +1,30 @@
 import { useState, useEffect } from "react";
 import api from "../api"; // ✅ Import centralized API
+
 export function useStats(refreshTrigger) {
   const [stats, setStats] = useState({
     users: 0,
     events: 0,
     programmes: 0,
     totalRegistrations: 0,
-    jobs: 0,
-    facilities: 0,
+    updates: 0, // ✅ Replaces 'jobs'
   });
 
   useEffect(() => {
-    const fetchAllStats = async () => {
+    const fetchStats = async () => {
       try {
-        // ✅ Run fetches in parallel using api client
-        const [adminStatsRes, jobsRes] = await Promise.all([
-          api.get("/api/admin/stats"),
-          api.get("/api/jobs"),
-        ]);
+        // ✅ Single call to the updated admin stats endpoint
+        const response = await api.get("/api/admin/stats");
 
-        let jobsCount = 0;
-        const jobsData = jobsRes.data;
-
-        if (Array.isArray(jobsData)) {
-          jobsCount = jobsData.length;
-        } else if (jobsData.data && Array.isArray(jobsData.data)) {
-          jobsCount = jobsData.data.length;
-        } else if (jobsData.count) {
-          jobsCount = jobsData.count;
-        }
-
-        setStats({
-          ...adminStatsRes.data,
-          jobs: jobsCount,
-        });
+        // The backend now returns { users, events, programmes, totalRegistrations, updates }
+        setStats(response.data);
       } catch (e) {
         console.error("Stats error:", e);
       }
     };
 
-    fetchAllStats();
-  }, [refreshTrigger]); // ✅ Only depends on refreshTrigger now
+    fetchStats();
+  }, [refreshTrigger]);
 
   return stats;
 }

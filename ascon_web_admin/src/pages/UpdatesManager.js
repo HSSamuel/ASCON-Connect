@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../api";
 import { FaTrash, FaImage, FaUser, FaClock } from "react-icons/fa";
-import "./JobsManager.css"; // We can reuse the existing CSS for table styling
+import "./UpdatesManager.css"; // ✅ FIXED: Changed from JobsManager.css to UpdatesManager.css
 import Toast from "../Toast";
 import ConfirmModal from "../ConfirmModal";
 import SkeletonTable from "../components/SkeletonTable";
@@ -53,7 +53,9 @@ function UpdatesManager({ canEdit }) {
   if (isLoading) return <SkeletonTable columns={5} />;
 
   return (
-    <div className="jobs-container">
+    <div className="updates-container">
+      {" "}
+      {/* ✅ Updated class name to match new CSS */}
       {toast && (
         <Toast
           message={toast.message}
@@ -61,7 +63,6 @@ function UpdatesManager({ canEdit }) {
           onClose={() => setToast(null)}
         />
       )}
-
       <ConfirmModal
         isOpen={deleteModal.show}
         title="Remove Post?"
@@ -70,14 +71,12 @@ function UpdatesManager({ canEdit }) {
         onConfirm={handleDelete}
         isLoading={isSubmitting}
       />
-
       <div className="table-header">
         <h2>Feed Moderation</h2>
         <div style={{ color: "#666", fontSize: "0.9rem" }}>
           Monitor and moderate user-generated content
         </div>
       </div>
-
       <div className="table-responsive">
         <table className="admin-table">
           <thead>
@@ -95,21 +94,46 @@ function UpdatesManager({ canEdit }) {
                 <tr key={post._id}>
                   {/* AUTHOR */}
                   <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                      }}
+                    >
                       {post.author?.profilePicture ? (
                         <img
                           src={post.author.profilePicture}
                           alt="avatar"
-                          style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover" }}
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                          }}
                         />
                       ) : (
-                        <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "#eee", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        <div
+                          style={{
+                            width: "30px",
+                            height: "30px",
+                            borderRadius: "50%",
+                            background: "#eee",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
                           <FaUser size={12} color="#999" />
                         </div>
                       )}
                       <div>
-                        <div className="font-bold">{post.author?.fullName || "Unknown"}</div>
-                        <div style={{ fontSize: "0.75rem", color: "#888" }}>{post.author?.jobTitle}</div>
+                        <div className="font-bold">
+                          {post.author?.fullName || "Unknown"}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "#888" }}>
+                          {post.author?.jobTitle}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -119,14 +143,27 @@ function UpdatesManager({ canEdit }) {
                     {post.text ? (
                       <span title={post.text}>{truncate(post.text, 60)}</span>
                     ) : (
-                      <span style={{ color: "#ccc", fontStyle: "italic" }}>(No text content)</span>
+                      <span style={{ color: "#ccc", fontStyle: "italic" }}>
+                        (No text content)
+                      </span>
                     )}
                   </td>
 
                   {/* MEDIA */}
                   <td>
                     {post.mediaUrl ? (
-                      <a href={post.mediaUrl} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "5px", color: "#007bff", textDecoration: "none" }}>
+                      <a
+                        href={post.mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          color: "#007bff",
+                          textDecoration: "none",
+                        }}
+                      >
                         <FaImage /> View Media
                       </a>
                     ) : (
@@ -136,7 +173,14 @@ function UpdatesManager({ canEdit }) {
 
                   {/* DATE */}
                   <td>
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", color: "#666" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        color: "#666",
+                      }}
+                    >
                       <FaClock size={12} />
                       {new Date(post.createdAt).toLocaleDateString()}
                     </div>
@@ -146,10 +190,16 @@ function UpdatesManager({ canEdit }) {
                   <td>
                     {canEdit && (
                       <button
-                        onClick={() => setDeleteModal({ show: true, id: post._id })}
+                        onClick={() =>
+                          setDeleteModal({ show: true, id: post._id })
+                        }
                         className="delete-btn compact-btn"
                         title="Remove Post"
-                        style={{ backgroundColor: "#dc3545", color: "white", padding: "6px 12px" }}
+                        style={{
+                          backgroundColor: "#dc3545",
+                          color: "white",
+                          padding: "6px 12px",
+                        }}
                       >
                         <FaTrash /> Remove
                       </button>

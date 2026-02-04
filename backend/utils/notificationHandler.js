@@ -1,5 +1,5 @@
 const admin = require("../config/firebase");
-const UserAuth = require("../models/UserAuth");
+const UserAuth = require("../models/UserAuth"); // ✅ CORRECTED IMPORT
 const UserProfile = require("../models/UserProfile");
 const Notification = require("../models/Notification");
 const logger = require("./logger");
@@ -7,11 +7,12 @@ const logger = require("./logger");
 const cleanupTokens = async (userId, tokensToRemove) => {
   if (tokensToRemove.length === 0) return;
   try {
-    await User.findByIdAndUpdate(userId, {
+    // ✅ FIX: Use UserAuth instead of User
+    await UserAuth.findByIdAndUpdate(userId, {
       $pull: { fcmTokens: { $in: tokensToRemove } },
     });
     logger.info(
-      `🧹 Cleaned up ${tokensToRemove.length} invalid tokens for user ${userId}`
+      `🧹 Cleaned up ${tokensToRemove.length} invalid tokens for user ${userId}`,
     );
   } catch (err) {
     logger.error(`❌ Token Cleanup Error: ${err.message}`);
@@ -29,9 +30,9 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     await newNotification.save();
     logger.info("💾 Broadcast saved to database.");
 
-    // ✅ FIX: Look for BOTH 'fcmTokens' (New) AND 'deviceToken' (Old)
-    // This ensures we catch users even if they haven't fully synced yet.
-    const usersWithTokens = await User.find({
+    // ✅ FIX: Use UserAuth instead of User
+    // Look for BOTH 'fcmTokens' (New) AND 'deviceToken' (Old)
+    const usersWithTokens = await UserAuth.find({
       $or: [
         { fcmTokens: { $exists: true, $not: { $size: 0 } } },
         { deviceToken: { $exists: true, $ne: null, $ne: "" } },
@@ -44,7 +45,7 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     }
 
     logger.info(
-      `📣 Preparing broadcast for ${usersWithTokens.length} users...`
+      `📣 Preparing broadcast for ${usersWithTokens.length} users...`,
     );
 
     for (const user of usersWithTokens) {
@@ -96,7 +97,7 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
         }
       } catch (sendError) {
         logger.error(
-          `❌ Failed to send to user ${user._id}: ${sendError.message}`
+          `❌ Failed to send to user ${user._id}: ${sendError.message}`,
         );
       }
     }
@@ -118,7 +119,8 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
     });
     await newNotification.save();
 
-    const user = await User.findById(userId);
+    // ✅ FIX: Use UserAuth instead of User
+    const user = await UserAuth.findById(userId);
 
     // ✅ FIX: Robust Token Check
     let allTokens = [];
@@ -169,7 +171,7 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
     }
 
     logger.info(
-      `👤 Personal Notification sent to ${user.fullName}: ${response.successCount} success.`
+      `👤 Personal Notification sent to ${userId}: ${response.successCount} success.`,
     );
   } catch (error) {
     logger.error(`❌ Personal Notification Error: ${error.message}`);

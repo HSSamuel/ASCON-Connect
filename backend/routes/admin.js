@@ -8,7 +8,7 @@ const Event = require("../models/Event");
 const Programme = require("../models/Programme");
 const ProgrammeInterest = require("../models/ProgrammeInterest");
 const EventRegistration = require("../models/EventRegistration");
-const Facility = require("../models/Facility");
+const UpdatePost = require("../models/UpdatePost"); // ✅ NEW IMPORT
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
 
@@ -104,14 +104,14 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       progCount,
       progInterestCount,
       eventRegCount,
-      facilityCount,
+      updatesCount, // ✅ NEW VARIABLE
     ] = await Promise.all([
-      UserAuth.countDocuments(), // ✅ Count Auth Docs for total users
+      UserAuth.countDocuments(), // Count Auth Docs for total users
       Event.countDocuments(),
       Programme.countDocuments(),
       ProgrammeInterest.countDocuments(),
       EventRegistration.countDocuments(),
-      Facility.countDocuments(),
+      UpdatePost.countDocuments(), // ✅ COUNT SOCIAL POSTS
     ]);
 
     res.json({
@@ -119,7 +119,7 @@ router.get("/stats", verifyAdmin, async (req, res) => {
       events: eventCount,
       programmes: progCount,
       totalRegistrations: progInterestCount + eventRegCount,
-      facilities: facilityCount,
+      updates: updatesCount, // ✅ RETURN UPDATES COUNT
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -148,7 +148,7 @@ router.get("/users", verifyAdmin, async (req, res) => {
       };
     }
 
-    // ✅ NEW: Aggregate 3 collections dynamically for the Admin List
+    // ✅ Aggregate 3 collections dynamically for the Admin List
     const users = await UserAuth.aggregate([
       {
         $lookup: {
