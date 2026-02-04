@@ -12,6 +12,12 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // Helper to clear error when user types
+  const handleInputChange = (setter, value) => {
+    setError("");
+    setter(value);
+  };
+
   // --- STANDARD EMAIL LOGIN ---
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,12 +25,13 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      // ✅ Cleaner Call
       const res = await api.post("/api/auth/login", { email, password });
       processLogin(res.data.token);
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed.");
-    } finally {
+      const msg =
+        err.response?.data?.message ||
+        "Login failed. Please check credentials.";
+      setError(msg);
       setIsLoading(false);
     }
   };
@@ -35,7 +42,6 @@ function Login({ onLogin }) {
     setIsLoading(true);
 
     try {
-      // ✅ Cleaner Call
       const res = await api.post("/api/auth/google", {
         token: credentialResponse.credential,
       });
@@ -44,9 +50,8 @@ function Login({ onLogin }) {
       if (err.response && err.response.status === 404) {
         setError("Access Denied: You are not a registered Admin.");
       } else {
-        setError("Google Login Failed. Try again.");
+        setError("Google Login Failed. Please try again.");
       }
-    } finally {
       setIsLoading(false);
     }
   };
@@ -54,14 +59,23 @@ function Login({ onLogin }) {
   const processLogin = (token) => {
     try {
       const decoded = jwtDecode(token);
+
+      // Check for Admin privileges
       if (decoded.isAdmin === true) {
+        // Clean up old token first
+        localStorage.removeItem("auth_token");
         localStorage.setItem("auth_token", token);
+
+        // Trigger parent state update
         onLogin(token);
       } else {
         setError("Access Denied: You do not have Admin privileges.");
+        setIsLoading(false);
       }
     } catch (e) {
-      setError("Invalid Token received.");
+      console.error("Token Error:", e);
+      setError("Invalid security token received.");
+      setIsLoading(false);
     }
   };
 
@@ -70,29 +84,38 @@ function Login({ onLogin }) {
       <div className="login-card">
         <img src={logo} alt="ASCON Logo" className="login-logo" />
         <h2 className="login-title">Admin Portal</h2>
-        {error && <div className="login-error">{error}</div>}
+
+        {error && (
+          <div className="login-error" role="alert">
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleLogin}>
           <div className="form-group">
-            <label>Email Address</label>
+            <label htmlFor="email">Email Address</label>
             <input
+              id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => handleInputChange(setEmail, e.target.value)}
               required
+              disabled={isLoading}
               placeholder="Enter admin email"
               className="login-input"
             />
           </div>
 
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="password">Password</label>
             <div className="password-wrapper">
               <input
+                id="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => handleInputChange(setPassword, e.target.value)}
                 required
+                disabled={isLoading}
                 placeholder="Enter password"
                 className="login-input"
               />
@@ -100,6 +123,8 @@ function Login({ onLogin }) {
                 type="button"
                 className="password-toggle-btn"
                 onClick={() => setShowPassword(!showPassword)}
+                disabled={isLoading}
+                aria-label={showPassword ? "Hide password" : "Show password"}
                 title={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? "🙈" : "👁️"}
@@ -116,13 +141,21 @@ function Login({ onLogin }) {
           </button>
         </form>
 
+        {/* Divider */}
         <div
           style={{ display: "flex", alignItems: "center", margin: "20px 0" }}
         >
           <div
             style={{ flex: 1, height: "1px", backgroundColor: "#ddd" }}
           ></div>
-          <span style={{ padding: "0 10px", color: "#888", fontSize: "12px" }}>
+          <span
+            style={{
+              padding: "0 10px",
+              color: "#888",
+              fontSize: "12px",
+              fontWeight: "500",
+            }}
+          >
             OR
           </span>
           <div
@@ -140,6 +173,7 @@ function Login({ onLogin }) {
             theme="outline"
             size="large"
             width="300"
+            text="signin_with"
           />
         </div>
       </div>

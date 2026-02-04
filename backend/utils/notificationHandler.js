@@ -1,5 +1,5 @@
 const admin = require("../config/firebase");
-const UserAuth = require("../models/UserAuth"); // ✅ CORRECTED IMPORT
+const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Notification = require("../models/Notification");
 const logger = require("./logger");

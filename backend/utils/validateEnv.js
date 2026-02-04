@@ -8,7 +8,6 @@ const validateEnv = () => {
     "EMAIL_PASS",
     "GOOGLE_CLIENT_ID",
     "NODE_ENV",
-    "FIREBASE_SERVICE_ACCOUNT",
   ];
 
   const missing = requiredEnv.filter((env) => !process.env[env]);
@@ -17,20 +16,18 @@ const validateEnv = () => {
     console.error(
       `❌ CRITICAL ERROR: Missing environment variables: ${missing.join(", ")}`,
     );
-    console.error("Please check your .env file or hosting provider settings.");
-    process.exit(1); // Stop the server immediately
+    process.exit(1);
   }
 
-  // ✅ Optional: Log the status of NODE_ENV
-  if (!process.env.NODE_ENV) {
+  // ✅ New Redis Validation
+  if (process.env.USE_REDIS === "true" && !process.env.REDIS_URL) {
     console.warn(
-      "⚠️  WARNING: NODE_ENV is not set. Defaulting to development mode.",
+      "⚠️  WARNING: Redis is enabled (USE_REDIS=true) but REDIS_URL is missing. Defaulting to localhost.",
     );
-  } else {
-    console.log(`🌍 Mode: ${process.env.NODE_ENV}`);
   }
 
-  console.log("✅ All Required Environment Variables Validated");
+  console.log(`🌍 Mode: ${process.env.NODE_ENV || "development"}`);
+  console.log("✅ Environment Variables Validated");
 };
 
 module.exports = validateEnv;

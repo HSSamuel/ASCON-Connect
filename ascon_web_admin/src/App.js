@@ -1,54 +1,21 @@
-import React, { useState, useEffect } from "react";
+// ascon_web_admin/src/App.js
+import React from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminDashboard from "./AdminDashboard";
 import Login from "./Login";
 import ResetPassword from "./pages/ResetPassword";
 import VerificationPage from "./pages/VerificationPage";
-import { jwtDecode } from "jwt-decode"; // Ensure this is installed
 
-function App() {
-  const [token, setToken] = useState(null);
-  // ✅ IMPROVEMENT: Add loading state to prevent "Flash of Unauthenticated Content"
-  const [isLoading, setIsLoading] = useState(true);
+// Component to handle protected routes and loading state
+const ProtectedRoute = ({ children }) => {
+  const { token, isLoading } = useAuth();
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem("auth_token");
-    if (storedToken) {
-      try {
-        // Optional: Check expiration before setting
-        const decoded = jwtDecode(storedToken);
-        const currentTime = Date.now() / 1000;
-
-        if (decoded.exp < currentTime) {
-          console.warn("Stored token is expired.");
-          localStorage.removeItem("auth_token");
-        } else {
-          setToken(storedToken);
-        }
-      } catch (e) {
-        console.error("Invalid token format in storage.");
-        localStorage.removeItem("auth_token");
-      }
-    }
-    setIsLoading(false);
-  }, []);
-
-  const handleLogin = (newToken) => {
-    localStorage.setItem("auth_token", newToken);
-    setToken(newToken);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    setToken(null);
-  };
-
-  // ✅ Show simple loader while checking session
   if (isLoading) {
     return (
       <div
@@ -67,45 +34,50 @@ function App() {
     );
   }
 
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+const AppRoutes = () => {
+  const { token, login, logout } = useAuth(); // Access auth methods via hook
+
   return (
-    <Router>
-      <div className="App">
-        <Routes>
-          {/* Public Verification Route */}
-          <Route path="/verify/:id" element={<VerificationPage />} />
+    <Routes>
+      <Route path="/verify/:id" element={<VerificationPage />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
-          {/* Reset Password */}
-          <Route path="/reset-password" element={<ResetPassword />} />
+      <Route
+        path="/login"
+        element={
+          !token ? <Login onLogin={login} /> : <Navigate to="/" replace />
+        }
+      />
 
-          {/* Login */}
-          <Route
-            path="/login"
-            element={
-              !token ? (
-                <Login onLogin={handleLogin} />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            {/* AdminDashboard can now use useAuth() internally too */}
+            <AdminDashboard token={token} onLogout={logout} />
+          </ProtectedRoute>
+        }
+      />
 
-          {/* Protected Dashboard */}
-          <Route
-            path="/"
-            element={
-              token ? (
-                <AdminDashboard token={token} onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+};
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </div>
-    </Router>
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <AppRoutes />
+      </Router>
+    </AuthProvider>
   );
 }
 

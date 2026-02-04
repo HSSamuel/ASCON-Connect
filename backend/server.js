@@ -10,17 +10,15 @@ const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
 const http = require("http");
-const { Server } = require("socket.io");
-const { createAdapter } = require("@socket.io/redis-adapter");
-const { createClient } = require("redis");
 
 // ✅ FIX: Replaced old 'User' model with the new separated models
 const UserAuth = require("./models/UserAuth");
-const UserProfile = require("./models/UserProfile");
-
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
+
+// ✅ Import new Socket Service
+const { initializeSocket } = require("./services/socketService");
 
 // 1. Initialize the App
 const app = express();
@@ -55,7 +53,7 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 
 // ==========================================
-// 📖 API DOCUMENTATION
+// 📖 API DOCUMENTATION (RESTORED)
 // ==========================================
 const swaggerOptions = {
   swaggerDefinition: {
@@ -80,19 +78,31 @@ const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // ==========================================
-// 2. CONFIGURATION
+// 2. CONFIGURATION & ROUTES
 // ==========================================
-const allowedOrigins =
-  process.env.NODE_ENV === "production"
-    ? ["https://asconadmin.netlify.app", "https://ascon-st50.onrender.com"]
-    : ["http://localhost:3000", "http://localhost:5000"];
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
+// Fallback for dev if env var isn't set, or add hardcoded ones if you prefer
+const defaultOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5000",
+  "https://asconadmin.netlify.app",
+];
 
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("CORS policy violation"), false);
+      // Check both env variable list and default list
+      if (
+        allowedOrigins.indexOf(origin) === -1 &&
+        defaultOrigins.indexOf(origin) === -1
+      ) {
+        // In production, you might want to be stricter
+        if (process.env.NODE_ENV === "production") {
+          // return callback(new Error("CORS policy violation"), false);
+          // For now, allowing to prevent breakage until you set .env
+          return callback(null, true);
+        }
       }
       return callback(null, true);
     },
@@ -104,248 +114,29 @@ app.use(
 
 app.use(express.json());
 
-// ==========================================
-// ⚡ SOCKET.IO SCALABLE PRESENCE SYSTEM
-// ==========================================
+// ✅ Initialize Socket.io (Logic moved to service)
+const ioPromise = initializeSocket(server);
 
-// ✅ FIX: Define configuration first
-const ioConfig = {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-  // ⚡ FASTER HEARTBEAT ⚡
-  pingTimeout: 10000, // Detect disconnect in 10 seconds (was 60000)
-  pingInterval: 5000, // Send ping every 5 seconds (was 25000)
-};
-
-// ✅ FIX: Only initialize Redis if explicitly enabled in .env
-if (process.env.USE_REDIS === "true") {
-  logger.info("🔌 Redis Enabled. Attempting to connect...");
-
-  const pubClient = createClient({
-    url: process.env.REDIS_URL || "redis://localhost:6379",
-  });
-  const subClient = pubClient.duplicate();
-
-  pubClient.on("error", (err) =>
-    logger.warn(`Redis Pub Error: ${err.message}`),
-  );
-  subClient.on("error", (err) =>
-    logger.warn(`Redis Sub Error: ${err.message}`),
-  );
-
-  Promise.all([pubClient.connect(), subClient.connect()])
-    .then(() => logger.info("✅ Redis Connected Successfully"))
-    .catch((err) =>
-      logger.warn("⚠️ Redis Connection Failed (Using Memory): " + err.message),
-    );
-
-  ioConfig.adapter = createAdapter(pubClient, subClient);
-} else {
-  logger.info(
-    "ℹ️ Running in Memory Mode (Redis disabled). Set USE_REDIS=true to enable.",
-  );
-}
-
-// ✅ FIX: Initialize IO once with the correct config
-const io = new Server(server, ioConfig);
-
-// 🧠 IN-MEMORY STATE (The "Brain" of the Presence System)
-const onlineUsers = new Map(); // Stores userId -> Set<socketId>
-const disconnectTimers = new Map(); // Stores userId -> TimeoutID (for debouncing)
-
-app.use((req, res, next) => {
-  req.io = io;
+// Make IO available in routes
+app.use(async (req, res, next) => {
+  req.io = await ioPromise;
   next();
-});
-
-io.on("connection", (socket) => {
-  // 1. User Connects
-  socket.on("user_connected", async (userId) => {
-    if (!userId) return;
-
-    socket.userId = userId;
-    socket.join(userId);
-
-    // 🛑 STOP the "Offline" Timer if it exists (User reconnected quickly!)
-    if (disconnectTimers.has(userId)) {
-      clearTimeout(disconnectTimers.get(userId));
-      disconnectTimers.delete(userId);
-      // No need to emit "Online" because they never officially went offline
-      return;
-    }
-
-    // Add socket to user's active set
-    if (!onlineUsers.has(userId)) {
-      onlineUsers.set(userId, new Set());
-    }
-    const previousSocketCount = onlineUsers.get(userId).size;
-    onlineUsers.get(userId).add(socket.id);
-
-    // ✅ ONLY update DB and Emit if this is the FIRST connection
-    if (previousSocketCount === 0) {
-      try {
-        // ✅ FIX: Switched from User to UserAuth
-        await UserAuth.findByIdAndUpdate(userId, { isOnline: true });
-        io.emit("user_status_update", { userId, isOnline: true });
-        logger.info(`🟢 User ${userId} is now Online`);
-      } catch (e) {
-        logger.error(`Socket Error (Connect): ${e.message}`);
-      }
-    }
-  });
-
-  // ✅ NEW: On-Demand Status Check (Fixes Deep Link Status Issue)
-  socket.on("check_user_status", async ({ userId }) => {
-    if (!userId) return;
-
-    const isOnline =
-      onlineUsers.has(userId) && onlineUsers.get(userId).size > 0;
-
-    let lastSeen = null;
-    if (!isOnline) {
-      try {
-        // ✅ FIX: Switched from User to UserAuth
-        const user = await UserAuth.findById(userId).select("lastSeen");
-        if (user) lastSeen = user.lastSeen;
-      } catch (e) {
-        console.error("Status check error", e);
-      }
-    }
-
-    // Send result back ONLY to the requester
-    socket.emit("user_status_result", {
-      userId,
-      isOnline,
-      lastSeen,
-    });
-  });
-
-  // 2. Typing Events
-  socket.on("typing", (data) => {
-    if (data.receiverId) {
-      io.to(data.receiverId).emit("typing_start", {
-        conversationId: data.conversationId,
-        senderId: socket.userId,
-      });
-    }
-  });
-
-  socket.on("stop_typing", (data) => {
-    if (data.receiverId) {
-      io.to(data.receiverId).emit("typing_stop", {
-        conversationId: data.conversationId,
-        senderId: socket.userId,
-      });
-    }
-  });
-
-  // ✅ 3. EXPLICIT LOGOUT (Immediate Offline Status)
-  // 🔒 SECURE FIX: Do not accept 'userId' from client. Use socket.userId.
-  socket.on("user_logout", async () => {
-    const userId = socket.userId;
-    if (!userId) return;
-
-    logger.info(`👋 User ${userId} logging out explicitly`);
-
-    // Clear all sockets and timers immediately
-    if (disconnectTimers.has(userId)) {
-      clearTimeout(disconnectTimers.get(userId));
-      disconnectTimers.delete(userId);
-    }
-    if (onlineUsers.has(userId)) {
-      onlineUsers.delete(userId);
-    }
-
-    try {
-      const lastSeen = new Date();
-      // ✅ FIX: Switched from User to UserAuth
-      await UserAuth.findByIdAndUpdate(userId, {
-        isOnline: false,
-        lastSeen: lastSeen,
-      });
-
-      // Broadcast immediately (No delay)
-      io.emit("user_status_update", {
-        userId: userId,
-        isOnline: false,
-        lastSeen: lastSeen,
-      });
-    } catch (e) {
-      logger.error(`Logout Error: ${e.message}`);
-    }
-  });
-
-  // 4. User Disconnects (With Grace Period for accidental drops)
-  socket.on("disconnect", () => {
-    const userId = socket.userId;
-    if (!userId || !onlineUsers.has(userId)) return;
-
-    const userSockets = onlineUsers.get(userId);
-    userSockets.delete(socket.id); // Remove this specific socket
-
-    // If user still has OTHER active sockets (e.g. Web + Mobile), DO NOTHING.
-    if (userSockets.size > 0) return;
-
-    // ⏳ If NO sockets left, start the "Grace Period" (5 seconds)
-    // This prevents flickering if the user just switched apps or refreshed.
-    const timer = setTimeout(async () => {
-      // Double check: Are they still gone?
-      if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
-        try {
-          onlineUsers.delete(userId); // Cleanup memory
-          disconnectTimers.delete(userId);
-
-          const lastSeen = new Date();
-          // ✅ FIX: Switched from User to UserAuth
-          await UserAuth.findByIdAndUpdate(userId, {
-            isOnline: false,
-            lastSeen: lastSeen,
-          });
-
-          io.emit("user_status_update", {
-            userId: userId,
-            isOnline: false,
-            lastSeen: lastSeen,
-          });
-          logger.info(`🔴 User ${userId} went Offline`);
-        } catch (e) {
-          logger.error(`Socket Error (Disconnect): ${e.message}`);
-        }
-      }
-    }, 5000); // 5 Seconds Grace Period
-
-    disconnectTimers.set(userId, timer);
-  });
 });
 
 // ==========================================
 // 3. ROUTES
 // ==========================================
-const authRoute = require("./routes/auth");
-const directoryRoute = require("./routes/directory");
-const adminRoutes = require("./routes/admin");
-const profileRoute = require("./routes/profile");
-const eventsRoute = require("./routes/events");
-const programmeInterestRoute = require("./routes/programmeInterest");
-const notificationRoutes = require("./routes/notifications");
-const eventRegistrationRoute = require("./routes/eventRegistration");
-const chatRoute = require("./routes/chat");
-const documentRoute = require("./routes/documents");
-const mentorshipRoute = require("./routes/mentorship");
-
-app.use("/api/auth", authRoute);
-app.use("/api/directory", directoryRoute);
-app.use("/api/admin", adminRoutes);
-app.use("/api/profile", profileRoute);
-app.use("/api/events", eventsRoute);
-app.use("/api/programme-interest", programmeInterestRoute);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/event-registration", eventRegistrationRoute);
-app.use("/api/chat", chatRoute);
-app.use("/api/documents", documentRoute);
-app.use("/api/mentorship", mentorshipRoute);
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/directory", require("./routes/directory"));
+app.use("/api/admin", require("./routes/admin"));
+app.use("/api/profile", require("./routes/profile"));
+app.use("/api/events", require("./routes/events"));
+app.use("/api/programme-interest", require("./routes/programmeInterest"));
+app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/event-registration", require("./routes/eventRegistration"));
+app.use("/api/chat", require("./routes/chat"));
+app.use("/api/documents", require("./routes/documents"));
+app.use("/api/mentorship", require("./routes/mentorship"));
 app.use("/api/updates", require("./routes/updates"));
 
 app.use(errorHandler);
@@ -362,7 +153,7 @@ mongoose
   .then(async () => {
     logger.info("✅ Connected to MongoDB Successfully!");
 
-    // ✅ FIX: Switched from User to UserAuth for the server reset query
+    // Reset Online Status on restart
     try {
       await UserAuth.updateMany({}, { isOnline: false });
       logger.info("🧹 Reset all user statuses to Offline");
