@@ -6,7 +6,7 @@ import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart'; 
 import 'screens/events_screen.dart';
-import 'screens/jobs_screen.dart';
+import 'screens/updates_screen.dart';
 import 'screens/directory_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_list_screen.dart';
@@ -55,15 +55,15 @@ final GoRouter appRouter = GoRouter(
           ],
         ),
 
-        // Tab 2: Jobs
+        // Tab 2: Updates
         StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: '/jobs',
-              builder: (context, state) => const JobsScreen(),
-            ),
-          ],
-        ),
+  routes: [
+    GoRoute(
+      path: '/updates',
+      builder: (context, state) => const UpdatesScreen(),
+    ),
+  ],
+),
 
         // Tab 3: Directory
         StatefulShellBranch(

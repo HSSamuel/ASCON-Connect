@@ -348,6 +348,7 @@ app.use("/api/facilities", require("./routes/facilities"));
 app.use("/api/chat", chatRoute);
 app.use("/api/documents", documentRoute);
 app.use("/api/mentorship", mentorshipRoute);
+app.use("/api/updates", require("./routes/updates"));
 
 app.use(errorHandler);
 

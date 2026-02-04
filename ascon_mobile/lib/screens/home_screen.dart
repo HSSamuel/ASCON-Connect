@@ -8,8 +8,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../main.dart';
-// Note: Imports for screens are no longer needed here as the Router handles them
-// But we keep detail screens for the DashboardView
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
@@ -175,15 +173,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         body: widget.navigationShell,
 
         floatingActionButton: SizedBox(
-          width: 58, height: 58,
-          child: FloatingActionButton(
-            onPressed: () => _goBranch(2), // Jobs Tab
-            backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
-            elevation: 6.0,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.work, color: Colors.white, size: 28),
-          ),
-        ),
+  width: 58, height: 58,
+  child: FloatingActionButton(
+    onPressed: () => _goBranch(2), // Updates Tab
+    backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
+    elevation: 6.0,
+    shape: const CircleBorder(),
+    child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 28),
+  ),
+),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         bottomNavigationBar: SizedBox(
           height: 60,

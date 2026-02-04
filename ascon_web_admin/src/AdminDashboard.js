@@ -8,12 +8,11 @@ import UsersManager from "./pages/UsersManager";
 import EventsManager from "./pages/EventsManager";
 import ProgrammesManager from "./pages/ProgrammesManager";
 import RegistrationsManager from "./pages/RegistrationsManager";
-import JobsManager from "./pages/JobsManager";
+import UpdatesManager from "./pages/UpdatesManager";
 import FacilitiesTab from "./components/FacilitiesTab";
 import DocumentsManager from "./pages/DocumentsManager";
 
 import { useAuth } from "./hooks/useAuth";
-// Note: useStats is now used inside the Context, not here directly
 import { DashboardProvider, useDashboard } from "./context/DashboardContext";
 
 // Internal Component to consume Context
@@ -27,7 +26,7 @@ const DashboardContent = ({
   canEdit,
   userRole,
 }) => {
-  const { stats } = useDashboard(); // ✅ Clean access to stats
+  const { stats } = useDashboard(); 
 
   return (
     <div className="admin-container">
@@ -72,12 +71,13 @@ const DashboardContent = ({
           onClick={() => setActiveTab("programmes")}
         />
 
+        {/* ✅ RENAMED TO "Updates Feed" */}
         <StatCard
-          title="Jobs/Careers"
-          value={stats.jobs || 0}
-          icon="💼"
+          title="Social Feed"
+          value="View"
+          icon="💬"
           color={theme === "light" ? "#e2e3e5" : "#3a3a3a"}
-          onClick={() => setActiveTab("jobs")}
+          onClick={() => setActiveTab("updates")}
         />
 
         <StatCard
@@ -113,11 +113,12 @@ const DashboardContent = ({
           <ProgrammesManager token={token} canEdit={canEdit} />
         )}
 
-        {activeTab === "jobs" && (
-          <JobsManager token={token} canEdit={canEdit} />
+        {/* ✅ SWITCHED TO UPDATES MANAGER */}
+        {activeTab === "updates" && (
+          <UpdatesManager token={token} canEdit={canEdit} />
         )}
 
-        {/* ✅ FacilitiesTab no longer needs onRefreshStats prop */}
+        {/* ✅ RETAINED FACILITIES TAB */}
         {activeTab === "facilities" && <FacilitiesTab />}
 
         {activeTab === "registrations" && (
@@ -148,7 +149,6 @@ function AdminDashboard({ token, onLogout }) {
   };
 
   return (
-    // ✅ WRAP ENTIRE DASHBOARD IN PROVIDER
     <DashboardProvider>
       <DashboardContent
         token={token}
