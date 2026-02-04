@@ -85,13 +85,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _listenForMessages() {
     final socket = SocketService().socket;
     if (socket == null) return;
+    
+    // Clear existing listeners to prevent duplicates
     try {
       socket.off('new_message');
+      socket.off('messages_read'); // ✅ Remove old listener to avoid stacking
       socket.off('connect');
     } catch (_) {}
 
+    // 1. Show Red Dot on New Message
     socket.on('new_message', (data) {
       if (mounted) setState(() => _hasUnreadMessages = true);
+    });
+
+    // 2. ✅ Hide Red Dot (or Re-check) when read elsewhere
+    // This event is emitted by your backend's "PUT /read/:id" route
+    socket.on('messages_read', (data) {
+      debugPrint("👀 Messages marked as read elsewhere. Refreshing badge...");
+      _checkUnreadStatus(); 
     });
 
     socket.on('connect', (_) {
@@ -182,15 +193,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         body: widget.navigationShell,
 
         floatingActionButton: SizedBox(
-  width: 58, height: 58,
-  child: FloatingActionButton(
-    onPressed: () => _goBranch(2), // Updates Tab
-    backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
-    elevation: 6.0,
-    shape: const CircleBorder(),
-    child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 28),
-  ),
-),
+          width: 58, height: 58,
+          child: FloatingActionButton(
+            onPressed: () => _goBranch(2), // Updates Tab
+            backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
+            elevation: 6.0,
+            shape: const CircleBorder(),
+            child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 28),
+          ),
+        ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         bottomNavigationBar: SizedBox(
           height: 60,

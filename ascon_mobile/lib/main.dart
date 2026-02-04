@@ -27,38 +27,56 @@ void main() async {
   // ✅ 1. Initialize Global Error Handling
   ErrorHandler.init();
 
-  // ✅ 2. Run App Logic guarded by a Zone
+  // ✅ 2. Run App Logic guarded by a Zone (Catches async errors)
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
     await dotenv.load(fileName: ".env");
+    
+    // Initialize Socket Service (Silent until login)
     SocketService().initSocket();
 
-    // Firebase Init
+    // Firebase Initialization
     if (kIsWeb) {
-      // ... (Web Init code matches original) ...
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: AppConfig.firebaseWebApiKey, 
+          authDomain: AppConfig.firebaseWebAuthDomain,
+          projectId: AppConfig.firebaseWebProjectId,
+          storageBucket: AppConfig.firebaseWebStorageBucket,
+          messagingSenderId: AppConfig.firebaseWebMessagingSenderId,
+          appId: AppConfig.firebaseWebAppId,
+          measurementId: AppConfig.firebaseWebMeasurementId,
+        ),
+      );
     } else {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
-    // Notifications Init
+    // Notifications Initialization (Listeners only)
     if (!kIsWeb) {
-       // ... (Notification Init code matches original) ...
+       await NotificationService().init();
     }
 
     runApp(const MyApp());
   }, (error, stack) {
     // ========================================================
-    // ✅ NOISE FILTER: Silence harmless "Future completed" errors
-    // These happen during logout race conditions and are safe to ignore.
+    // ✅ NOISE FILTER: Silence harmless Web/Async errors
     // ========================================================
-    if (error.toString().contains("Future already completed")) {
-      return; 
-    }
+    String errorText = error.toString();
 
+    // 1. Logout Race Condition (Future completed twice)
+    if (errorText.contains("Future already completed")) return;
+
+    // 2. Firebase Web Internals (JavaScript object mapping issues)
+    if (errorText.contains("FirebaseException") && errorText.contains("JavaScriptObject")) return;
+
+    // 3. Asset Manifest (Hot Restart Glitch)
+    if (errorText.contains("AssetManifest.bin.json")) return;
+
+    // Log genuine errors
     debugPrint("🔴 Uncaught Zone Error: $error");
-    // Report to Crashlytics/Sentry
   });
 }
 
