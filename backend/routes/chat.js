@@ -2,7 +2,7 @@ const router = require("express").Router();
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const UserAuth = require("../models/UserAuth");
-const UserProfile = require("../models/UserProfile");
+const UserProfile = require("../models/UserProfile"); // ✅ Correct Model imported
 const verify = require("./verifyToken");
 
 // ✅ FIX: Extract the actual Cloudinary object from the config wrapper
@@ -19,18 +19,14 @@ const { sendPersonalNotification } = require("../utils/notificationHandler");
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    // 1. Log the incoming type for debugging
     console.log(`📤 Uploading: ${file.originalname} (${file.mimetype})`);
 
-    // 2. Determine Resource Type
-    // Default to 'image' ONLY if it starts with image/
-    let resourceType = "raw"; // Safe default for Files, Audio, PDFs
+    let resourceType = "raw";
 
     if (file.mimetype.startsWith("image/")) {
       resourceType = "image";
     }
 
-    // ⚠️ CRITICAL: Force PDF and Docs to be 'raw' even if mimetype is weird
     if (
       file.originalname.match(
         /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt)$/i,
@@ -42,7 +38,6 @@ const storage = new CloudinaryStorage({
     return {
       folder: "ascon_chat_files",
       resource_type: resourceType,
-      // 3. Generate unique ID but keep it readable
       public_id:
         file.originalname
           .replace(/\.[^/.]+$/, "")
@@ -136,7 +131,6 @@ router.post("/delete-multiple", verify, async (req, res) => {
     if (!messageIds || messageIds.length === 0)
       return res.status(400).json("No IDs provided");
 
-    // ✅ CHANGED: Allow deleting ANY message (Sent or Received)
     const messages = await Message.find({ _id: { $in: messageIds } });
 
     if (messages.length === 0)
@@ -144,10 +138,8 @@ router.post("/delete-multiple", verify, async (req, res) => {
 
     const conversationId = messages[0].conversationId;
 
-    // ✅ PERFORM HARD DELETE
     await Message.deleteMany({ _id: { $in: messageIds } });
 
-    // Emit Real-time Event
     _emitDeleteEvent(req, conversationId, messageIds);
 
     res.status(200).json({ success: true, deletedIds: messageIds });
@@ -173,8 +165,8 @@ router.get("/:conversationId", verify, async (req, res) => {
     if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
-      .populate("replyTo", "text sender type fileUrl") // ✅ POPULATE REPLY INFO
-      .populate("replyTo.sender", "fullName") // ✅ POPULATE ORIGINAL SENDER NAME
+      .populate("replyTo", "text sender type fileUrl")
+      .populate("replyTo.sender", "fullName")
       .sort({ createdAt: -1 })
       .limit(limit);
 
@@ -193,7 +185,7 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     try {
-      const { text, type, replyToId } = req.body; // ✅ GET replyToId
+      const { text, type, replyToId } = req.body;
       let fileUrl = "";
       let fileName = "";
 
@@ -209,13 +201,12 @@ router.post(
         type: type || "text",
         fileUrl: fileUrl,
         fileName: fileName,
-        replyTo: replyToId || null, // ✅ SAVE REPLY REFERENCE
+        replyTo: replyToId || null,
         isRead: false,
       });
 
       const savedMessage = await newMessage.save();
 
-      // ✅ POPULATE IMMEDIATELY FOR SOCKET
       await savedMessage.populate({
         path: "replyTo",
         select: "text sender type",
@@ -242,27 +233,31 @@ router.post(
       );
 
       if (receiverId) {
-        // 1. Socket Emit (Real-time update if app is open)
+        // 1. Socket Emit
         req.io.to(receiverId.toString()).emit("new_message", {
           message: savedMessage,
           conversationId: conversation._id,
         });
 
-        // 2. Push Notification (ALWAYS SEND)
-        const sender = await User.findById(req.user._id);
+        // 2. Push Notification (FIXED)
+        // 🛑 WAS: const sender = await User.findById(req.user._id);
+        // ✅ NOW: Uses UserProfile
+        const sender = await UserProfile.findOne({ userId: req.user._id });
 
-        await sendPersonalNotification(
-          receiverId.toString(),
-          `Message from ${sender.fullName}`,
-          lastMessagePreview,
-          {
-            type: "chat_message",
-            conversationId: conversation._id.toString(),
-            senderId: req.user._id.toString(),
-            senderName: sender.fullName,
-            senderProfilePic: sender.profilePicture || "",
-          },
-        );
+        if (sender) {
+          await sendPersonalNotification(
+            receiverId.toString(),
+            `Message from ${sender.fullName}`,
+            lastMessagePreview,
+            {
+              type: "chat_message",
+              conversationId: conversation._id.toString(),
+              senderId: req.user._id.toString(),
+              senderName: sender.fullName,
+              senderProfilePic: sender.profilePicture || "",
+            },
+          );
+        }
       }
 
       res.status(200).json(savedMessage);
@@ -304,17 +299,15 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 8. DELETE CONVERSATION (HARD DELETE FROM DB)
+// 8. DELETE CONVERSATION
 // ---------------------------------------------------------
 router.delete("/:conversationId", verify, async (req, res) => {
   try {
-    // ✅ CHANGED: Directly delete the conversation and all its messages
     const conversation = await Conversation.findByIdAndDelete(
       req.params.conversationId,
     );
 
     if (conversation) {
-      // Delete all messages associated with this chat
       await Message.deleteMany({ conversationId: req.params.conversationId });
     }
 
@@ -346,16 +339,12 @@ router.put("/message/:id", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 10. DELETE SINGLE MESSAGE (Legacy Route - HARD DELETE)
+// 10. DELETE SINGLE MESSAGE
 // ---------------------------------------------------------
 router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json("Not found");
-
-    // ✅ Allow deleting even if not sender?
-    // Usually single delete is safer to restrict, but for consistency:
-    // if (msg.sender.toString() !== req.user._id) return res.status(403).json("Unauthorized");
 
     await Message.findByIdAndDelete(req.params.id);
     _emitDeleteEvent(req, msg.conversationId, [msg._id]);
@@ -366,12 +355,10 @@ router.delete("/message/:id", verify, async (req, res) => {
   }
 });
 
-// Helper to emit delete events (So it disappears from the other user's screen too)
 async function _emitDeleteEvent(req, conversationId, messageIds) {
   const conversation = await Conversation.findById(conversationId);
   if (conversation) {
     conversation.participants.forEach((userId) => {
-      // Emit to everyone involved (including sender, just in case of multiple devices)
       req.io.to(userId.toString()).emit("messages_deleted_bulk", {
         conversationId,
         messageIds,

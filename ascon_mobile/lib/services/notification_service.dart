@@ -42,18 +42,12 @@ class NotificationService {
 
   bool _isInitialized = false;
 
+  // ✅ 1. MODIFIED INIT: Only sets up listeners, DOES NOT ask for permission
   Future<void> init() async {
     if (_isInitialized) return; 
     _isInitialized = true;
 
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true, badge: true, sound: true, provisional: false,
-    );
-
-    if (settings.authorizationStatus != AuthorizationStatus.authorized) {
-      debugPrint('❌ User declined notifications');
-      return;
-    }
+    // --- REMOVED PERMISSION REQUEST FROM HERE ---
 
     await _firebaseMessaging.setForegroundNotificationPresentationOptions(
       alert: false, 
@@ -74,7 +68,6 @@ class NotificationService {
       },
     );
 
-    // ✅ FIX: Use constants from AppConfig for consistency
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       AppConfig.notificationChannelId, 
       AppConfig.notificationChannelName,
@@ -115,7 +108,24 @@ class NotificationService {
       syncToken(); 
     });
 
+    // We can try to sync anyway (if permission was already granted previously)
     await syncToken();
+  }
+
+  // ✅ 2. NEW METHOD: Explicitly asks for permission (Call this from UI)
+  Future<void> requestPermission() async {
+    if (kIsWeb) return; // Skip on web
+
+    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+      alert: true, badge: true, sound: true, provisional: false,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      debugPrint('✅ User granted notifications');
+      await syncToken(); // Sync fresh token now that we have permission
+    } else {
+      debugPrint('❌ User declined notifications');
+    }
   }
 
   // ✅ Made Public & Added Auth Check

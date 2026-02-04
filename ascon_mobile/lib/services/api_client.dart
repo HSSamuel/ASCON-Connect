@@ -114,9 +114,15 @@ class ApiClient {
 
           try {
             newToken = await onTokenRefresh!();
-            _refreshCompleter?.complete(newToken);
+            
+            // ✅ FIX: Check if already completed before completing to avoid "Bad state"
+            if (!(_refreshCompleter?.isCompleted ?? true)) {
+              _refreshCompleter?.complete(newToken);
+            }
           } catch (e) {
-            _refreshCompleter?.complete(null);
+            if (!(_refreshCompleter?.isCompleted ?? true)) {
+              _refreshCompleter?.complete(null);
+            }
           } finally {
             _isRefreshing = false;
             _refreshCompleter = null;

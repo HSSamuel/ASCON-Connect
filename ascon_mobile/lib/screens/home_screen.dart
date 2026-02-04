@@ -18,6 +18,7 @@ import '../widgets/digital_id_card.dart';
 import '../viewmodels/dashboard_view_model.dart';
 import '../services/socket_service.dart'; 
 import '../services/api_client.dart'; 
+import '../services/notification_service.dart'; // ✅ Import Notification Service
 
 // ✅ RENAMED & REFACTORED: Now acts as the Shell for GoRouter
 class HomeScreen extends StatefulWidget {
@@ -38,6 +39,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshUnreadState();
+
+    // ✅ NEW: "Polite" Permission Request
+    // Wait 3 seconds after dashboard loads, then ask for permission.
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        NotificationService().requestPermission();
+      }
+    });
   }
 
   @override

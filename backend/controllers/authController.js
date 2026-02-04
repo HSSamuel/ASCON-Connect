@@ -35,7 +35,7 @@ const registerSchema = Joi.object({
 const loginSchema = Joi.object({
   email: Joi.string().min(6).required().email(),
   password: Joi.string().min(6).required(),
-  fcmToken: Joi.string().optional().allow(""),
+  fcmToken: Joi.string().optional().allow("", null),
 });
 
 // ✅ HELPER: Manage Tokens in the Auth Schema (Cap at 5)

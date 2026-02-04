@@ -1,32 +1,56 @@
 const router = require("express").Router();
-const UserAuth = require("../models/UserAuth");
-const UserProfile = require("../models/UserProfile");
+const UserAuth = require("../models/UserAuth"); // ✅ Correct Model
 const Notification = require("../models/Notification");
 const verify = require("./verifyToken");
 const Joi = require("joi");
 
 // ==========================================
-// 1. SAVE FCM TOKEN
+// 1. SAVE FCM TOKEN (Optimized)
 // ==========================================
 router.post("/save-token", verify, async (req, res) => {
+  // 1. Validate Input
   const schema = Joi.object({
-    fcmToken: Joi.string().required(),
+    fcmToken: Joi.string().allow(null, ""), // Allow empty strings to prevent crashes
   }).unknown(true);
 
   const { error } = schema.validate(req.body);
-  const token = req.body.fcmToken || req.body.token;
 
-  if (error && !token) {
+  // Support both key names for compatibility, default to empty string
+  const token = req.body.fcmToken || req.body.token || "";
+
+  if (error) {
     return res
       .status(400)
-      .json({ success: false, message: "Valid Token required" });
+      .json({ success: false, message: "Invalid data format" });
+  }
+
+  // 2. Silent Exit for Empty Tokens (Web/Simulator Safety)
+  // If the app sends an empty string (common on Web), simply ignore it
+  // and return success. This keeps server logs clean.
+  if (!token || token.trim() === "") {
+    return res
+      .status(200)
+      .json({ success: true, message: "Empty token ignored" });
   }
 
   try {
-    await User.findByIdAndUpdate(req.user._id, {
-      $addToSet: { fcmTokens: token },
-      fcmToken: token,
+    // ✅ STEP 1: Remove the token if it already exists (prevents duplicates)
+    await UserAuth.findByIdAndUpdate(req.user._id, {
+      $pull: { fcmTokens: token },
     });
+
+    // ✅ STEP 2: Push new token to the front & keep only the latest 5
+    // "Cap & Slice" Strategy: Ensures one user doesn't flood the DB with tokens
+    await UserAuth.findByIdAndUpdate(req.user._id, {
+      $push: {
+        fcmTokens: {
+          $each: [token],
+          $position: 0,
+          $slice: 5, // Keep only the 5 most recent devices
+        },
+      },
+    });
+
     res
       .status(200)
       .json({ success: true, message: "Token saved successfully" });
@@ -50,6 +74,7 @@ router.get("/my-notifications", verify, async (req, res) => {
       .limit(30);
 
     const result = notifications.map((n) => {
+      // Calculate isRead state dynamically for broadcasts
       const isRead = n.isBroadcast ? n.readBy.includes(req.user._id) : n.isRead;
 
       return {
@@ -74,7 +99,7 @@ router.get("/unread-count", verify, async (req, res) => {
   try {
     const count = await Notification.countDocuments({
       $and: [
-        // 1. Must be relevant to me
+        // 1. Must be relevant to me (Personal unread OR Broadcast unread)
         {
           $or: [
             { recipientId: req.user._id, isRead: false },
@@ -101,10 +126,12 @@ router.put("/:id/read", verify, async (req, res) => {
     if (!notification) return res.status(404).json({ message: "Not found" });
 
     if (notification.isBroadcast) {
+      // For broadcasts, we add user ID to the 'readBy' array
       await Notification.findByIdAndUpdate(req.params.id, {
         $addToSet: { readBy: req.user._id },
       });
     } else {
+      // For personal messages, we just flip the boolean
       if (
         notification.recipientId &&
         notification.recipientId.toString() === req.user._id.toString()
@@ -120,7 +147,7 @@ router.put("/:id/read", verify, async (req, res) => {
 });
 
 // ==========================================
-// 5. ✅ DELETE NOTIFICATION
+// 5. DELETE NOTIFICATION (Soft Delete)
 // ==========================================
 router.delete("/:id", verify, async (req, res) => {
   try {

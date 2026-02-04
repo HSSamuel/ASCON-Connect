@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
+import 'package:go_router/go_router.dart'; 
 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
@@ -37,11 +37,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
 
-    // ========================================================
-    // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Frontend)
-    // Connect socket IMMEDIATELY in the background upon login success
-    // This ensures the user appears "Online" instantly before the UI even transitions.
-    // ========================================================
     if (user['id'] != null || user['_id'] != null) {
       final String userId = user['id'] ?? user['_id'];
       SocketService().connectUser(userId);
@@ -49,14 +44,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
     String safeName = user['fullName'] ?? "Alumni"; 
 
-    // Handle Pending Navigation (e.g., Opened from Notification while logged out)
+    // Handle Pending Navigation
     if (widget.pendingNavigation != null) {
       debugPrint("🚀 Handling Pending Navigation after Login...");
-      
-      // Navigate to Home first to set up the stack
       context.go('/home');
-      
-      // Delay slightly to allow Home to mount, then execute deep link
       Future.delayed(const Duration(milliseconds: 600), () {
         NotificationService().handleNavigation(widget.pendingNavigation!);
       });
@@ -74,13 +65,18 @@ class _LoginScreenState extends State<LoginScreen> {
         barrierDismissible: false,
         builder: (context) => WelcomeDialog(
           userName: safeName,
-          onGetStarted: _markWelcomeAsSeen, 
+          // ✅ FIX: Navigate to Home after clicking "Get Started"
+          onGetStarted: () async {
+            await _markWelcomeAsSeen();
+            if (mounted) _navigateToHome(safeName); 
+          }, 
         ),
       );
     }
   }
 
   Future<void> _syncNotificationToken() async {
+    if (kIsWeb) return; // Skip sync on Web
     try {
       await NotificationService().syncToken();
     } catch (e) {
@@ -98,7 +94,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _navigateToHome(String userName) {
     if (!mounted) return;
-    // ✅ GoRouter Navigation (userName is fetched internally by Dashboard)
     context.go('/home');
   }
 
@@ -185,7 +180,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final cardColor = Theme.of(context).cardColor;
     final bool isAnyLoading = _isEmailLoading || _isGoogleLoading;
