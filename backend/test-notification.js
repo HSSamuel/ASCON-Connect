@@ -4,25 +4,27 @@ const {
   sendPersonalNotification,
   sendBroadcastNotification,
 } = require("./utils/notificationHandler");
-const User = require("./models/User");
+
+// ✅ FIX: Import the correct split models
+const UserAuth = require("./models/UserAuth");
+const UserProfile = require("./models/UserProfile");
 
 const runTest = async () => {
   try {
     console.log("⏳ Connecting to MongoDB...");
 
-    // ✅ FIX: Removed deprecated options (useNewUrlParser, etc.)
-    // Modern Mongoose does not need them and will crash if they are present.
-    await mongoose.connect(process.env.DB_CONNECT || process.env.DB_CONNECTION);
+    // Modern Mongoose connection
+    await mongoose.connect(process.env.DB_CONNECT);
 
     console.log("📦 Connected to MongoDB Successfully!");
 
     // ============================================================
-    // 2. FIND ALL USERS WITH TOKENS (DYNAMIC SCAN)
+    // 2. FIND ALL USERS WITH TOKENS
     // ============================================================
-    console.log("🔍 Scanning database for users with active FCM tokens...");
+    console.log("🔍 Scanning UserAuth for active FCM tokens...");
 
-    // Find users who have 'fcmTokens' array with items OR a legacy 'deviceToken'
-    const usersWithTokens = await User.find({
+    // ✅ FIX: Query UserAuth instead of User
+    const usersWithTokens = await UserAuth.find({
       $or: [
         { fcmTokens: { $exists: true, $not: { $size: 0 } } },
         { deviceToken: { $exists: true, $ne: null, $ne: "" } },
@@ -35,17 +37,21 @@ const runTest = async () => {
       console.log("⚠️  No users found with tokens. Skipping personal tests.");
     }
 
-    for (const user of usersWithTokens) {
+    for (const authUser of usersWithTokens) {
+      // ✅ FIX: Fetch Profile to get the Name (since it's not in UserAuth)
+      const profile = await UserProfile.findOne({ userId: authUser._id });
+      const name = profile ? profile.fullName : "Unknown User";
+
       console.log(
-        `🚀 Sending personal test to: ${user.fullName} (${user.email})...`
+        `🚀 Sending personal test to: ${name} (${authUser.email})...`,
       );
 
       // 3. TRIGGER PERSONAL NOTIFICATION
       await sendPersonalNotification(
-        user._id,
+        authUser._id,
         "Test Internal Alert 🔔",
-        `Hello ${user.fullName}, your ASCON Notification is working!`,
-        { route: "profile", status: "testing" }
+        `Hello ${name}, your ASCON Notification is working!`,
+        { route: "profile", status: "testing" },
       );
     }
 
@@ -54,7 +60,7 @@ const runTest = async () => {
     // 4. TRIGGER BROADCAST
     await sendBroadcastNotification(
       "Public Announcement 🏛️",
-      "This is a broadcast test from the ASCON Backend."
+      "This is a broadcast test from the ASCON Backend.",
     );
 
     console.log("\n✅ Test sequence complete. Check your phones!");

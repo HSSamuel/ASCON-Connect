@@ -1619,3 +1619,21 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-04 15:59:42"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-04 15:59:46"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-04 15:59:46"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 16:31:08"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 16:33:59"}
+{"level":"info","message":"🧹 Cleaned up 2 invalid tokens for user 69823a853b1e13ecb431136a","timestamp":"2026-02-04 16:34:18"}
+{"level":"info","message":"👤 Personal Notification sent to 69823a853b1e13ecb431136a: 3 success.","timestamp":"2026-02-04 16:34:18"}
+{"level":"info","message":"👤 Personal Notification sent to 69832792f25e8b5b10b45a0e: 1 success.","timestamp":"2026-02-04 16:34:19"}
+{"level":"info","message":"👤 Personal Notification sent to 69832865f25e8b5b10b45a31: 1 success.","timestamp":"2026-02-04 16:34:20"}
+{"level":"info","message":"🧹 Cleaned up 1 invalid tokens for user 6983597a002d549aeda45411","timestamp":"2026-02-04 16:34:21"}
+{"level":"info","message":"👤 Personal Notification sent to 6983597a002d549aeda45411: 0 success.","timestamp":"2026-02-04 16:34:21"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-02-04 16:34:21"}
+{"level":"info","message":"📣 Preparing broadcast for 3 users...","timestamp":"2026-02-04 16:34:21"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-02-04 16:34:23"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-04 16:36:29"}
+{"level":"info","message":"👤 Personal Notification sent to 69823a853b1e13ecb431136a: 3 success.","timestamp":"2026-02-04 16:36:50"}
+{"level":"info","message":"👤 Personal Notification sent to 69832792f25e8b5b10b45a0e: 1 success.","timestamp":"2026-02-04 16:36:52"}
+{"level":"info","message":"👤 Personal Notification sent to 69832865f25e8b5b10b45a31: 1 success.","timestamp":"2026-02-04 16:36:54"}
+{"level":"info","message":"💾 Broadcast saved to database.","timestamp":"2026-02-04 16:36:54"}
+{"level":"info","message":"📣 Preparing broadcast for 3 users...","timestamp":"2026-02-04 16:36:55"}
+{"level":"info","message":"✅ Broadcast cycle complete.","timestamp":"2026-02-04 16:37:00"}

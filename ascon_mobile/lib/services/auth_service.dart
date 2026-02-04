@@ -28,14 +28,17 @@ class AuthService {
   Future<String?> _getFcmToken() async {
     try {
       if (kIsWeb) {
+        // ✅ WEB TOKEN FETCH (With VAPID)
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
-        if (vapidKey == null || vapidKey.isEmpty) return null;
+        if (vapidKey == null || vapidKey.isEmpty) {
+           // debugPrint("⚠️ Missing VAPID Key for Web");
+           return null;
+        }
         return await FirebaseMessaging.instance.getToken(vapidKey: vapidKey);
       } else {
         return await FirebaseMessaging.instance.getToken();
       }
     } catch (e) {
-      // ✅ Suppressed: No need to log this on every login attempt
       return null;
     }
   }
@@ -48,7 +51,7 @@ class AuthService {
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
-        'fcmToken': fcmToken ?? "", // ✅ FIX: Prevents "must be a string" error
+        'fcmToken': fcmToken ?? "", 
       });
 
       if (result['success']) {
@@ -59,9 +62,8 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
 
-        if (!kIsWeb) {
-           await NotificationService().init();
-        }
+        // ✅ Init Notifications regardless of platform (now handled safely inside)
+        await NotificationService().init();
       }
       return result;
     } catch (e) {
@@ -90,7 +92,7 @@ class AuthService {
         'programmeTitle': programmeTitle,
         'yearOfAttendance': yearOfAttendance,
         'googleToken': googleToken,
-        'fcmToken': fcmToken ?? "", // ✅ FIX
+        'fcmToken': fcmToken ?? "", 
       });
 
       if (result['success'] && result['data']['token'] != null) {
@@ -101,10 +103,8 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
         
-        if (!kIsWeb) {
-          await NotificationService().init();
-          await NotificationService().syncToken();
-        }
+        await NotificationService().init();
+        await NotificationService().syncToken();
       }
 
       return result;
@@ -122,7 +122,7 @@ class AuthService {
 
       final result = await _api.post('/api/auth/google', {
         'token': idToken,
-        'fcmToken': fcmToken ?? "", // ✅ FIX
+        'fcmToken': fcmToken ?? "", 
       });
 
       if (result['success']) {
@@ -133,9 +133,7 @@ class AuthService {
           refreshToken: data['refreshToken']
         );
         
-        if (!kIsWeb) {
-          await NotificationService().init();
-        }
+        await NotificationService().init();
       }
       return result;
     } catch (e) {
@@ -177,10 +175,8 @@ class AuthService {
   // =================================================
   Future<String?> _performSilentRefresh() async {
     try {
-      // ✅ QUIET: No print here
       String? refreshToken = await _secureStorage.read(key: 'refresh_token');
       if (refreshToken == null) {
-        // ✅ QUIET: This is normal for a logged-out user.
         return null;
       }
 
@@ -198,7 +194,7 @@ class AuthService {
           _tokenCache = newToken;
           await _secureStorage.write(key: 'auth_token', value: newToken);
           _api.setAuthToken(newToken);
-          debugPrint("✅ Session Refreshed"); // ✅ Cleaner log
+          debugPrint("✅ Session Refreshed");
           return newToken;
         }
       } else {

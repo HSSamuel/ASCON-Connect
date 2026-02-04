@@ -33,7 +33,6 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   
-  // Secure Storage
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -42,51 +41,58 @@ class NotificationService {
 
   bool _isInitialized = false;
 
-  // ✅ 1. MODIFIED INIT: Only sets up listeners, DOES NOT ask for permission
   Future<void> init() async {
     if (_isInitialized) return; 
     _isInitialized = true;
 
-    // --- REMOVED PERMISSION REQUEST FROM HERE ---
+    if (!kIsWeb) {
+      await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+        alert: false, 
+        badge: true,
+        sound: true,
+      );
 
-    await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-      alert: false, 
-      badge: true,
-      sound: true,
-    );
+      const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('ic_notification');
+      const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
+      const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('ic_notification');
-    const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
-    const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
+      await _localNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) {
+          if (response.payload != null) {
+            handleNavigation(jsonDecode(response.payload!));
+          }
+        },
+      );
 
-    await _localNotifications.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (response) {
-        if (response.payload != null) {
-          handleNavigation(jsonDecode(response.payload!));
-        }
-      },
-    );
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        AppConfig.notificationChannelId, 
+        AppConfig.notificationChannelName,
+        description: AppConfig.notificationChannelDesc,
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+        showBadge: true,
+      );
 
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      AppConfig.notificationChannelId, 
-      AppConfig.notificationChannelName,
-      description: AppConfig.notificationChannelDesc,
-      importance: Importance.max,
-      enableVibration: true,
-      playSound: true,
-      showBadge: true,
-    );
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
 
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    if (!kIsWeb) {
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    }
 
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
+    // ✅ LISTENERS ENABLED FOR WEB NOW
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null || message.data.isNotEmpty) {
-        _showLocalNotification(message);
+      debugPrint("🔔 Foreground Message: ${message.notification?.title}");
+      if (message.notification != null) {
+        // On Web, the browser handles the visual notification automatically via Service Worker
+        // But on Mobile, we show the local notification manually
+        if (!kIsWeb) {
+          _showLocalNotification(message);
+        }
       }
     });
 
@@ -102,33 +108,29 @@ class NotificationService {
       });
     }
 
-    // Token Rotation Listener
     _firebaseMessaging.onTokenRefresh.listen((newToken) {
       debugPrint("🔄 Token Rotated: $newToken");
       syncToken(); 
     });
 
-    // We can try to sync anyway (if permission was already granted previously)
+    // Try to sync (important for Web startup)
     await syncToken();
   }
 
-  // ✅ 2. NEW METHOD: Explicitly asks for permission (Call this from UI)
   Future<void> requestPermission() async {
-    if (kIsWeb) return; // Skip on web
-
+    // ✅ WEB SUPPORT ENABLED
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true, badge: true, sound: true, provisional: false,
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       debugPrint('✅ User granted notifications');
-      await syncToken(); // Sync fresh token now that we have permission
+      await syncToken(); 
     } else {
       debugPrint('❌ User declined notifications');
     }
   }
 
-  // ✅ Made Public & Added Auth Check
   Future<void> handleNavigation(Map<String, dynamic> data) async {
     final route = data['route'];
     final type = data['type']; 
@@ -136,7 +138,6 @@ class NotificationService {
 
     if (route == null && type != 'chat_message') return; 
 
-    // 🔒 AUTH CHECK: Redirect to Login if no token found
     String? token = await _storage.read(key: 'auth_token');
     if (token == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -145,7 +146,6 @@ class NotificationService {
 
     if (token == null) {
       debugPrint("🔒 User logged out. Redirecting to Login with pending navigation.");
-      // Pass the data to LoginScreen so it can handle it after login
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => LoginScreen(pendingNavigation: data), 
@@ -160,7 +160,6 @@ class NotificationService {
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // 1. CHAT NAVIGATION
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
@@ -168,7 +167,6 @@ class NotificationService {
         final senderProfilePic = data['senderProfilePic'];
 
         if (conversationId != null && senderId != null) {
-          // ✅ CRITICAL: Warm up socket before ChatScreen loads
           SocketService().initSocket(); 
 
           navigatorKey.currentState?.push(
@@ -178,8 +176,6 @@ class NotificationService {
                 receiverId: senderId, 
                 receiverName: senderName,
                 receiverProfilePic: senderProfilePic,
-                // We pass false, letting the ChatScreen's new polling logic
-                // fetch the accurate real-time status instantly.
                 isOnline: false, 
               ),
             ),
@@ -188,7 +184,6 @@ class NotificationService {
         return;
       }
 
-      // 2. Mentorship Dashboard
       if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
@@ -196,7 +191,6 @@ class NotificationService {
         return;
       }
 
-      // 3. Detail Routes
       if (id != null) {
         if (route == 'event_detail') {
           navigatorKey.currentState?.push(
@@ -228,11 +222,9 @@ class NotificationService {
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
-    // String type = message.data['type'] ?? 'Update'; // Unused now
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
     
-    // ✅ FIX: Removed ALL prefix logic. Use title exactly as sent.
     String formattedTitle = originalTitle;
 
     final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
@@ -277,12 +269,13 @@ class NotificationService {
 
       String? fcmToken;
       if (kIsWeb) {
-        // ✅ FIX: Load VAPID key securely from Env
+        // ✅ WEB TOKEN SYNC with VAPID Key
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
-        if (vapidKey != null) {
+        if (vapidKey != null && vapidKey.isNotEmpty) {
           fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
         } else {
-          debugPrint("⚠️ Warning: FIREBASE_VAPID_KEY missing in .env");
+          debugPrint("⚠️ Web Notifications require FIREBASE_VAPID_KEY in .env");
+          return;
         }
       } else {
         fcmToken = await _firebaseMessaging.getToken();
@@ -292,6 +285,8 @@ class NotificationService {
         debugPrint("❌ FCM Token is null. Sync aborted.");
         return;
       }
+
+      // debugPrint("📢 FCM Token: $fcmToken"); 
 
       String? authToken = await _storage.read(key: 'auth_token');
 

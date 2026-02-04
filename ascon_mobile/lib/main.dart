@@ -1,4 +1,3 @@
-// ascon_mobile/lib/main.dart
 import 'dart:async'; // ✅ REQUIRED for runZonedGuarded
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
@@ -27,7 +26,7 @@ void main() async {
   // ✅ 1. Initialize Global Error Handling
   ErrorHandler.init();
 
-  // ✅ 2. Run App Logic guarded by a Zone (Catches async errors)
+  // ✅ 2. Run App Logic guarded by a Zone
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
@@ -69,7 +68,7 @@ void main() async {
     // 1. Logout Race Condition (Future completed twice)
     if (errorText.contains("Future already completed")) return;
 
-    // 2. Firebase Web Internals (JavaScript object mapping issues)
+    // 2. Firebase Web Internals (Harmless noise)
     if (errorText.contains("FirebaseException") && errorText.contains("JavaScriptObject")) return;
 
     // 3. Asset Manifest (Hot Restart Glitch)
