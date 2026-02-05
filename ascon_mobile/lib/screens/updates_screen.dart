@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert'; // ✅ FIXED: Added this import for jsonDecode
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -86,6 +87,50 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   }
 
   // =========================================================
+  // ✏️ EDIT POST
+  // =========================================================
+  Future<void> _editPost(String postId, String currentText) async {
+    final editCtrl = TextEditingController(text: currentText);
+    
+    final newText = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Edit Update"),
+        content: TextField(
+          controller: editCtrl,
+          maxLines: 5,
+          minLines: 1,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, editCtrl.text.trim()),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), foregroundColor: Colors.white),
+            child: const Text("Save"),
+          ),
+        ],
+      ),
+    );
+
+    if (newText != null && newText.isNotEmpty && newText != currentText) {
+      setState(() => _isLoading = true);
+      try {
+        final res = await _api.put('/api/updates/$postId', {'text': newText});
+        if (res['success'] == true) {
+          await _loadData(); // Reload to show changes
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Post updated.")));
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update post.")));
+        }
+      }
+    }
+  }
+
+  // =========================================================
   // 🗑️ DELETE LOGIC (Posts & Programmes)
   // =========================================================
   Future<void> _deletePost(String postId) async {
@@ -95,7 +140,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       try {
         final res = await _api.delete('/api/updates/$postId');
         if (res['success'] == true) {
-          _loadData();
+          await _loadData();
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Post deleted.")));
         }
       } catch (e) {
@@ -112,10 +157,9 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     if (confirm) {
       setState(() => _isLoading = true);
       try {
-        // Assuming backend has a delete route for programmes (Admin only)
         final res = await _api.delete('/api/admin/programmes/$progId');
         if (res['success'] == true || res['message'] == 'Programme deleted.') {
-          _loadData();
+          await _loadData();
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Programme deleted.")));
         }
       } catch (e) {
@@ -146,12 +190,15 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   }
 
   // =========================================================
-  // ➕ ADD PROGRAMME (Admin Only)
+  // ➕ ADD PROGRAMME SHEET (With Image Upload)
   // =========================================================
   void _showAddProgrammeSheet() {
     final titleController = TextEditingController();
     final descController = TextEditingController();
     final locationController = TextEditingController();
+    final durationController = TextEditingController();
+    final feeController = TextEditingController();
+    XFile? selectedImage; 
     bool isSubmitting = false;
 
     showModalBottomSheet(
@@ -162,58 +209,162 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            
+            // Image Picker Logic
+            Future<void> pickImage() async {
+              final picker = ImagePicker();
+              final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+              if (picked != null) {
+                setSheetState(() => selectedImage = picked);
+              }
+            }
+
             Future<void> submit() async {
-              if (titleController.text.isEmpty || descController.text.isEmpty) return;
+              if (titleController.text.isEmpty || 
+                  descController.text.isEmpty || 
+                  locationController.text.isEmpty || 
+                  durationController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields.")));
+                return;
+              }
+              
               setSheetState(() => isSubmitting = true);
               try {
                 final token = await AuthService().getToken();
-                // Simple POST with JSON (Multipart not strictly needed unless image)
-                final res = await http.post(
-                  Uri.parse('${AppConfig.baseUrl}/api/admin/programmes'),
-                  headers: {'Content-Type': 'application/json', 'auth-token': token ?? ''},
-                  body: '''{
-                    "title": "${titleController.text}",
-                    "description": "${descController.text}",
-                    "location": "${locationController.text}",
-                    "duration": "TBA"
-                  }''' 
-                ); // Simplified JSON construction for brevity
                 
-                if (res.statusCode == 201) {
+                // ✅ Use MultipartRequest for File Upload
+                var request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}/api/admin/programmes'));
+                request.headers['auth-token'] = token ?? '';
+                
+                // Add Text Fields
+                request.fields['title'] = titleController.text.trim();
+                request.fields['description'] = descController.text.trim();
+                request.fields['location'] = locationController.text.trim();
+                request.fields['duration'] = durationController.text.trim();
+                if (feeController.text.isNotEmpty) {
+                  request.fields['fee'] = feeController.text.trim();
+                }
+
+                // Add File if selected
+                if (selectedImage != null) {
+                  if (kIsWeb) {
+                    var bytes = await selectedImage!.readAsBytes();
+                    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: selectedImage!.name));
+                  } else {
+                    request.files.add(await http.MultipartFile.fromPath('image', selectedImage!.path));
+                  }
+                }
+
+                // Send
+                var response = await request.send();
+                
+                if (response.statusCode == 201) {
                   Navigator.pop(sheetCtx);
                   _loadData();
-                  ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Programme Added!")));
+                  ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Programme Added!"), backgroundColor: Colors.green));
+                } else {
+                   // Read response string from stream
+                   final respStr = await response.stream.bytesToString();
+                   // Try parse message
+                   String err = "Failed to add";
+                   try { err = jsonDecode(respStr)['message']; } catch (_) {}
+                   
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err), backgroundColor: Colors.red));
                 }
               } catch (e) {
-                // error
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
               } finally {
-                setSheetState(() => isSubmitting = false);
+                if (mounted) setSheetState(() => isSubmitting = false);
               }
             }
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 16, right: 16, top: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text("Add Programme Highlight", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextField(controller: titleController, decoration: const InputDecoration(labelText: "Title", border: OutlineInputBorder())),
-                  const SizedBox(height: 10),
-                  TextField(controller: descController, maxLines: 2, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
-                  const SizedBox(height: 10),
-                  TextField(controller: locationController, decoration: const InputDecoration(labelText: "Location", border: OutlineInputBorder())),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: isSubmitting ? null : submit,
-                      style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
-                      child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text("Create Programme"),
+              child: SingleChildScrollView( 
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Add Programme", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold)),
+                        if (isSubmitting) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
+                    const SizedBox(height: 16),
+                    TextField(controller: titleController, decoration: const InputDecoration(labelText: "Title (Required)", border: OutlineInputBorder())),
+                    const SizedBox(height: 10),
+                    TextField(controller: descController, maxLines: 2, decoration: const InputDecoration(labelText: "Description (Required)", border: OutlineInputBorder())),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(controller: locationController, decoration: const InputDecoration(labelText: "Location", border: OutlineInputBorder()))),
+                        const SizedBox(width: 10),
+                        Expanded(child: TextField(controller: durationController, decoration: const InputDecoration(labelText: "Duration", border: OutlineInputBorder()))),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(controller: feeController, decoration: const InputDecoration(labelText: "Fee (Optional)", border: OutlineInputBorder())),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // ✅ Image Picker UI
+                    GestureDetector(
+                      onTap: pickImage,
+                      child: Container(
+                        width: double.infinity,
+                        height: 150,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[400]!),
+                          image: selectedImage != null 
+                            ? DecorationImage(
+                                image: kIsWeb ? NetworkImage(selectedImage!.path) : FileImage(File(selectedImage!.path)) as ImageProvider,
+                                fit: BoxFit.cover
+                              )
+                            : null
+                        ),
+                        child: selectedImage == null 
+                          ? Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey),
+                                const SizedBox(height: 8),
+                                Text("Tap to add Cover Image", style: GoogleFonts.lato(color: Colors.grey[600]))
+                              ],
+                            )
+                          : Stack(
+                              children: [
+                                Positioned(
+                                  right: 5, top: 5,
+                                  child: GestureDetector(
+                                    onTap: () => setSheetState(() => selectedImage = null),
+                                    child: const CircleAvatar(backgroundColor: Colors.red, radius: 12, child: Icon(Icons.close, size: 16, color: Colors.white)),
+                                  ),
+                                )
+                              ],
+                            ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isSubmitting ? null : submit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).primaryColor, 
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14)
+                        ),
+                        child: const Text("Create Programme", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             );
           }
@@ -279,11 +430,13 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   // =========================================================
   // 💬 COMMENTS SHEET
   // =========================================================
-  void _showCommentsSheet(String postId) {
+  void _showCommentsSheet(String postId, int postIndex, Function(int) onCountUpdate) {
     final commentController = TextEditingController();
+    
+    // State lives here for the modal
     List<dynamic> comments = [];
-    bool loadingComments = true;
-    bool sendingComment = false;
+    bool isLoading = true; // Initial load
+    bool isPosting = false; // Sending status
 
     showModalBottomSheet(
       context: context,
@@ -297,35 +450,109 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             final textColor = isDark ? Colors.white : Colors.black87;
             final bubbleColor = isDark ? Colors.grey[800] : Colors.grey[100];
 
-            if (loadingComments) {
-              loadingComments = false; 
-              _api.get('/api/updates/$postId').then((res) {
-                if (context.mounted) {
+            // Helper to fetch fresh comments from server
+            Future<void> loadComments() async {
+              try {
+                final res = await _api.get('/api/updates/$postId');
+                if (context.mounted && res['success'] == true) {
+                  // Ensure correct path to comments array
+                  final postData = res['data']['data'];
+                  final fetchedList = postData != null ? postData['comments'] : [];
+
                   setSheetState(() {
-                    if (res['success'] == true) {
-                      comments = res['data']['comments'] ?? [];
-                    }
+                    comments = List.from(fetchedList ?? []);
+                    isLoading = false;
                   });
                 }
-              });
+              } catch (e) {
+                if (context.mounted) setSheetState(() => isLoading = false);
+              }
+            }
+
+            // Trigger load on first render
+            if (isLoading && comments.isEmpty) {
+              loadComments();
             }
 
             Future<void> postComment() async {
               if (commentController.text.trim().isEmpty) return;
-              setSheetState(() => sendingComment = true); 
+              setSheetState(() => isPosting = true); 
+              
               final text = commentController.text.trim();
-              
-              final res = await _api.post('/api/updates/$postId/comment', {'text': text});
-              
-              if (context.mounted) {
-                setSheetState(() {
-                  sendingComment = false; 
-                  if (res['success'] == true && res['comment'] != null) {
-                    comments.add(res['comment']);
-                    commentController.clear();
-                    FocusScope.of(context).unfocus();
-                  }
-                });
+              try {
+                final res = await _api.post('/api/updates/$postId/comment', {'text': text});
+                
+                if (context.mounted && res['success'] == true) {
+                  commentController.clear();
+                  FocusScope.of(context).unfocus();
+                  
+                  // Reload list & update parent
+                  await loadComments();
+                  onCountUpdate(comments.length);
+                }
+              } catch (e) {
+                // handle error
+              } finally {
+                if (context.mounted) setSheetState(() => isPosting = false);
+              }
+            }
+
+            // DELETE COMMENT
+            Future<void> deleteComment(String commentId) async {
+              final confirm = await showDialog<bool>(
+                context: context, 
+                builder: (ctx) => AlertDialog(
+                  title: const Text("Delete Comment"),
+                  content: const Text("Are you sure?"),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+                  ],
+                )
+              );
+
+              if (confirm == true) {
+                setSheetState(() => isLoading = true);
+                try {
+                  await _api.delete('/api/updates/$postId/comments/$commentId');
+                  await loadComments();
+                  onCountUpdate(comments.length);
+                } catch (e) {
+                  setSheetState(() => isLoading = false);
+                }
+              }
+            }
+
+            // EDIT COMMENT
+            Future<void> editComment(String commentId, String oldText) async {
+              final editCtrl = TextEditingController(text: oldText);
+              final result = await showDialog<String>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text("Edit Comment"),
+                  content: TextField(
+                    controller: editCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(border: OutlineInputBorder()),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, editCtrl.text.trim()),
+                      child: const Text("Save"),
+                    ),
+                  ],
+                ),
+              );
+
+              if (result != null && result.isNotEmpty && result != oldText) {
+                setSheetState(() => isLoading = true);
+                try {
+                  await _api.put('/api/updates/$postId/comments/$commentId', {'text': result});
+                  await loadComments();
+                } catch (e) {
+                  setSheetState(() => isLoading = false);
+                }
               }
             }
 
@@ -340,56 +567,78 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                     const Divider(),
                     
                     Expanded(
-                      child: comments.isEmpty 
-                          ? Center(child: Text("No comments yet.", style: GoogleFonts.lato(color: Colors.grey)))
-                          : ListView.builder(
-                              itemCount: comments.length,
-                              padding: const EdgeInsets.all(16),
-                              itemBuilder: (context, index) {
-                                final c = comments[index];
-                                if (c == null) return const SizedBox.shrink();
+                      child: isLoading
+                          ? const Center(child: CircularProgressIndicator())
+                          : comments.isEmpty 
+                              ? Center(child: Text("No comments yet.", style: GoogleFonts.lato(color: Colors.grey)))
+                              : ListView.builder(
+                                  itemCount: comments.length,
+                                  padding: const EdgeInsets.all(16),
+                                  itemBuilder: (context, index) {
+                                    final c = comments[index];
+                                    if (c == null) return const SizedBox.shrink();
 
-                                final authorName = c['author']?['fullName'] ?? "User";
-                                final authorImg = c['author']?['profilePicture'];
-                                final time = timeago.format(DateTime.tryParse(c['createdAt'] ?? "") ?? DateTime.now());
+                                    final authorName = c['author']?['fullName'] ?? "User";
+                                    final authorImg = c['author']?['profilePicture'];
+                                    final time = timeago.format(DateTime.tryParse(c['createdAt'] ?? "") ?? DateTime.now());
+                                    
+                                    // ✅ PERMISSION CHECK FOR COMMENTS
+                                    final String commentUserId = (c['userId'] ?? '').toString();
+                                    final String myId = (_currentUserId ?? '').toString();
+                                    final bool isMyComment = (commentUserId.isNotEmpty && commentUserId == myId);
+                                    final bool canDelete = isMyComment || _isAdmin;
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 16.0),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 16,
-                                        backgroundColor: Colors.grey[200],
-                                        backgroundImage: authorImg != null && authorImg.toString().startsWith('http') ? CachedNetworkImageProvider(authorImg) : null,
-                                        child: authorImg == null ? const Icon(Icons.person, size: 16, color: Colors.grey) : null,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: bubbleColor, borderRadius: BorderRadius.circular(12)),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 16.0),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 16,
+                                            backgroundColor: Colors.grey[200],
+                                            backgroundImage: authorImg != null && authorImg.toString().startsWith('http') ? CachedNetworkImageProvider(authorImg) : null,
+                                            child: authorImg == null ? const Icon(Icons.person, size: 16, color: Colors.grey) : null,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(color: bubbleColor, borderRadius: BorderRadius.circular(12)),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  Text(authorName, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
-                                                  Text(time, style: GoogleFonts.lato(fontSize: 10, color: Colors.grey)),
+                                                  Row(
+                                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                    children: [
+                                                      Text(authorName, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+                                                      Text(time, style: GoogleFonts.lato(fontSize: 10, color: Colors.grey)),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(c['text'] ?? "", style: GoogleFonts.lato(fontSize: 14, color: textColor)),
                                                 ],
                                               ),
-                                              const SizedBox(height: 4),
-                                              Text(c['text'] ?? "", style: GoogleFonts.lato(fontSize: 14, color: textColor)),
-                                            ],
+                                            ),
                                           ),
-                                        ),
-                                      )
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                          // ✅ COMMENT MENU
+                                          if (canDelete)
+                                            PopupMenuButton<String>(
+                                              icon: Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                              onSelected: (val) {
+                                                if (val == 'edit') editComment(c['_id'], c['text']);
+                                                if (val == 'delete') deleteComment(c['_id']);
+                                              },
+                                              itemBuilder: (context) => [
+                                                if (isMyComment)
+                                                  const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text("Edit")])),
+                                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text("Delete", style: TextStyle(color: Colors.red))])),
+                                              ],
+                                            )
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
                     ),
 
                     Container(
@@ -415,7 +664,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                           CircleAvatar(
                             backgroundColor: const Color(0xFFD4AF37),
                             radius: 22,
-                            child: sendingComment
+                            child: isPosting
                                 ? const Padding(padding: EdgeInsets.all(12.0), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                 : IconButton(icon: const Icon(Icons.send_rounded, size: 20, color: Colors.white), onPressed: postComment),
                           )
@@ -622,7 +871,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             color: const Color(0xFFD4AF37),
             child: CustomScrollView(
               slivers: [
-                // 1. HIGHLIGHTS (PROGRAMMES)
                 if (_highlights.isNotEmpty && !_isSearching) ...[
                   SliverToBoxAdapter(
                     child: Padding(
@@ -655,7 +903,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   const SliverToBoxAdapter(child: Divider(height: 30, thickness: 0.5)),
                 ],
 
-                // 2. UPDATES FEED TITLE
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -670,7 +917,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   ),
                 ),
 
-                // 3. FEED LIST
                 if (_isLoading)
                   const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
                 else if (_filteredPosts.isEmpty)
@@ -707,7 +953,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       onTap: () {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ProgrammeDetailScreen(programme: item)));
       },
-      onLongPress: _isAdmin ? () => _deleteProgramme(id) : null, // ✅ Admin Delete Feature
+      onLongPress: _isAdmin ? () => _deleteProgramme(id) : null,
       child: Container(
         width: 100,
         margin: const EdgeInsets.only(right: 12),
@@ -759,8 +1005,13 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     final author = post['author'] ?? {};
     final String timeAgo = timeago.format(DateTime.tryParse(post['createdAt'] ?? "") ?? DateTime.now());
     
-    // ✅ PERMISSION CHECK FOR DELETE
-    final bool canDelete = _isAdmin || (_currentUserId != null && post['authorId'] == _currentUserId);
+    // ✅ CRITICAL FIX: Safe ID Comparison using toString()
+    final String postAuthorId = (post['authorId'] ?? '').toString();
+    final String myId = (_currentUserId ?? '').toString();
+    
+    final bool isMyPost = (myId.isNotEmpty && postAuthorId == myId);
+    final bool canDelete = _isAdmin || isMyPost;
+    final bool canEdit = isMyPost;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
@@ -799,14 +1050,18 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                 ),
                 Text(timeAgo, style: GoogleFonts.lato(fontSize: 10, color: subTextColor)),
                 
-                // ✅ DELETE OPTION (If Admin/Author)
-                if (canDelete)
+                // ✅ UPDATE POST MENU (Visible if author)
+                if (canDelete || canEdit)
                   PopupMenuButton<String>(
                     onSelected: (val) {
+                      if (val == 'edit') _editPost(post['_id'], post['text']);
                       if (val == 'delete') _deletePost(post['_id']);
                     },
                     itemBuilder: (c) => [
-                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text("Delete", style: TextStyle(color: Colors.red))]))
+                      if (canEdit)
+                        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text("Edit")])),
+                      if (canDelete)
+                        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text("Delete", style: TextStyle(color: Colors.red))]))
                     ],
                     child: Padding(
                       padding: const EdgeInsets.only(left: 8.0),
@@ -852,7 +1107,14 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                   icon: Icons.comment_outlined,
                   count: "${post['comments']?.length ?? 0}",
                   isActive: false,
-                  onTap: () => _showCommentsSheet(post['_id']),
+                  // ✅ FIX: Pass update callback
+                  onTap: () => _showCommentsSheet(post['_id'], index, (newCount) {
+                    setState(() {
+                      if (_filteredPosts.length > index) {
+                        _filteredPosts[index]['comments'] = List.filled(newCount, "placeholder");
+                      }
+                    });
+                  }),
                 ),
                 const Spacer(),
                 IconButton(

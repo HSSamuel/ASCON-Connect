@@ -4,6 +4,7 @@ const UpdatePost = require("../models/UpdatePost");
 const UserProfile = require("../models/UserProfile");
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
+const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 // =========================================================
 // 1. CREATE A NEW UPDATE (Text + Optional Image)
@@ -73,6 +74,8 @@ router.get("/", verifyToken, async (req, res) => {
       const author = profileMap[post.authorId.toString()] || {};
       return {
         ...post,
+        authorId: post.authorId.toString(), // Force String for easy comparison
+        comments: post.comments || [],
         author: {
           _id: author.userId,
           fullName: author.fullName || "Unknown Alumni",
@@ -104,10 +107,12 @@ router.get("/:id", verifyToken, async (req, res) => {
       userId: post.authorId,
     }).lean();
 
-    // 2. Fetch Comment Authors
-    // ✅ FIX: Handle empty/null comments safely
+    // 2. Fetch Comment Authors Safely
     const commentsList = post.comments || [];
-    const commentUserIds = commentsList.map((c) => c.userId);
+
+    // Safety check: Remove null IDs
+    const commentUserIds = commentsList.map((c) => c.userId).filter((id) => id);
+
     const commentProfiles = await UserProfile.find({
       userId: { $in: commentUserIds },
     }).lean();
@@ -129,6 +134,8 @@ router.get("/:id", verifyToken, async (req, res) => {
         ? post.likes.some((id) => id.toString() === req.user._id.toString())
         : false,
       comments: commentsList.map((c) => {
+        if (!c.userId) return c;
+
         const cAuth = commentProfileMap[c.userId.toString()] || {};
         return {
           ...c,
@@ -178,7 +185,7 @@ router.put("/:id/like", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 5. ADD COMMENT
+// 5. ADD COMMENT (WITH NOTIFICATIONS)
 // =========================================================
 router.post("/:id/comment", verifyToken, async (req, res) => {
   try {
@@ -200,12 +207,37 @@ router.post("/:id/comment", verifyToken, async (req, res) => {
 
     const profile = await UserProfile.findOne({ userId: req.user._id });
 
+    // ✅ SEND NOTIFICATION to Post Author (if it's not their own comment)
+    if (post.authorId.toString() !== req.user._id.toString()) {
+      const commenterName = profile ? profile.fullName : "Someone";
+      const commentPreview =
+        text.length > 50 ? text.substring(0, 50) + "..." : text;
+
+      try {
+        await sendPersonalNotification(
+          post.authorId.toString(),
+          "New Comment 💬",
+          `${commenterName} commented on your post: "${commentPreview}"`,
+          {
+            type: "post_comment",
+            postId: post._id.toString(),
+            commentId: post.comments[post.comments.length - 1]._id.toString(),
+          },
+        );
+      } catch (notifyError) {
+        console.error(
+          "Failed to send comment notification:",
+          notifyError.message,
+        );
+        // Continue execution, do not fail request
+      }
+    }
+
     // Return the formatted comment so UI can display it instantly
     res.status(201).json({
       success: true,
       comment: {
         ...newComment,
-        // ✅ CRITICAL: Ensure `_id` matches what frontend expects (Mongoose subdoc ID)
         _id: post.comments[post.comments.length - 1]._id,
         author: {
           fullName: profile?.fullName || "Me",
@@ -219,7 +251,89 @@ router.post("/:id/comment", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 6. DELETE POST
+// 6. DELETE COMMENT
+// =========================================================
+router.delete("/:id/comments/:commentId", verifyToken, async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const post = await UpdatePost.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+
+    // Allow Admin, Post Author, or Comment Author to delete
+    if (
+      comment.userId.toString() !== req.user._id.toString() &&
+      post.authorId.toString() !== req.user._id.toString() &&
+      !req.user.isAdmin
+    ) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    comment.deleteOne();
+    await post.save();
+
+    res.json({ success: true, message: "Comment deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 7. EDIT COMMENT
+// =========================================================
+router.put("/:id/comments/:commentId", verifyToken, async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { text } = req.body;
+
+    const post = await UpdatePost.findById(id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const comment = post.comments.id(commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+
+    // Only Comment Author can edit
+    if (comment.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    comment.text = text;
+    await post.save();
+
+    res.json({ success: true, message: "Comment updated" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 8. EDIT POST
+// =========================================================
+router.put("/:id", verifyToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    const post = await UpdatePost.findById(req.params.id);
+
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Only Author can edit
+    if (post.authorId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    post.text = text || post.text;
+    await post.save();
+
+    res.json({ success: true, message: "Post updated", post });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 9. DELETE POST
 // =========================================================
 router.delete("/:id", verifyToken, async (req, res) => {
   try {

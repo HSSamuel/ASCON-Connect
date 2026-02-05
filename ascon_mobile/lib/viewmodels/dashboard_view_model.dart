@@ -34,6 +34,9 @@ class DashboardViewModel extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       alumniID = prefs.getString('alumni_id') ?? "PENDING";
 
+      // ✅ FIX: Get Current User ID to filter self out
+      final String? myId = await _authService.currentUserId;
+
       // 2. Fetch API Data in Parallel (Events, Programmes, Profile, Directory)
       final results = await Future.wait([
         _dataService.fetchEvents(),                  // Index 0
@@ -82,6 +85,14 @@ class DashboardViewModel extends ChangeNotifier {
 
       // 6. Process Alumni Network (Randomized) ✅
       var fetchedAlumni = List.from(results[3] as List);
+
+      // ✅ FIX: Remove Self from Home Screen Suggestions
+      if (myId != null) {
+        fetchedAlumni.removeWhere((user) {
+          final id = user['_id'] ?? user['userId'];
+          return id.toString() == myId;
+        });
+      }
       
       // ✅ RANDOMIZE SUGGESTIONS AT EVERY LOGIN
       fetchedAlumni.shuffle(); 

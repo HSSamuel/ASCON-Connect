@@ -309,10 +309,13 @@ class DataService {
       final url = Uri.parse('${AppConfig.baseUrl}/api/directory/$userId'); 
       final response = await http.get(url, headers: headers);
       
+      // ✅ STRICT CHECK: Only return data if status is 200 OK.
+      // 404, 304, 500 will all result in null, triggering the "User Not Found" logic.
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['data'] ?? data; 
       }
+      debugPrint("❌ fetchAlumniById failed with status: ${response.statusCode}");
       return null;
     } catch (e) {
       debugPrint("❌ Error fetching full alumni profile: $e");
@@ -463,7 +466,7 @@ class DataService {
     }
   }
 
-  Future<bool> sendMentorshipRequest(String mentorId, String pitch) async {
+  Future<Map<String, dynamic>> sendMentorshipRequest(String mentorId, String pitch) async {
     try {
       final headers = await _getHeaders();
       final url = Uri.parse('${AppConfig.baseUrl}/api/mentorship/request');
@@ -474,10 +477,16 @@ class DataService {
         body: jsonEncode({'mentorId': mentorId, 'pitch': pitch})
       );
 
-      return response.statusCode == 201;
+      final data = jsonDecode(response.body);
+      
+      if (response.statusCode == 201) {
+         return {'success': true, 'message': 'Request Sent Successfully!'};
+      } else {
+         return {'success': false, 'message': data['message'] ?? 'Failed to send request.'};
+      }
     } catch (e) {
       debugPrint("Mentorship Request Error: $e");
-      return false;
+      return {'success': false, 'message': 'Connection Error. Please try again.'};
     }
   }
 

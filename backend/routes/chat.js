@@ -2,10 +2,10 @@ const router = require("express").Router();
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const UserAuth = require("../models/UserAuth");
-const UserProfile = require("../models/UserProfile"); // ✅ Correct Model imported
+const UserProfile = require("../models/UserProfile");
 const verify = require("./verifyToken");
 
-// ✅ FIX: Extract the actual Cloudinary object from the config wrapper
+// Cloudinary Config
 const cloudinaryConfig = require("../config/cloudinary");
 const cloudinary = cloudinaryConfig.cloudinary;
 
@@ -78,24 +78,61 @@ router.get("/unread-status", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. GET ALL CONVERSATIONS (Inbox)
+// 2. GET ALL CONVERSATIONS (Inbox) - ✅ FIXED NAME LOOKUP
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
+    // 1. Fetch Conversations (Raw, no populate)
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
     })
-      .populate("participants", "fullName profilePicture jobTitle")
-      .sort({ lastMessageAt: -1 });
+      .sort({ lastMessageAt: -1 })
+      .lean();
 
-    res.json(chats);
+    // 2. Extract all unique Participant IDs
+    const allParticipantIds = new Set();
+    chats.forEach((chat) => {
+      chat.participants.forEach((pId) => allParticipantIds.add(pId.toString()));
+    });
+
+    // 3. Fetch User Profiles for these IDs
+    const profiles = await UserProfile.find({
+      userId: { $in: Array.from(allParticipantIds) },
+    }).lean();
+
+    // 4. Create a Lookup Map (Auth ID -> Profile Data)
+    const profileMap = {};
+    profiles.forEach((p) => {
+      profileMap[p.userId.toString()] = p;
+    });
+
+    // 5. Enrich Chats with Profile Data
+    const enrichedChats = chats.map((chat) => {
+      const enrichedParticipants = chat.participants.map((pId) => {
+        const idStr = pId.toString();
+        const profile = profileMap[idStr];
+
+        // Return structure matching what frontend expects
+        return {
+          _id: idStr,
+          fullName: profile ? profile.fullName : "Alumni Member",
+          profilePicture: profile ? profile.profilePicture : "",
+          jobTitle: profile ? profile.jobTitle : "",
+        };
+      });
+
+      return { ...chat, participants: enrichedParticipants };
+    });
+
+    res.json(enrichedChats);
   } catch (err) {
+    console.error("Chat List Error:", err);
     res.status(500).json(err);
   }
 });
 
 // ---------------------------------------------------------
-// 3. START OR GET CONVERSATION
+// 3. START OR GET CONVERSATION - ✅ FIXED NAME LOOKUP
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId } = req.body;
@@ -105,18 +142,36 @@ router.post("/start", verify, async (req, res) => {
       participants: { $all: [req.user._id, receiverId] },
     });
 
-    if (chat) return res.status(200).json(chat);
+    if (!chat) {
+      const newChat = new Conversation({
+        participants: [req.user._id, receiverId],
+      });
+      chat = await newChat.save();
+    }
 
-    const newChat = new Conversation({
-      participants: [req.user._id, receiverId],
+    // ✅ Manually Populate Profiles
+    const profiles = await UserProfile.find({
+      userId: { $in: [req.user._id, receiverId] },
+    }).lean();
+
+    const profileMap = {};
+    profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
+
+    const enrichedParticipants = chat.participants.map((pId) => {
+      const idStr = pId.toString();
+      const profile = profileMap[idStr];
+      return {
+        _id: idStr,
+        fullName: profile ? profile.fullName : "Alumni Member",
+        profilePicture: profile ? profile.profilePicture : "",
+      };
     });
 
-    const savedChat = await newChat.save();
-    const populatedChat = await Conversation.findById(savedChat._id).populate(
-      "participants",
-      "fullName profilePicture",
-    );
-    res.status(200).json(populatedChat);
+    // Return the chat object with enriched participants
+    const responseObj = chat.toObject ? chat.toObject() : chat;
+    responseObj.participants = enrichedParticipants;
+
+    res.status(200).json(responseObj);
   } catch (err) {
     res.status(500).json(err);
   }
@@ -166,7 +221,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 
     const messages = await Message.find(query)
       .populate("replyTo", "text sender type fileUrl")
-      .populate("replyTo.sender", "fullName")
+      .populate("replyTo.sender", "fullName") // Note: This might still fail if UserAuth has no name, but Reply UI is less critical
       .sort({ createdAt: -1 })
       .limit(limit);
 
@@ -239,9 +294,7 @@ router.post(
           conversationId: conversation._id,
         });
 
-        // 2. Push Notification (FIXED)
-        // 🛑 WAS: const sender = await User.findById(req.user._id);
-        // ✅ NOW: Uses UserProfile
+        // 2. Push Notification
         const sender = await UserProfile.findOne({ userId: req.user._id });
 
         if (sender) {

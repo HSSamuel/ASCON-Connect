@@ -1,19 +1,20 @@
-import 'dart:convert'; 
 import 'dart:io';
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart'; 
-import 'package:cached_network_image/cached_network_image.dart'; 
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart'; // ✅ For Date Formatting
 
-import '../services/data_service.dart'; 
-import '../services/api_client.dart'; 
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
-import '../widgets/skeleton_loader.dart'; 
+import '../services/data_service.dart';
 import '../config.dart';
-import 'event_detail_screen.dart';
+import 'event_detail_screen.dart'; // Ensure you have this or generic detail screen
 
 class EventsScreen extends StatefulWidget {
   const EventsScreen({super.key});
@@ -23,52 +24,73 @@ class EventsScreen extends StatefulWidget {
 }
 
 class _EventsScreenState extends State<EventsScreen> {
-  final DataService _dataService = DataService(); 
-  final ApiClient _api = ApiClient();
+  final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
-  
+  final ApiClient _api = ApiClient();
+
   List<dynamic> _events = [];
+  List<dynamic> _filteredEvents = [];
   bool _isLoading = true;
-  bool _isAdmin = false; 
+  bool _isAdmin = false;
+
+  final TextEditingController _searchController = TextEditingController();
+  bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
-    _checkAdmin();
+    _checkPermissions();
     _loadEvents();
   }
 
-  Future<void> _checkAdmin() async {
-    final isAdmin = await _authService.isAdmin;
-    if (mounted) setState(() => _isAdmin = isAdmin);
-  }
-
-  Future<void> _loadEvents() async {
-    final events = await _dataService.fetchEvents();
+  Future<void> _checkPermissions() async {
+    final adminStatus = await _authService.isAdmin;
     if (mounted) {
-      setState(() {
-        _events = events;
-        _isLoading = false;
-      });
+      setState(() => _isAdmin = adminStatus);
     }
   }
 
-  // =========================================================
-  // 🗑️ DELETE EVENT
-  // =========================================================
+  Future<void> _loadEvents() async {
+    setState(() => _isLoading = true);
+    try {
+      // Assuming fetchEvents returns a List of maps
+      final events = await _dataService.fetchEvents();
+      if (mounted) {
+        setState(() {
+          _events = events;
+          _filteredEvents = events;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _isSearching = query.isNotEmpty;
+      if (query.isEmpty) {
+        _filteredEvents = _events;
+      } else {
+        _filteredEvents = _events.where((e) {
+          final title = (e['title'] ?? '').toString().toLowerCase();
+          final desc = (e['description'] ?? '').toString().toLowerCase();
+          return title.contains(query.toLowerCase()) || desc.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
+  }
+
   Future<void> _deleteEvent(String eventId) async {
     final confirm = await showDialog<bool>(
       context: context, 
       builder: (ctx) => AlertDialog(
         title: const Text("Delete Event"),
-        content: const Text("Are you sure? This cannot be undone."),
+        content: const Text("Are you sure you want to delete this event?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true), 
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text("Delete")
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
         ],
       )
     );
@@ -76,11 +98,9 @@ class _EventsScreenState extends State<EventsScreen> {
     if (confirm == true) {
       setState(() => _isLoading = true);
       try {
-        await _api.delete('/api/events/$eventId');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Event deleted.")));
-          _loadEvents(); 
-        }
+        await _api.delete('/api/admin/events/$eventId');
+        await _loadEvents();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Event deleted.")));
       } catch (e) {
         if (mounted) {
           setState(() => _isLoading = false);
@@ -91,16 +111,24 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   // =========================================================
-  // ➕ CREATE EVENT SHEET (Admin Only)
+  // 🗓️ ADD EVENT SHEET (With Image Upload)
   // =========================================================
-  void _showCreateEventSheet() {
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final locCtrl = TextEditingController();
-    final timeCtrl = TextEditingController();
-    XFile? selectedImage;
-    bool isPosting = false;
-    String selectedType = "Event";
+  void _showAddEventSheet() {
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+    final locationController = TextEditingController();
+    
+    DateTime? selectedDate;
+    TimeOfDay? selectedTime;
+    String selectedType = "News";
+    XFile? selectedImage; 
+    bool isSubmitting = false;
+
+    // Allowed Event Types
+    final List<String> eventTypes = [
+      "News", "Event", "Reunion", "Webinar", "Seminar", 
+      "Conference", "Workshop", "Symposium", "AGM", "Induction"
+    ];
 
     showModalBottomSheet(
       context: context,
@@ -110,52 +138,77 @@ class _EventsScreenState extends State<EventsScreen> {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            
             Future<void> pickImage() async {
               final picker = ImagePicker();
-              final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-              if (pickedFile != null) setSheetState(() => selectedImage = pickedFile);
+              final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+              if (picked != null) setSheetState(() => selectedImage = picked);
+            }
+
+            Future<void> pickDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: DateTime.now(),
+                firstDate: DateTime.now(),
+                lastDate: DateTime(2030),
+              );
+              if (picked != null) setSheetState(() => selectedDate = picked);
+            }
+
+            Future<void> pickTime() async {
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.now(),
+              );
+              if (picked != null) setSheetState(() => selectedTime = picked);
             }
 
             Future<void> submit() async {
-              if (titleCtrl.text.isEmpty || descCtrl.text.isEmpty) return;
-              setSheetState(() => isPosting = true);
-
+              if (titleController.text.isEmpty || descController.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Title and Description are required.")));
+                return;
+              }
+              
+              setSheetState(() => isSubmitting = true);
               try {
                 final token = await AuthService().getToken();
-                var request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}/api/admin/events')); // Using existing endpoint
-                // Note: If using /api/events endpoint, adjust accordingly. 
-                // The backend route in server.js points to /api/events, but typically POST is restricted.
-                // Assuming route is /api/events based on backend/routes/events.js which has router.post('/', verifyToken, verifyAdmin...)
-                
-                request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}/api/events'));
+                var request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}/api/admin/events'));
                 request.headers['auth-token'] = token ?? '';
                 
-                request.fields['title'] = titleCtrl.text;
-                request.fields['description'] = descCtrl.text;
-                request.fields['location'] = locCtrl.text;
-                request.fields['time'] = timeCtrl.text;
+                request.fields['title'] = titleController.text.trim();
+                request.fields['description'] = descController.text.trim();
                 request.fields['type'] = selectedType;
-                request.fields['date'] = DateTime.now().toIso8601String(); // Default to now for simplicity
+                
+                if (locationController.text.isNotEmpty) request.fields['location'] = locationController.text.trim();
+                if (selectedDate != null) request.fields['date'] = selectedDate!.toIso8601String();
+                if (selectedTime != null) request.fields['time'] = selectedTime!.format(context);
 
                 if (selectedImage != null) {
-                  if (kIsWeb) {
-                    var bytes = await selectedImage!.readAsBytes();
-                    request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: selectedImage!.name));
-                  } else {
-                    request.files.add(await http.MultipartFile.fromPath('image', selectedImage!.path));
-                  }
+                   if (kIsWeb) {
+                     var bytes = await selectedImage!.readAsBytes();
+                     request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: selectedImage!.name));
+                   } else {
+                     request.files.add(await http.MultipartFile.fromPath('image', selectedImage!.path));
+                   }
                 }
 
                 var response = await request.send();
+                
                 if (response.statusCode == 201) {
                   Navigator.pop(sheetCtx);
-                  _loadEvents();
-                  if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Event Created!")));
+                  _loadEvents(); // Refresh list
+                  ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Event Created!"), backgroundColor: Colors.green));
+                } else {
+                   // Try to parse error
+                   final respStr = await response.stream.bytesToString();
+                   String err = "Failed to create event";
+                   try { err = jsonDecode(respStr)['message']; } catch (_) {}
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err), backgroundColor: Colors.red));
                 }
               } catch (e) {
-                // error
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
               } finally {
-                setSheetState(() => isPosting = false);
+                if (mounted) setSheetState(() => isSubmitting = false);
               }
             }
 
@@ -164,40 +217,61 @@ class _EventsScreenState extends State<EventsScreen> {
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Create Event", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text("Create New Event", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-                    TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "Title", border: OutlineInputBorder())),
+                    TextField(controller: titleController, decoration: const InputDecoration(labelText: "Title (Required)", border: OutlineInputBorder())),
                     const SizedBox(height: 10),
-                    TextField(controller: descCtrl, maxLines: 2, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
-                    const SizedBox(height: 10),
-                    TextField(controller: locCtrl, decoration: const InputDecoration(labelText: "Location", border: OutlineInputBorder())),
-                    const SizedBox(height: 10),
-                    TextField(controller: timeCtrl, decoration: const InputDecoration(labelText: "Time (e.g. 10:00 AM)", border: OutlineInputBorder())),
+                    TextField(controller: descController, maxLines: 3, decoration: const InputDecoration(labelText: "Description (Required)", border: OutlineInputBorder())),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
                       value: selectedType,
-                      items: ["Event", "News", "Reunion", "Webinar", "Workshop"].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                      onChanged: (val) => setSheetState(() => selectedType = val!),
                       decoration: const InputDecoration(labelText: "Type", border: OutlineInputBorder()),
+                      items: eventTypes.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                      onChanged: (val) => setSheetState(() => selectedType = val!),
                     ),
                     const SizedBox(height: 10),
-                    ListTile(
-                      leading: const Icon(Icons.image),
-                      title: Text(selectedImage == null ? "Select Image" : "Image Selected"),
-                      trailing: selectedImage != null ? const Icon(Icons.check, color: Colors.green) : null,
-                      onTap: pickImage,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: pickDate,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(labelText: "Date", border: OutlineInputBorder()),
+                              child: Text(selectedDate == null ? "Select Date" : DateFormat('MMM dd, yyyy').format(selectedDate!)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: InkWell(
+                            onTap: pickTime,
+                            child: InputDecorator(
+                              decoration: const InputDecoration(labelText: "Time", border: OutlineInputBorder()),
+                              child: Text(selectedTime == null ? "Select Time" : selectedTime!.format(context)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 10),
+                    TextField(controller: locationController, decoration: const InputDecoration(labelText: "Location (Optional)", border: OutlineInputBorder())),
                     const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: isPosting ? null : submit,
-                        style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
-                        child: isPosting ? const CircularProgressIndicator(color: Colors.white) : const Text("Publish Event"),
+                    
+                    // Image Picker
+                    GestureDetector(
+                      onTap: pickImage,
+                      child: Container(
+                        width: double.infinity, height: 150,
+                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey[400]!), image: selectedImage != null ? DecorationImage(image: kIsWeb ? NetworkImage(selectedImage!.path) : FileImage(File(selectedImage!.path)) as ImageProvider, fit: BoxFit.cover) : null),
+                        child: selectedImage == null ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey), Text("Add Cover Image")])) : null,
                       ),
                     ),
-                    const SizedBox(height: 16),
+
+                    const SizedBox(height: 20),
+                    SizedBox(width: double.infinity, child: ElevatedButton(onPressed: isSubmitting ? null : submit, style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)), child: const Text("Publish Event"))),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -208,203 +282,165 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // =========================================================
-  // 🎨 UI HELPERS
-  // =========================================================
-  String _toTitleCase(String text) {
-    if (text.isEmpty) return text;
-    String titleCased = text.split(' ').map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join(' ');
-    return titleCased.replaceAllMapped(RegExp(r'\bascon\b', caseSensitive: false), (match) => 'ASCON');
-  }
-
-  Color _getTypeColor(String type) {
-    switch (type) {
-      case 'Reunion':    return const Color(0xFF1B5E3A); 
-      case 'Webinar':    return const Color(0xFF1565C0);     
-      case 'Seminar':    return const Color(0xFF6A1B9A);   
-      case 'News':       return const Color(0xFFE65100);   
-      case 'Conference': return const Color(0xFF0D47A1); 
-      case 'Workshop':   return const Color(0xFF00695C); 
-      case 'Symposium':  return const Color(0xFFC2185B); 
-      case 'AGM':        return const Color(0xFFF57F17); 
-      case 'Induction':  return const Color(0xFF2E7D32); 
-      case 'Event':      return const Color(0xFF283593);     
-      default:           return Colors.grey[800]!;
-    }
-  }
-
-  Widget _buildSafeImage(String? imageUrl) {
-    if (imageUrl == null || imageUrl.isEmpty) {
-      return Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.image_not_supported_outlined, color: Colors.white24, size: 40)));
-    }
-    if (imageUrl.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: imageUrl, fit: BoxFit.cover,
-        placeholder: (context, url) => const SkeletonImage(),
-        errorWidget: (context, url, error) => Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40))),
-      );
-    }
-    try {
-      String cleanBase64 = imageUrl.contains(',') ? imageUrl.split(',').last : imageUrl;
-      return Image.memory(base64Decode(cleanBase64), fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.white24, size: 40))));
-    } catch (e) {
-      return Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.error_outline, color: Colors.white24, size: 40)));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
-    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("News & Events", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-        automaticallyImplyLeading: false,
-        elevation: 0,
-      ),
-      backgroundColor: scaffoldBg,
-      
-      body: RefreshIndicator(
-        onRefresh: _loadEvents,
-        color: primaryColor,
-        child: _isLoading
-            ? const EventSkeletonList() 
-            : _events.isEmpty
-                ? _buildEmptyState()
-                : GridView.builder( 
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 220, 
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      childAspectRatio: 0.72, 
-                    ),
-                    itemCount: _events.length,
-                    itemBuilder: (context, index) => _buildImmersiveEventCard(_events[index]),
-                  ),
-      ),
-
-      // ✅ ADMIN FAB
-      floatingActionButton: _isAdmin 
-        ? FloatingActionButton(
-            onPressed: _showCreateEventSheet,
-            backgroundColor: const Color(0xFFD4AF37),
-            child: const Icon(Icons.add, color: Colors.white),
-          )
-        : null,
-    );
-  }
-
-  Widget _buildEmptyState() {
-    final color = Theme.of(context).textTheme.bodyMedium?.color;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.newspaper_rounded, size: 70, color: color?.withOpacity(0.2)),
-          const SizedBox(height: 16),
-          Text("No updates yet", style: GoogleFonts.lato(fontSize: 18, color: color, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text("Check back later for news & events.", style: GoogleFonts.lato(fontSize: 14, color: color?.withOpacity(0.6))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildImmersiveEventCard(dynamic event) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    String formattedDate = 'TBA';
-    String rawDate = event['date']?.toString() ?? '';
-    try {
-      if (rawDate.isNotEmpty) {
-        formattedDate = DateFormat("d MMM").format(DateTime.parse(rawDate)); 
-      }
-    } catch (e) { formattedDate = 'TBA'; }
+    final primaryColor = Theme.of(context).primaryColor;
 
-    final String title = event['title']?.toString() ?? 'No Title';
-    final String type = event['type'] ?? 'News';
-    final String imageUrl = event['image'] ?? event['imageUrl'] ?? ''; 
-    final String eventId = (event['_id'] ?? event['id'] ?? '').toString(); 
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20), 
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.15), blurRadius: 10, offset: const Offset(0, 5))],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Stack(
-          fit: StackFit.expand,
+    return PopScope(
+      canPop: false, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        context.go('/home');
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text("Events & News", style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/home')),
+        ),
+        floatingActionButton: _isAdmin 
+          ? FloatingActionButton.extended(
+              onPressed: _showAddEventSheet, // ✅ Opens the Add Event Sheet
+              label: const Text("Add Event", style: TextStyle(fontWeight: FontWeight.bold)),
+              icon: const Icon(Icons.add),
+              backgroundColor: const Color(0xFFD4AF37),
+              foregroundColor: Colors.white,
+            )
+          : null,
+        body: Column(
           children: [
-            _buildSafeImage(imageUrl),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.8), Colors.black.withOpacity(0.95)],
-                  stops: const [0.4, 0.6, 0.85, 1.0],
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                controller: _searchController,
+                onChanged: _onSearchChanged,
+                decoration: InputDecoration(
+                  hintText: "Search events...",
+                  prefixIcon: const Icon(Icons.search),
+                  filled: true,
+                  fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                 ),
               ),
             ),
-            Positioned(
-              top: 10, right: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: _getTypeColor(type), borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]),
-                child: Text(type.toUpperCase(), style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5)),
-              ),
-            ),
-            // ✅ ADMIN DELETE ICON
-            if (_isAdmin)
-              Positioned(
-                top: 5, left: 5,
-                child: CircleAvatar(
-                  backgroundColor: Colors.black54,
-                  radius: 16,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.delete, color: Colors.redAccent, size: 18),
-                    onPressed: () => _deleteEvent(eventId),
-                  ),
-                ),
-              ),
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Padding(
-                padding: const EdgeInsets.all(14.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center, 
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.calendar_today, size: 10, color: Colors.white.withOpacity(0.8)),
-                        const SizedBox(width: 4),
-                        Text(formattedDate.toUpperCase(), style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white.withOpacity(0.9), letterSpacing: 0.5)),
-                      ],
+            
+            // List
+            Expanded(
+              child: _isLoading 
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredEvents.isEmpty
+                  ? Center(child: Text("No events found.", style: GoogleFonts.lato(color: Colors.grey)))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filteredEvents.length,
+                      itemBuilder: (context, index) {
+                        return _buildEventCard(_filteredEvents[index]);
+                      },
                     ),
-                    const SizedBox(height: 6),
-                    Text(_toTitleCase(title), maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white, height: 1.2)),
-                  ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEventCard(dynamic event) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = Theme.of(context).cardColor;
+    
+    // Parse Date
+    String dateStr = "TBA";
+    if (event['date'] != null) {
+      try {
+        final d = DateTime.parse(event['date']);
+        dateStr = DateFormat('MMM dd, yyyy').format(d);
+      } catch (e) {
+        dateStr = event['date'].toString(); // Fallback if string
+      }
+    }
+
+    final imageUrl = event['image'];
+    final bool hasImage = imageUrl != null && imageUrl.toString().isNotEmpty;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 3,
+      color: cardColor,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // Navigate to detail screen if you have one
+          Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(eventData: event)));
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image Banner
+            if (hasImage)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(color: Colors.grey[300], height: 150),
+                  errorWidget: (context, url, error) => Container(color: Colors.grey[300], height: 150, child: const Icon(Icons.broken_image)),
                 ),
               ),
-            ),
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    final Map<String, dynamic> safeEventData = {...event, '_id': eventId, 'date': formattedDate, 'rawDate': rawDate};
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => EventDetailScreen(eventData: safeEventData)));
-                  },
-                ),
+            
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: const Color(0xFFD4AF37).withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                        child: Text(event['type'] ?? 'Event', style: GoogleFonts.lato(color: const Color(0xFFD4AF37), fontWeight: FontWeight.bold, fontSize: 10)),
+                      ),
+                      if (_isAdmin)
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                          onPressed: () => _deleteEvent(event['_id']),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        )
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(event['title'] ?? 'No Title', style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 6),
+                      Text(dateStr, style: GoogleFonts.lato(fontSize: 13, color: Colors.grey[600])),
+                      const SizedBox(width: 16),
+                      Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 6),
+                      Text(event['time'] ?? 'TBA', style: GoogleFonts.lato(fontSize: 13, color: Colors.grey[600])),
+                    ],
+                  ),
+                  if (event['location'] != null && event['location'].toString().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(event['location'], style: GoogleFonts.lato(fontSize: 13, color: Colors.grey[600]), overflow: TextOverflow.ellipsis)),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ],

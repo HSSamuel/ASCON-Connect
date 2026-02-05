@@ -26,13 +26,16 @@ class AlumniDetailScreen extends StatefulWidget {
 class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   final DataService _dataService = DataService();
   
-  // ✅ NEW: Mutable state to hold the alumni data
+  // ✅ Mutable state to hold the alumni data
   late Map<String, dynamic> _currentAlumniData;
-  bool _isLoadingFullProfile = true;
+  
+  // 🔒 SAFETY LOCK: Defaults to TRUE. Button hidden until FALSE.
+  bool _isLoadingFullProfile = true; 
+  bool _profileExists = true; // Assumed true until proven false
 
   // ✅ State for Mentorship Logic
-  String _mentorshipStatus = "Loading"; // None, Pending, Accepted, Rejected
-  String? _requestId; // Store ID to allow cancellation
+  String _mentorshipStatus = "Loading"; 
+  String? _requestId; 
   bool _isLoadingStatus = false;
 
   // ✅ State for Real-Time Presence
@@ -53,7 +56,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     _isOnline = _currentAlumniData['isOnline'] == true;
     _lastSeen = _currentAlumniData['lastSeen'];
 
-    // ✅ 2. Fetch full details in the background
+    // ✅ 2. Fetch full details AND verify existence
     _fetchFullDetails();
 
     // Only fetch mentorship status if they are actually a mentor
@@ -73,25 +76,57 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     super.dispose();
   }
 
-  // ✅ NEW: Method to fetch full profile and merge it
+  // ✅ CRITICAL FIX: Verify User Exists & Merge Data
   Future<void> _fetchFullDetails() async {
-    final fullData = await _dataService.fetchAlumniById(_currentAlumniData['_id']);
-    if (fullData != null && mounted) {
-      setState(() {
-        // Merge the new full data with existing data
-        _currentAlumniData.addAll(fullData);
-        _isLoadingFullProfile = false;
-      });
-    } else if (mounted) {
-      setState(() => _isLoadingFullProfile = false);
+    // 💡 Priority: Use 'userId' (Auth ID) if present, else fallback to '_id'
+    final String lookupId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
+    
+    final fullData = await _dataService.fetchAlumniById(lookupId);
+    
+    if (!mounted) return;
+
+    if (fullData == null) {
+       // ⛔ CASE: User Deleted/404
+       setState(() {
+         _isLoadingFullProfile = false;
+         _profileExists = false; // Locks UI
+       });
+       
+       await showDialog(
+         context: context,
+         barrierDismissible: false,
+         builder: (ctx) => AlertDialog(
+           title: const Text("Profile Unavailable"),
+           content: const Text("This user profile no longer exists."),
+           actions: [
+             TextButton(
+               onPressed: () {
+                 Navigator.pop(ctx); 
+                 Navigator.pop(context); // Force exit
+               },
+               child: const Text("OK"),
+             )
+           ],
+         ),
+       );
+       return;
     }
+
+    // ✅ Success: Unlock UI
+    setState(() {
+      _currentAlumniData.addAll(fullData);
+      _isLoadingFullProfile = false;
+      _profileExists = true;
+    });
   }
 
   // ✅ REAL-TIME PRESENCE LOGIC
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     if (socket == null) return;
-    final targetUserId = _currentAlumniData['_id'];
+    
+    // ✅ FIX: Use correct ID for socket check (Auth ID)
+    final targetUserId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
 
     // 1. Initial Check
     SocketService().checkUserStatus(targetUserId);
@@ -110,15 +145,16 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
   // ✅ 1. Check current relationship status from Backend
   Future<void> _checkStatus() async {
-    // Only show loading on initial load or manual actions, not silent refresh
     if (_mentorshipStatus == "Loading") setState(() => _isLoadingStatus = true);
     
-    // Uses the new Phase 4 method that returns a Map {status, requestId}
-    final result = await _dataService.getMentorshipStatusFull(_currentAlumniData['_id']);
+    // ✅ FIX: Use correct ID (Auth ID)
+    final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
+    
+    final result = await _dataService.getMentorshipStatusFull(targetId);
     if (mounted) {
       setState(() {
         _mentorshipStatus = result['status'];
-        _requestId = result['requestId']; // Capture the ID
+        _requestId = result['requestId']; 
         _isLoadingStatus = false;
       });
     }
@@ -126,6 +162,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
   // ✅ 2. Handle Pull-to-Refresh
   Future<void> _onRefresh() async {
+    setState(() => _isLoadingFullProfile = true); 
+    
     // 1. Fetch latest profile data
     await _fetchFullDetails();
 
@@ -135,15 +173,15 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
 
     // 3. Force Refresh Presence
-    final targetUserId = _currentAlumniData['_id'];
+    final targetUserId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     SocketService().checkUserStatus(targetUserId);
-    
-    // 4. Small artificial delay for better UX (so the spinner doesn't disappear instantly)
-    await Future.delayed(const Duration(milliseconds: 800));
   }
 
   // ✅ 3. Handle sending the request with a pitch
   Future<void> _handleRequest() async {
+    // Double check existence just in case
+    if (!_profileExists) return;
+
     TextEditingController pitchCtrl = TextEditingController();
     
     // Show Pitch Dialog
@@ -154,7 +192,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Write a short note introducing yourself and why you'd like mentorship:"),
+            const Text("Write a short note introducing yourself:"),
             const SizedBox(height: 10),
             TextField(
               controller: pitchCtrl,
@@ -180,14 +218,20 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     // If user clicked Send
     if (send == true) {
       setState(() => _isLoadingStatus = true);
-      final success = await _dataService.sendMentorshipRequest(_currentAlumniData['_id'], pitchCtrl.text);
       
+      // ✅ CRITICAL FIX: Send the Auth ID ('userId'), not Profile ID ('_id')
+      final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
+      
+      final response = await _dataService.sendMentorshipRequest(targetId, pitchCtrl.text);
+      final bool success = response['success'] == true;
+      final String message = response['message'] ?? "Failed to send request.";
+
       if (mounted) {
         // Refresh status immediately to get the new Request ID
         await _checkStatus();
         
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(success ? "Request Sent Successfully!" : "Failed to send request."),
+          content: Text(message), 
           backgroundColor: success ? Colors.green : Colors.red,
         ));
       }
@@ -258,10 +302,17 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
     // ✅ 4. Helper to Build the Smart Button
     Widget buildMentorshipButton() {
-      if (!isMentor) return const SizedBox.shrink();
+      // 1. If user not eligible or doesn't exist, hide button
+      if (!isMentor || !_profileExists) return const SizedBox.shrink();
 
-      if (_isLoadingStatus) {
-        return const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator()));
+      // 2. If loading, show spinner (prevents premature clicks)
+      if (_isLoadingFullProfile || _isLoadingStatus) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(12.0), 
+            child: CircularProgressIndicator(strokeWidth: 2)
+          )
+        );
       }
 
       String label = "Request Mentorship";
@@ -284,7 +335,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                content: const Text("Are you sure you want to cancel this mentorship request?"),
                actions: [
                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("No")),
-                 TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Yes, Withdraw", style: TextStyle(color: Colors.red))),
+                 TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Yes", style: TextStyle(color: Colors.red))),
                ],
              )
            );
@@ -306,10 +357,11 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
         btnColor = Colors.green[700]!;
         icon = Icons.chat;
         action = () {
-           // ✅ FIX: Use rootNavigator to hide Bottom Nav Bar
+           // ✅ FIX: Use Correct ID for Chat as well
+           final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
            Navigator.of(context, rootNavigator: true).push(
              MaterialPageRoute(builder: (_) => ChatScreen(
-              receiverId: _currentAlumniData['_id'],
+              receiverId: targetId,
               receiverName: fullName,
               receiverProfilePic: imageString,
               isOnline: _isOnline, 
@@ -519,11 +571,13 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
+                        // ✅ FIX: Use Correct ID for Chat
+                        final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
                         // ✅ FIX: Use rootNavigator here as well
                         Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute(
                             builder: (_) => ChatScreen(
-                              receiverId: _currentAlumniData['_id'] ?? '',
+                              receiverId: targetId,
                               receiverName: fullName,
                               receiverProfilePic: imageString,
                               isOnline: _isOnline, // ✅ Pass live status

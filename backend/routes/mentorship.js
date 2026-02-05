@@ -55,11 +55,9 @@ router.post("/request", verifyToken, async (req, res) => {
 
     // 5. Check Eligibility
     if (!mentorSettings.isOpenToMentorship) {
-      return res
-        .status(400)
-        .json({
-          message: "This user is not currently accepting mentorship requests.",
-        });
+      return res.status(400).json({
+        message: "This user is not currently accepting mentorship requests.",
+      });
     }
 
     // 6. Check for Existing Requests
@@ -94,7 +92,7 @@ router.post("/request", verifyToken, async (req, res) => {
     try {
       await sendPersonalNotification(
         mentorId,
-        "New Mentorship Request 🎓",
+        "New Mentorship Request 🤝",
         "Someone has requested your mentorship. Tap to review.",
         { route: "mentorship_requests" },
       );
@@ -143,12 +141,12 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
       const systemMsg = new Message({
         conversationId: conversation._id,
         sender: request.mentor,
-        text: "🎉 I have accepted your mentorship request! Let's connect.",
+        text: "👋 I have accepted your mentorship request! Let's connect.",
         isRead: false,
       });
       await systemMsg.save();
 
-      conversation.lastMessage = "🎉 Mentorship Accepted";
+      conversation.lastMessage = "👋 Mentorship Accepted";
       conversation.lastMessageAt = Date.now();
       await conversation.save();
 
@@ -161,7 +159,7 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
 
       await sendPersonalNotification(
         request.mentee._id.toString(),
-        "Mentorship Accepted! 🎉",
+        "Mentorship Accepted! 👋",
         "Your mentor has accepted your request. Chat now!",
         { route: "chat_screen", id: conversation._id.toString() },
       );
@@ -272,13 +270,14 @@ router.get("/status/:targetUserId", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 5. DELETE REQUEST/MENTORSHIP
+// 5. WITHDRAW (CANCEL) REQUEST
 // ==========================================
 router.delete("/cancel/:id", verifyToken, async (req, res) => {
   try {
     const request = await MentorshipRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Request not found" });
 
+    // Ensure only involved parties can cancel
     if (
       request.mentee.toString() !== req.user._id &&
       request.mentor.toString() !== req.user._id
@@ -286,13 +285,33 @@ router.delete("/cancel/:id", verifyToken, async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    // 1. Capture IDs before deletion
+    const { mentor, mentee } = request;
+
+    // 2. Delete the Request
     await MentorshipRequest.findByIdAndDelete(req.params.id);
-    res.json({ message: "Request withdrawn." });
+
+    // 3. ✅ CLEANUP: Find and Delete associated Conversation
+    // This removes it from the Message List of both users.
+    const conversation = await Conversation.findOne({
+      participants: { $all: [mentor, mentee] },
+    });
+
+    if (conversation) {
+      await Conversation.findByIdAndDelete(conversation._id);
+      await Message.deleteMany({ conversationId: conversation._id });
+      console.log(`[Mentorship] Auto-cleaned conversation ${conversation._id}`);
+    }
+
+    res.json({ message: "Request withdrawn and chat history cleared." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
+// ==========================================
+// 6. END MENTORSHIP
+// ==========================================
 router.delete("/end/:id", verifyToken, async (req, res) => {
   try {
     const request = await MentorshipRequest.findById(req.params.id);
@@ -306,8 +325,26 @@ router.delete("/end/:id", verifyToken, async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    // 1. Capture IDs
+    const { mentor, mentee } = request;
+
+    // 2. Delete the Mentorship Record
     await MentorshipRequest.findByIdAndDelete(req.params.id);
-    res.json({ message: "Mentorship ended." });
+
+    // 3. ✅ CLEANUP: Remove Conversation on End
+    const conversation = await Conversation.findOne({
+      participants: { $all: [mentor, mentee] },
+    });
+
+    if (conversation) {
+      await Conversation.findByIdAndDelete(conversation._id);
+      await Message.deleteMany({ conversationId: conversation._id });
+      console.log(
+        `[Mentorship] Ended & cleaned conversation ${conversation._id}`,
+      );
+    }
+
+    res.json({ message: "Mentorship ended and chat history cleared." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
