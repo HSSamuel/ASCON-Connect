@@ -419,7 +419,7 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   userAuth.resetPasswordExpires = Date.now() + 3600000;
   await userAuth.save();
 
-  const resetUrl = `https://asconadmin.netlify.app/reset-password?token=${token}`;
+  const resetUrl = `https://asconalumni.netlify.app/reset-password?token=${token}`;
 
   await axios.post(
     "https://api.brevo.com/v3/smtp/email",

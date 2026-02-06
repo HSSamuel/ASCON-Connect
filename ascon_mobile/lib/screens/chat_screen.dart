@@ -27,7 +27,7 @@ import '../models/chat_objects.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../widgets/full_screen_image.dart'; 
-import '../utils/presence_formatter.dart'; // ✅ Presence Formatter
+import '../utils/presence_formatter.dart'; 
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -72,33 +72,29 @@ class _ChatScreenState extends State<ChatScreen> {
   late bool _isPeerOnline;
   String? _peerLastSeen;
   
-  // ✅ Polling Timer for Aggressive Status Check
   Timer? _statusPollingTimer;
-  
-  // ✅ STREAM SUBSCRIPTION (New Presence System)
   StreamSubscription? _statusSubscription;
 
   bool _isSelectionMode = false;
   final Set<String> _selectedMessageIds = {};
 
-  // Reply & Edit State
   ChatMessage? _replyingTo;
   ChatMessage? _editingMessage;
 
-  // Audio Recording
   late AudioRecorder _audioRecorder;
   bool _isRecording = false;
   int _recordDuration = 0;
   Timer? _recordTimer;
 
-  // Audio Playing
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _playingMessageId; 
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
-  // Track downloading file
   String? _downloadingFileId;
+
+  // ✅ TRACK FOCUS FOR TOOLBAR VISIBILITY
+  bool _showFormatting = false;
 
   @override
   void initState() {
@@ -114,43 +110,39 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    // ✅ AGGRESSIVE FIX: If starting Offline (e.g. from Notification), poll for status
     if (!_isPeerOnline) {
       _startStatusPolling();
     }
     
-    // ✅ NEW: Listen to the Stream for Instant Updates
     _statusSubscription = SocketService().userStatusStream.listen((data) {
       if (!mounted) return;
       if (data['userId'] == widget.receiverId) {
         setState(() {
           _isPeerOnline = data['isOnline'];
-          // Only update lastSeen if they are offline (to avoid flickering)
           if (!_isPeerOnline && data['lastSeen'] != null) {
             _peerLastSeen = data['lastSeen'];
           }
-          
-          // Stop polling if we confirmed they are online
           if (_isPeerOnline) {
             _statusPollingTimer?.cancel();
           }
         });
       }
     });
+
+    // ✅ Listen to focus change to show/hide toolbar
+    _focusNode.addListener(() {
+      setState(() => _showFormatting = _focusNode.hasFocus);
+    });
   }
 
-  // ✅ New Method: Repeatedly ask for status until we get it or timeout
   void _startStatusPolling() {
-    // Attempt 1: Immediate
     _checkStatusSafe();
-
-    // Attempt 2-6: Every 2 seconds
     _statusPollingTimer?.cancel();
     _statusPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (_isPeerOnline || !mounted) {
-        timer.cancel(); // Stop if online or screen closed
+        timer.cancel(); 
       } else if (timer.tick > 5) {
-        timer.cancel(); // Stop after 10 seconds (5 attempts)
+        timer.cancel(); 
       } else {
         _checkStatusSafe();
       }
@@ -158,7 +150,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _checkStatusSafe() {
-    // Use the helper method from SocketService to request status
     SocketService().checkUserStatus(widget.receiverId);
   }
 
@@ -188,8 +179,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _focusNode.dispose(); 
     _typingDebounce?.cancel();
     _recordTimer?.cancel();
-    _statusPollingTimer?.cancel(); // ✅ Cancel Polling
-    _statusSubscription?.cancel(); // ✅ Cancel Stream Listener
+    _statusPollingTimer?.cancel(); 
+    _statusSubscription?.cancel(); 
     _audioRecorder.dispose();
     _audioPlayer.dispose();
 
@@ -200,7 +191,6 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
 
-    // Only turn off specific chat listeners, NOT global status listeners
     SocketService().socket?.off('new_message');
     SocketService().socket?.off('messages_read');
     SocketService().socket?.off('messages_deleted_bulk');
@@ -221,28 +211,23 @@ class _ChatScreenState extends State<ChatScreen> {
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     
-    // ✅ SAFETY CHECK: If socket not initialized yet, force it.
     if (socket == null) {
       SocketService().initSocket();
       Future.delayed(const Duration(milliseconds: 500), _setupSocketListeners);
       return;
     }
 
-    // 1. Active Check Function
     void checkStatus() {
       SocketService().checkUserStatus(widget.receiverId);
     }
 
-    // 2. Trigger check immediately if connected
     if (socket.connected) {
       checkStatus();
     }
 
-    // 3. Trigger check on reconnection 
     socket.on('connect', (_) => checkStatus());
     socket.on('reconnect', (_) => checkStatus());
 
-    // 4. Listen for New Messages
     socket.on('new_message', (data) {
       if (!mounted) return;
       if (data['conversationId'] == _activeConversationId) {
@@ -259,8 +244,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _cacheMessages();
       }
     });
-
-    // NOTE: 'user_status_update' and 'user_status_result' are handled via the Stream now.
 
     socket.on('messages_read', (data) { 
       if (mounted && data['conversationId'] == _activeConversationId) {
@@ -412,14 +395,49 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ✅ UPDATED STATUS TEXT LOGIC using PresenceFormatter
   String _getStatusText() {
     if (_isPeerTyping) return "Typing...";
     if (_isPeerOnline) return "Active Now";
     if (_peerLastSeen == null) return "Offline";
-    
-    // Use the uniform formatter logic
     return "Last seen ${PresenceFormatter.format(_peerLastSeen)}";
+  }
+
+  // --------------------------------------------------------
+  // 📝 TEXT FORMATTING UTILS
+  // --------------------------------------------------------
+  void _applyFormat(String char) {
+    final text = _textController.text;
+    final selection = _textController.selection;
+    
+    // If no valid selection, just insert markers
+    if (!selection.isValid || selection.start == -1) {
+      final newText = text + "$char$char";
+      _textController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: newText.length - 1),
+      );
+      return;
+    }
+
+    final start = selection.start;
+    final end = selection.end;
+    final selectedText = text.substring(start, end);
+    
+    // Check if already formatted (Toggle Off)
+    if (start >= 1 && end <= text.length - 1 && text[start - 1] == char && text[end] == char) {
+        final newText = text.replaceRange(start - 1, end + 1, selectedText);
+        _textController.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection(baseOffset: start - 1, extentOffset: end - 1),
+        );
+    } else {
+      // Apply format
+      final newText = text.replaceRange(start, end, "$char$selectedText$char");
+      _textController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(baseOffset: start + 1, extentOffset: end + 1),
+      );
+    }
   }
 
   // --------------------------------------------------------
@@ -570,7 +588,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if ((text == null || text.trim().isEmpty) && filePath == null && fileBytes == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
 
-    // ✅ EDIT MODE LOGIC
     if (_editingMessage != null && type == 'text') {
       try {
         final baseUrl = AppConfig.baseUrl.endsWith('/')
@@ -608,7 +625,6 @@ class _ChatScreenState extends State<ChatScreen> {
        return;
     }
 
-    // Optimistic UI
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final tempMessage = ChatMessage(
       id: tempId,
@@ -936,24 +952,20 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // --------------------------------------------------------
-  // 🫧 BUBBLES
-  // --------------------------------------------------------
   Widget _buildMessageBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     if (msg.isDeleted) return const SizedBox.shrink();
 
-    // ✅ WRAP IN DISMISSIBLE FOR SWIPE-TO-REPLY
     return Dismissible(
       key: Key(msg.id),
-      direction: DismissDirection.startToEnd, // Swipe Left-to-Right
+      direction: DismissDirection.startToEnd, 
       confirmDismiss: (direction) async {
         setState(() {
           _replyingTo = msg;
-          _editingMessage = null; // Cancel edit if replying
+          _editingMessage = null;
         });
         Vibration.vibrate(duration: 50);
-        _focusNode.requestFocus(); // Auto-focus input
-        return false; // Do not dismiss
+        _focusNode.requestFocus();
+        return false;
       },
       background: Container(
         alignment: Alignment.centerLeft,
@@ -963,7 +975,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
-          // ✅ ADD EDIT TO LONG PRESS (Only for my text messages)
           onLongPress: () {
             if (!isMe || _isSelectionMode) return;
             
@@ -1018,7 +1029,6 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ RENDER QUOTED REPLY
                 if (msg.replyToId != null) 
                   _buildReplyPreviewInBubble(msg, isMe, isDark, primary),
 
@@ -1048,7 +1058,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ✅ HELPER: Reply Preview inside Bubble
   Widget _buildReplyPreviewInBubble(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     return Container(
       margin: const EdgeInsets.all(4),
@@ -1078,6 +1087,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // ✅ UPDATED PARSER WITH MARKDOWN SUPPORT
   Widget _buildMessageContent(ChatMessage msg, bool isMe, bool isDark, Color primary) {
     if (msg.type == 'image') {
       if (msg.localBytes != null) return ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(msg.localBytes!, height: 200, width: 200, fit: BoxFit.cover));
@@ -1111,7 +1121,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
     final List<TextSpan> spans = [];
-    final RegExp exp = RegExp(r'([*_~])(.*?)\1');
+    final RegExp exp = RegExp(r'([*_~])(.*?)\1'); // Matches *bold*, _italic_, ~underline~
     text.splitMapJoin(exp, onMatch: (Match m) {
         final String marker = m.group(1)!; final String content = m.group(2)!;
         TextStyle newStyle = baseStyle;
@@ -1136,7 +1146,22 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildInputArea(bool isDark, Color primary) {
     return Column(
       children: [
-        // ✅ REPLY / EDIT PREVIEW BAR
+        // ✅ FORMATTING TOOLBAR
+        if (_showFormatting && !_isRecording)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            color: isDark ? Colors.grey[850] : Colors.grey[100],
+            child: Row(
+              children: [
+                _buildFormatBtn(Icons.format_bold, "*", isDark),
+                const SizedBox(width: 8),
+                _buildFormatBtn(Icons.format_italic, "_", isDark),
+                const SizedBox(width: 8),
+                _buildFormatBtn(Icons.format_underlined, "~", isDark),
+              ],
+            ),
+          ),
+
         if (_replyingTo != null || _editingMessage != null)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1166,7 +1191,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-        // STANDARD INPUT
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -1182,7 +1206,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: _isRecording 
                       ? Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Icon(Icons.mic, color: Colors.red, size: 20), Text("Recording... ${_recordDuration ~/ 60}:${(_recordDuration % 60).toString().padLeft(2, '0')}", style: const TextStyle(fontWeight: FontWeight.bold)), TextButton(onPressed: _cancelRecording, child: const Text("Cancel", style: TextStyle(color: Colors.red)))])
                       : TextField(
-                          controller: _textController, focusNode: _focusNode, // ✅ Attach Focus Node
+                          controller: _textController, focusNode: _focusNode,
                           maxLines: 4, minLines: 1,
                           onChanged: (val) {
                             setState((){});
@@ -1214,6 +1238,17 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFormatBtn(IconData icon, String char, bool isDark) {
+    return GestureDetector(
+      onTap: () => _applyFormat(char),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(color: isDark ? Colors.grey[700] : Colors.grey[300], borderRadius: BorderRadius.circular(4)),
+        child: Icon(icon, size: 18, color: isDark ? Colors.white : Colors.black87),
+      ),
     );
   }
 }

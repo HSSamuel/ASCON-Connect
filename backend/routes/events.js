@@ -8,7 +8,10 @@ const verifyAdmin = require("./verifyAdmin");
 // ✅ NEW: Image Upload Dependencies
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const cloudinary = require("../config/cloudinary");
+
+// ❌ OLD (CAUSED ERROR): const cloudinary = require("../config/cloudinary");
+// ✅ FIXED: Extract the actual cloudinary object attached to the export
+const cloudinary = require("../config/cloudinary").cloudinary;
 
 // ✅ NEW: Configure Cloudinary Storage
 const storage = new CloudinaryStorage({

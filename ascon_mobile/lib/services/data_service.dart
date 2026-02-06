@@ -608,4 +608,46 @@ class DataService {
       return [];
     }
   }
+
+  // ==========================================
+  // 🗳️ POLLS
+  // ==========================================
+  Future<List<dynamic>> fetchPolls() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('${AppConfig.baseUrl}/api/polls'), headers: headers);
+      final data = _handleResponse(response);
+      return data['data'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<bool> votePoll(String pollId, String optionId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse('${AppConfig.baseUrl}/api/polls/$pollId/vote'),
+        headers: headers,
+        body: jsonEncode({'optionId': optionId})
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ==========================================
+  // 🎂 CELEBRATIONS
+  // ==========================================
+  Future<List<dynamic>> fetchCelebrants() async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('${AppConfig.baseUrl}/api/directory/celebrations'), headers: headers);
+      final data = _handleResponse(response);
+      return data['data'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
 }

@@ -35,6 +35,11 @@ const userProfileSchema = new mongoose.Schema(
     city: { type: String, default: "" },
     state: { type: String, default: "" },
     country: { type: String, default: "" },
+
+    // ✅ NEW: Feature Flags & Celebration Data
+    dateOfBirth: { type: Date }, // For "Celebration" Quick Win
+    isOpenToMentorship: { type: Boolean, default: false },
+    isLocationVisible: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

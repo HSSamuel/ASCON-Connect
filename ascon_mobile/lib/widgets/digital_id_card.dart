@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // ✅ PERFORMANCE UPGRADE
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
 
 class DigitalIDCard extends StatelessWidget {
   final String userName;
   final String programme;
   final String year;
-  final String alumniID; // ✅ Shows the official ID
+  final String alumniID; 
   final String imageUrl;
 
   const DigitalIDCard({
@@ -19,18 +20,64 @@ class DigitalIDCard extends StatelessWidget {
     required this.imageUrl,
   });
 
+  // ✅ ROBUST IMAGE BUILDER
+  Widget _buildAvatarImage(String url, double size) {
+    // 1. Filter Garbage URLs
+    if (url.isEmpty || 
+        url.contains('profile/picture/1') || 
+        url.contains('googleusercontent.com/profile/picture')) {
+      return Icon(Icons.person, color: Colors.grey, size: size * 0.5);
+    }
+
+    // 2. Handle Base64
+    if (url.startsWith('data:')) {
+      try {
+        return Image.memory(
+          base64Decode(url.split(',').last),
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          errorBuilder: (c, e, s) => Icon(Icons.person, color: Colors.grey, size: size * 0.5),
+        );
+      } catch (e) {
+        return Icon(Icons.person, color: Colors.grey, size: size * 0.5);
+      }
+    }
+
+    // 3. Web: Use Image.network (Bypasses CORS strictness of CachedImage)
+    if (kIsWeb) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: size,
+        height: size,
+        errorBuilder: (context, error, stackTrace) {
+          return Icon(Icons.person, color: Colors.grey, size: size * 0.5);
+        },
+      );
+    }
+
+    // 4. Mobile: Use CachedNetworkImage (Better performance)
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      width: size,
+      height: size,
+      placeholder: (context, url) => Container(color: Colors.grey[200]),
+      errorWidget: (context, url, error) => Icon(Icons.person, color: Colors.grey, size: size * 0.5),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color cardGreen = Color(0xFF1B5E3A);
-
-    // Generate Verification Link for QR
-    // Replaces slashes (/) with dashes (-) for URL safety if needed
-    final String verificationLink = "https://asconadmin.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
+    final String verificationLink = "https://asconalumni.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final double width = constraints.maxWidth;
         final bool isDesktop = width > 600; 
+        final double avatarSize = isDesktop ? 100 : 60;
 
         return Center(
           child: Container(
@@ -49,7 +96,7 @@ class DigitalIDCard extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                // Watermark Background
+                // Watermark
                 Positioned(
                   bottom: -20,
                   right: -20,
@@ -60,13 +107,11 @@ class DigitalIDCard extends StatelessWidget {
                   ),
                 ),
 
-                // MAIN CONTENT
                 Padding(
                   padding: EdgeInsets.all(isDesktop ? 24.0 : 16.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      
                       // --- HEADER ---
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -104,32 +149,24 @@ class DigitalIDCard extends StatelessWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          // LEFT COLUMN: Avatar + QR
+                          // LEFT: Avatar + QR
                           Column(
                             children: [
                               Container(
+                                width: avatarSize,
+                                height: avatarSize,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
+                                  color: Colors.grey[200],
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
-                                child: CircleAvatar(
-                                  radius: isDesktop ? 50 : 30,
-                                  backgroundColor: Colors.grey[200],
-                                  
-                                  // ✅ 1. Try Loading Cached Image (if URL is valid)
-                                  backgroundImage: (imageUrl.isNotEmpty && !imageUrl.startsWith('data:'))
-                                      ? CachedNetworkImageProvider(imageUrl)
-                                      : null,
-
-                                  // ✅ 2. Fallback for Empty or Base64 Images
-                                  child: (imageUrl.isEmpty || imageUrl.startsWith('data:'))
-                                      ? _buildFallbackImage(imageUrl, isDesktop) 
-                                      : null,
+                                child: ClipOval(
+                                  // ✅ USE ROBUST BUILDER HERE
+                                  child: _buildAvatarImage(imageUrl, avatarSize),
                                 ),
                               ),
                               SizedBox(height: isDesktop ? 16 : 10),
                               
-                              // QR Code Container
                               Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
@@ -149,7 +186,7 @@ class DigitalIDCard extends StatelessWidget {
                           
                           SizedBox(width: isDesktop ? 24 : 16),
                           
-                          // RIGHT COLUMN: User Details
+                          // RIGHT: Details
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -194,7 +231,6 @@ class DigitalIDCard extends StatelessWidget {
 
                                 SizedBox(height: isDesktop ? 12 : 8),
 
-                                // ✅ VISIBLE ALUMNI ID TEXT
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
@@ -202,7 +238,7 @@ class DigitalIDCard extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(4)
                                   ),
                                   child: Text(
-                                    "ID: $alumniID", // e.g., "ID: ASC/2025/0002"
+                                    "ID: $alumniID", 
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: isDesktop ? 14 : 11,
@@ -247,26 +283,5 @@ class DigitalIDCard extends StatelessWidget {
         );
       },
     );
-  }
-
-  // ✅ HELPER: Handles Base64 Images & Missing Photos
-  Widget _buildFallbackImage(String imagePath, bool isDesktop) {
-    if (imagePath.startsWith('data:')) {
-      try {
-        return ClipOval(
-          child: Image.memory(
-            base64Decode(imagePath.split(',').last),
-            fit: BoxFit.cover,
-            width: isDesktop ? 100 : 60,
-            height: isDesktop ? 100 : 60,
-          ),
-        );
-      } catch (e) {
-        // Fallback if Base64 is corrupt
-        return Icon(Icons.person, color: Colors.grey, size: isDesktop ? 50 : 30);
-      }
-    }
-    // Default Icon if completely empty
-    return Icon(Icons.person, color: Colors.grey, size: isDesktop ? 50 : 30);
   }
 }

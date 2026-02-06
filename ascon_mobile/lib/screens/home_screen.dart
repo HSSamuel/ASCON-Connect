@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ✅ Required for SystemNavigator
+import 'package:flutter/services.dart'; 
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +16,12 @@ import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
 
+// ✅ WIDGET IMPORTS
+import '../widgets/celebration_card.dart';
+import '../widgets/active_poll_card.dart'; // Feature 2: Polls
+import '../widgets/chapter_card.dart';     // Feature 4: Chapters
 import '../widgets/digital_id_card.dart';
+
 import '../viewmodels/dashboard_view_model.dart';
 import '../services/socket_service.dart'; 
 import '../services/api_client.dart'; 
@@ -34,7 +40,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasUnreadMessages = false; 
   final ApiClient _api = ApiClient();
   
-  // ✅ NEW: Variable for Double-Back-To-Exit
   DateTime? _lastPressedAt;
 
   @override
@@ -118,27 +123,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final primaryColor = Theme.of(context).primaryColor;
     final navBarColor = Theme.of(context).cardColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final currentIndex = widget.navigationShell.currentIndex;
+    
+    // ✅ DETECT KEYBOARD
+    final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
-    final showAppBar = currentIndex == 0;
+    final uiIndex = widget.navigationShell.currentIndex;
+    final showAppBar = uiIndex == 0;
 
-    // ✅ FIXED: ROBUST NAVIGATION LOGIC
     return PopScope(
-      canPop: false, // Always intercept back button
+      canPop: false, 
       onPopInvoked: (didPop) async {
         if (didPop) return;
 
-        // 1. If not on Dashboard, go to Dashboard
-        if (currentIndex != 0) {
+        // ✅ CRITICAL FIX: Access LIVE index
+        final int liveIndex = widget.navigationShell.currentIndex;
+
+        if (liveIndex != 0) {
           _goBranch(0);
           return;
         }
 
-        // 2. If on Dashboard, handle Double Tap to Exit
         final now = DateTime.now();
         if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
           _lastPressedAt = now;
-          // Show Toast (You can use SnackBar if Fluttertoast isn't installed)
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text("Press back again to exit"),
@@ -149,7 +156,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return;
         }
 
-        // 3. Exit App
         SystemNavigator.pop();
       },
       child: Scaffold(
@@ -164,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   alignment: Alignment.topRight,
                   children: [
                     IconButton(
-                      icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor),
+                      icon: Icon(Icons.chat_bubble_outline_rounded, color: isDark ? Colors.white : primaryColor, size: 22),
                       onPressed: () async {
                         setState(() => _hasUnreadMessages = false); 
                         context.push('/chat').then((_) => _checkUnreadStatus());
@@ -174,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       Positioned(
                         right: 8, top: 8,
                         child: Container(
-                          width: 10, height: 10,
+                          width: 8, height: 8,
                           decoration: BoxDecoration(
                             color: Colors.red, 
                             shape: BoxShape.circle,
@@ -196,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       valueListenable: themeNotifier,
                       builder: (context, currentMode, _) {
                         bool isCurrentlyDark = currentMode == ThemeMode.dark || (currentMode == ThemeMode.system && MediaQuery.of(context).platformBrightness == Brightness.dark);
-                        return Icon(isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, color: isDark ? Colors.white : primaryColor, size: 24);
+                        return Icon(isCurrentlyDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, color: isDark ? Colors.white : primaryColor, size: 22);
                       },
                     ),
                     onPressed: () => themeNotifier.value = themeNotifier.value == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
@@ -208,64 +214,87 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
         body: widget.navigationShell,
 
-        floatingActionButton: SizedBox(
-          width: 58, height: 58,
-          child: FloatingActionButton(
-            heroTag: "main_dashboard_fab",
-            onPressed: () => _goBranch(2), 
-            backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
-            elevation: 6.0,
-            shape: const CircleBorder(),
-            child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 28),
-          ),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-        bottomNavigationBar: SizedBox(
-          height: 60,
-          child: BottomAppBar(
-            shape: const CircularNotchedRectangle(),
-            notchMargin: 6.0,
-            color: navBarColor,
-            elevation: 0,
-            clipBehavior: Clip.antiAlias,
-            padding: EdgeInsets.zero,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: currentIndex),
-                _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: currentIndex),
-                const SizedBox(width: 48), 
-                _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: currentIndex),
-                _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: currentIndex),
-              ],
+        // ✅ HIDE FAB WHEN KEYBOARD IS OPEN
+        floatingActionButton: isKeyboardOpen 
+          ? null 
+          : SizedBox(
+              width: 42, height: 42, 
+              child: FloatingActionButton(
+                heroTag: "main_dashboard_fab",
+                onPressed: () => _goBranch(2), 
+                backgroundColor: uiIndex == 2 ? primaryColor : Colors.grey,
+                elevation: 3.0, 
+                shape: const CircleBorder(),
+                child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 20),
+              ),
             ),
-          ),
-        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        
+        // ✅ HIDE BOTTOM NAV BAR WHEN KEYBOARD IS OPEN
+        bottomNavigationBar: isKeyboardOpen 
+          ? null 
+          : SizedBox(
+              height: 56, 
+              child: BottomAppBar(
+                shape: const CircularNotchedRectangle(),
+                notchMargin: 5.0, 
+                color: navBarColor,
+                elevation: 8, 
+                shadowColor: Colors.black.withOpacity(0.1),
+                clipBehavior: Clip.antiAlias,
+                padding: EdgeInsets.zero,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    _buildNavItem(label: "Home", icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: uiIndex),
+                    _buildNavItem(label: "Events", icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: uiIndex),
+                    const SizedBox(width: 42), 
+                    _buildNavItem(label: "Directory", icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: uiIndex),
+                    _buildNavItem(label: "Profile", icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: uiIndex),
+                  ],
+                ),
+              ),
+            ),
       ),
     );
   }
-
-  // ... (Keep the rest of the file: _buildNavItem, DashboardView, etc. exactly the same) ...
   
-  Widget _buildNavItem({required IconData icon, required IconData activeIcon, required int index, required Color color, required int currentIndex}) {
+  Widget _buildNavItem({required String label, required IconData icon, required IconData activeIcon, required int index, required Color color, required int currentIndex}) {
     final isSelected = currentIndex == index;
     return InkWell(
       onTap: () => _goBranch(index),
       borderRadius: BorderRadius.circular(30),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        child: Icon(
-          isSelected ? activeIcon : icon,
-          color: isSelected ? color : Colors.grey[400],
-          size: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? activeIcon : icon,
+              color: isSelected ? color : Colors.grey[400],
+              size: 20, 
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: GoogleFonts.lato(
+                fontSize: 9, 
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? color : Colors.grey[400],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ... (DashboardView class remains unchanged) ...
+// ==========================================
+// 🏠 DASHBOARD VIEW (With Web Image Fix)
+// ==========================================
 class DashboardView extends StatefulWidget {
   final String? userName; 
   const DashboardView({super.key, this.userName});
@@ -297,13 +326,34 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
+  // ✅ CRITICAL FIX: Robust Image Loading for Web & Garbage Filter
   Widget _buildSafeImage(String? imageUrl, {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
+    // 1. Null or Empty Check
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
     }
-    if (imageUrl.contains('googleusercontent.com/profile/picture/0')) {
+
+    // 2. Filter Garbage Google URLs (The Cause of 429 Error)
+    if (imageUrl.contains('profile/picture/1') || imageUrl.contains('googleusercontent.com/profile/picture')) {
        return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
     }
+
+    // 3. WEB FIX: Use Image.network directly (Bypasses CachedNetworkImage CORS issues)
+    if (kIsWeb && imageUrl.startsWith('http')) {
+       return Image.network(
+         imageUrl,
+         fit: fit,
+         errorBuilder: (context, error, stackTrace) {
+           return Container(color: Colors.grey[200], child: Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey[400], size: 40)));
+         },
+         loadingBuilder: (context, child, loadingProgress) {
+           if (loadingProgress == null) return child;
+           return Container(color: Colors.grey[200]);
+         },
+       );
+    }
+
+    // 4. MOBILE: Use CachedNetworkImage
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl, fit: fit,
@@ -311,6 +361,8 @@ class _DashboardViewState extends State<DashboardView> {
         errorWidget: (context, url, error) => Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)),
       );
     }
+
+    // 5. BASE64 fallback
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
@@ -350,20 +402,28 @@ class _DashboardViewState extends State<DashboardView> {
                       imageUrl: _viewModel.profileImage,
                     ),
 
-                    const SizedBox(height: 20),
+                    // ✅ 1. CELEBRATION QUICK WIN
+                    const CelebrationWidget(),
+                    
+                    // ✅ 2. ACTIVE POLL
+                    const ActivePollCard(),
 
-                    // ✅ 1. PROFILE COMPLETION ALERT (Pro Initiative)
+                    // ✅ 3. CHAPTERS / SUB-COMMUNITIES
+                    const ChapterCard(),
+
+                    const SizedBox(height: 10),
+
+                    // 4. PROFILE COMPLETION ALERT
                     if (!_viewModel.isLoading && !_viewModel.isProfileComplete)
                       _buildProfileAlert(context, primaryColor),
 
-                    // 2️⃣ ALUMNI NETWORK
+                    // 5. ALUMNI NETWORK
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text("Alumni Network", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
-                          // Suggest it's dynamic
                           Icon(Icons.shuffle, size: 16, color: Colors.grey[400]), 
                         ],
                       ),
@@ -392,7 +452,6 @@ class _DashboardViewState extends State<DashboardView> {
 
                             return GestureDetector(
                               onTap: () {
-                                // ✅ FIX: Use rootNavigator: true to HIDE Bottom Nav
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
                                 );
@@ -407,6 +466,7 @@ class _DashboardViewState extends State<DashboardView> {
                                       child: CircleAvatar(
                                         radius: 28,
                                         backgroundColor: Colors.grey[200],
+                                        // ✅ SAFE IMAGE
                                         child: ClipOval(child: SizedBox(width: 56, height: 56, child: _buildSafeImage(img, fallbackIcon: Icons.person))),
                                       ),
                                     ),
@@ -422,7 +482,7 @@ class _DashboardViewState extends State<DashboardView> {
                     
                     const SizedBox(height: 25),
 
-                    // 3️⃣ UPCOMING EVENTS
+                    // 6. UPCOMING EVENTS
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -457,7 +517,7 @@ class _DashboardViewState extends State<DashboardView> {
 
                     const SizedBox(height: 25),
 
-                    // 4️⃣ NEWS & UPDATES
+                    // 7. NEWS
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -501,7 +561,7 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // ✅ NEW: Profile Completion Alert Widget
+  // ✅ Profile Alert
   Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final percent = _viewModel.profileCompletionPercent;
@@ -557,7 +617,7 @@ class _DashboardViewState extends State<DashboardView> {
             ),
           ),
           ElevatedButton(
-            onPressed: () => context.go('/profile'), // Navigates to Profile Tab
+            onPressed: () => context.go('/profile'), 
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber[800],
               foregroundColor: Colors.white,
@@ -595,7 +655,7 @@ class _DashboardViewState extends State<DashboardView> {
     if (data['time'] != null && data['time'].toString().isNotEmpty) { time = data['time']; }
 
     return Container(
-      height: 100, 
+      height: 95, 
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
@@ -617,42 +677,42 @@ class _DashboardViewState extends State<DashboardView> {
             child: Row(
               children: [
                 Container(
-                  width: 50, height: 50,
-                  decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.1) : primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-                  child: Icon(Icons.location_on_rounded, color: isDark ? Colors.white : primaryColor, size: 26),
+                  width: 48, height: 48, 
+                  decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.1) : primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(Icons.location_on_rounded, color: isDark ? Colors.white : primaryColor, size: 24),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(location.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: Colors.grey[500])),
                       const SizedBox(height: 2),
-                      Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.w900, color: isDark ? Colors.white : primaryColor, height: 1.1)),
-                      const SizedBox(height: 4),
-                      Row(children: [Icon(Icons.access_time_rounded, size: 14, color: Colors.blueGrey), const SizedBox(width: 4), Text(time, style: GoogleFonts.lato(fontSize: 13, color: Colors.blueGrey, fontWeight: FontWeight.w700))]),
+                      Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.w900, color: isDark ? Colors.white : primaryColor, height: 1.1)), 
+                      const SizedBox(height: 2),
+                      Row(children: [Icon(Icons.access_time_rounded, size: 12, color: Colors.blueGrey), const SizedBox(width: 4), Text(time, style: GoogleFonts.lato(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.w700))]),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, 
                   children: [
                     Container(
-                      margin: const EdgeInsets.only(bottom: 4), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                      child: Text(type, style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w800, color: primaryColor, letterSpacing: 0.5)),
+                      margin: const EdgeInsets.only(bottom: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                      child: Text(type, style: GoogleFonts.lato(fontSize: 8, fontWeight: FontWeight.w800, color: primaryColor, letterSpacing: 0.5)),
                     ),
                     Container(
-                      width: 52,
+                      width: 48, 
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))]),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: Column(
                           mainAxisSize: MainAxisSize.min, 
                           children: [
-                            Container(height: 22, width: double.infinity, alignment: Alignment.center, color: primaryColor, child: Text(month, style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.0))),
-                            Container(height: 28, width: double.infinity, alignment: Alignment.center, color: isDark ? const Color(0xFF2C2C2C) : Colors.white, child: Text(day, style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87, height: 1.0))),
+                            Container(height: 18, width: double.infinity, alignment: Alignment.center, color: primaryColor, child: Text(month, style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1.0))),
+                            Container(height: 26, width: double.infinity, alignment: Alignment.center, color: isDark ? const Color(0xFF2C2C2C) : Colors.white, child: Text(day, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87, height: 1.0))),
                           ],
                         ),
                       ),
@@ -675,7 +735,8 @@ class _DashboardViewState extends State<DashboardView> {
     final cardColor = Theme.of(context).cardColor; 
 
     return Container(
-      height: 160, width: double.infinity,
+      height: 135, 
+      width: double.infinity,
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: cardColor, boxShadow: [if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10, offset: const Offset(0, 4))]),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -695,22 +756,22 @@ class _DashboardViewState extends State<DashboardView> {
                 ),
               ),
               Positioned(
-                top: 0, bottom: 0, left: 20, width: MediaQuery.of(context).size.width * 0.65,
+                top: 0, bottom: 0, left: 16, width: MediaQuery.of(context).size.width * 0.70,
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                      child: Text("PROGRAMME", style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.w800, color: primaryColor, letterSpacing: 0.5)),
+                      child: Text("PROGRAMME", style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w800, color: primaryColor, letterSpacing: 0.5)),
                     ),
-                    Text(title, maxLines: 3, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1, letterSpacing: -0.5)),
-                    const SizedBox(height: 12),
+                    Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(color: isDark ? Colors.white : Colors.black, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1, letterSpacing: -0.5)),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
-                        Text("Read Now", style: GoogleFonts.lato(fontSize: 13, fontWeight: FontWeight.bold, color: const Color(0xFFD4AF37))),
-                        const SizedBox(width: 6),
-                        Icon(Icons.arrow_forward_rounded, size: 16, color: const Color(0xFFD4AF37)),
+                        Text("Read Now", style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFFD4AF37))),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_rounded, size: 14, color: const Color(0xFFD4AF37)),
                       ],
                     )
                   ],

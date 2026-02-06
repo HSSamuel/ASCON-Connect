@@ -424,4 +424,35 @@ router.get("/verify/:id", async (req, res) => {
   }
 });
 
+// GET Birthday & Anniversary Celebrants
+router.get("/celebrations", verifyToken, async (req, res) => {
+  try {
+    const today = new Date();
+    const day = today.getDate();
+    const month = today.getMonth() + 1; // MongoDB months are 1-based in aggregation
+
+    const celebrants = await UserProfile.aggregate([
+      {
+        $project: {
+          fullName: 1,
+          profilePicture: 1,
+          jobTitle: 1,
+          dobDay: { $dayOfMonth: "$dateOfBirth" },
+          dobMonth: { $month: "$dateOfBirth" }
+        }
+      },
+      {
+        $match: {
+          dobDay: day,
+          dobMonth: month
+        }
+      }
+    ]);
+
+    res.json({ success: true, data: celebrants });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

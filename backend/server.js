@@ -85,7 +85,7 @@ const defaultOrigins =
     : [
         "http://localhost:3000",
         "http://localhost:5000",
-        "https://asconadmin.netlify.app",
+        "https://asconalumni.netlify.app",
       ];
 
 app.use(
@@ -135,6 +135,7 @@ app.use("/api/chat", require("./routes/chat"));
 app.use("/api/documents", require("./routes/documents"));
 app.use("/api/mentorship", require("./routes/mentorship"));
 app.use("/api/updates", require("./routes/updates"));
+app.use("/api/polls", require("./routes/polls"));
 
 app.use(errorHandler);
 
