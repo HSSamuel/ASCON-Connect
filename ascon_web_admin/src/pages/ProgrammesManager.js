@@ -5,9 +5,6 @@ import ConfirmModal from "../ConfirmModal";
 import Toast from "../Toast";
 import { usePaginatedFetch } from "../hooks/usePaginatedFetch";
 
-// Note: usePaginatedFetch might still use raw axios if not refactored.
-// For now, let's focus on the mutations (POST/PUT/DELETE) which are handled here.
-
 function ProgrammesManager({ canEdit }) {
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
@@ -15,6 +12,9 @@ function ProgrammesManager({ canEdit }) {
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
+
+  // ✅ NEW: File State for uploads
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const [progForm, setProgForm] = useState({
     title: "",
@@ -25,11 +25,9 @@ function ProgrammesManager({ canEdit }) {
     image: "",
   });
 
-  // Since usePaginatedFetch is a custom hook, we pass the *endpoint* only if we updated the hook.
-  // Assuming the hook still expects a full URL or we haven't touched it yet,
-  // we might keep the full URL string just for the fetch hook for now to avoid breaking it.
   const BASE_URL =
     process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+
   const programmes = usePaginatedFetch(
     `${BASE_URL}/api/admin/programmes`,
     localStorage.getItem("auth_token"),
@@ -40,6 +38,7 @@ function ProgrammesManager({ canEdit }) {
 
   const resetForm = () => {
     setEditingId(null);
+    setSelectedFile(null); // ✅ Clear file on reset
     setProgForm({
       title: "",
       description: "",
@@ -51,23 +50,35 @@ function ProgrammesManager({ canEdit }) {
     setShowForm(false);
   };
 
-  const sanitizePayload = (data) => {
-    const { _id, id, createdAt, updatedAt, __v, code, ...cleanData } = data;
-    return cleanData;
-  };
-
   const handleProgrammeSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      const cleanData = sanitizePayload(progForm);
+      // ✅ UPDATED: Use FormData for File Uploads
+      const formData = new FormData();
+      formData.append("title", progForm.title);
+      formData.append("description", progForm.description);
+      formData.append("location", progForm.location);
+      formData.append("duration", progForm.duration);
+      formData.append("fee", progForm.fee);
+
+      // Handle Image Logic
+      if (selectedFile) {
+        formData.append("image", selectedFile);
+      } else {
+        // If no new file, send the existing image string (if any)
+        formData.append("image", progForm.image);
+      }
+
+      // Important: Allow axios to set the boundary automatically
+      const config = { headers: { "Content-Type": "multipart/form-data" } };
 
       if (editingId) {
-        await api.put(`/api/admin/programmes/${editingId}`, cleanData);
+        await api.put(`/api/admin/programmes/${editingId}`, formData, config);
         showToast("Programme updated");
       } else {
-        await api.post("/api/admin/programmes", cleanData);
+        await api.post("/api/admin/programmes", formData, config);
         showToast("Programme created");
       }
       resetForm();
@@ -125,8 +136,12 @@ function ProgrammesManager({ canEdit }) {
         showForm={showForm}
         setShowForm={setShowForm}
         isSubmitting={isSubmitting}
+        // ✅ NEW: Pass file handler
+        onFileSelect={(file) => setSelectedFile(file)}
+        selectedFile={selectedFile}
         startEditProgramme={(prog) => {
           setEditingId(prog._id);
+          setSelectedFile(null); // Reset file selection when starting edit
           setProgForm({
             title: prog.title || "",
             description: prog.description || "",

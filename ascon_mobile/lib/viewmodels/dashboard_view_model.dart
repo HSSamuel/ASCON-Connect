@@ -18,6 +18,9 @@ class DashboardViewModel extends ChangeNotifier {
   String alumniID = "PENDING";
   String firstName = "Alumni"; // For personalized greeting
   
+  // ✅ NEW: Error State for UI Feedback
+  String? errorMessage;
+
   // ✅ NEW: Profile Completion Logic
   double profileCompletionPercent = 0.0;
   bool isProfileComplete = false;
@@ -27,6 +30,7 @@ class DashboardViewModel extends ChangeNotifier {
   /// Loads all necessary data for the dashboard
   Future<void> loadData() async {
     isLoading = true;
+    errorMessage = null; // ✅ Reset error state
     notifyListeners(); 
 
     try {
@@ -102,6 +106,8 @@ class DashboardViewModel extends ChangeNotifier {
 
     } catch (e) {
       debugPrint("⚠️ Error loading dashboard data: $e");
+      // ✅ NEW: Store readable error message for the UI
+      errorMessage = "Could not load data. Please check your connection.";
     } finally {
       isLoading = false;
       notifyListeners(); 

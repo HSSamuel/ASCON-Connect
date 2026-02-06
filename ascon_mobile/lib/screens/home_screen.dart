@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // ✅ Required for SystemNavigator
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,7 +21,6 @@ import '../services/socket_service.dart';
 import '../services/api_client.dart'; 
 import '../services/notification_service.dart';
 
-// ✅ RENAMED & REFACTORED: Now acts as the Shell for GoRouter
 class HomeScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   
@@ -33,6 +33,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasUnreadMessages = false; 
   final ApiClient _api = ApiClient();
+  
+  // ✅ NEW: Variable for Double-Back-To-Exit
+  DateTime? _lastPressedAt;
 
   @override
   void initState() {
@@ -40,8 +43,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _refreshUnreadState();
 
-    // ✅ NEW: "Polite" Permission Request
-    // Wait 3 seconds after dashboard loads, then ask for permission.
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         NotificationService().requestPermission();
@@ -86,28 +87,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final socket = SocketService().socket;
     if (socket == null) return;
     
-    // Clear existing listeners to prevent duplicates
     try {
       socket.off('new_message');
-      socket.off('messages_read'); // ✅ Remove old listener to avoid stacking
+      socket.off('messages_read'); 
       socket.off('connect');
     } catch (_) {}
 
-    // 1. Show Red Dot on New Message
     socket.on('new_message', (data) {
       if (mounted) setState(() => _hasUnreadMessages = true);
     });
 
-    // 2. ✅ Hide Red Dot (or Re-check) when read elsewhere
-    // This event is emitted by your backend's "PUT /read/:id" route
     socket.on('messages_read', (data) {
-      debugPrint("👀 Messages marked as read elsewhere. Refreshing badge...");
-      _checkUnreadStatus(); 
+      if (mounted) _checkUnreadStatus(); 
     });
 
     socket.on('connect', (_) {
-      debugPrint("📡 Socket Reconnected: Checking Unread Status...");
-      _checkUnreadStatus();
+      if (mounted) _checkUnreadStatus();
     });
   }
 
@@ -127,14 +122,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final showAppBar = currentIndex == 0;
 
-    // ✅ NEW: CENTRAL ROUTE NAVIGATION FIX
-    // Handled at the Shell level so it works perfectly for ALL tabs.
+    // ✅ FIXED: ROBUST NAVIGATION LOGIC
     return PopScope(
-      canPop: currentIndex == 0, // Only allow app exit if we are already on Dashboard
-      onPopInvoked: (didPop) {
+      canPop: false, // Always intercept back button
+      onPopInvoked: (didPop) async {
         if (didPop) return;
-        // If back is pressed on any other tab, go to Dashboard (Index 0)
-        _goBranch(0); 
+
+        // 1. If not on Dashboard, go to Dashboard
+        if (currentIndex != 0) {
+          _goBranch(0);
+          return;
+        }
+
+        // 2. If on Dashboard, handle Double Tap to Exit
+        final now = DateTime.now();
+        if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
+          _lastPressedAt = now;
+          // Show Toast (You can use SnackBar if Fluttertoast isn't installed)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Press back again to exit"),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        // 3. Exit App
+        SystemNavigator.pop();
       },
       child: Scaffold(
         appBar: showAppBar 
@@ -195,9 +211,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         floatingActionButton: SizedBox(
           width: 58, height: 58,
           child: FloatingActionButton(
-            // ✅ FIX: Unique Hero Tag to prevent conflicts with other FABs
             heroTag: "main_dashboard_fab",
-            onPressed: () => _goBranch(2), // Updates Tab
+            onPressed: () => _goBranch(2), 
             backgroundColor: currentIndex == 2 ? primaryColor : Colors.grey,
             elevation: 6.0,
             shape: const CircleBorder(),
@@ -220,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: <Widget>[
                 _buildNavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: currentIndex),
                 _buildNavItem(icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: currentIndex),
-                const SizedBox(width: 48), // Gap for FAB
+                const SizedBox(width: 48), 
                 _buildNavItem(icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: currentIndex),
                 _buildNavItem(icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: currentIndex),
               ],
@@ -231,6 +246,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // ... (Keep the rest of the file: _buildNavItem, DashboardView, etc. exactly the same) ...
+  
   Widget _buildNavItem({required IconData icon, required IconData activeIcon, required int index, required Color color, required int currentIndex}) {
     final isSelected = currentIndex == index;
     return InkWell(
@@ -248,11 +265,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// ---------------------------------------------------------
-// DASHBOARD VIEW (Formerly Private)
-// ---------------------------------------------------------
+// ... (DashboardView class remains unchanged) ...
 class DashboardView extends StatefulWidget {
-  final String? userName; // Optional now, fetches locally if null
+  final String? userName; 
   const DashboardView({super.key, this.userName});
 
   @override

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ IMPORT GO_ROUTER
+import 'package:go_router/go_router.dart'; 
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
@@ -22,7 +22,6 @@ class AboutScreen extends StatelessWidget {
     final primaryColor = Theme.of(context).primaryColor;
     final dividerColor = Theme.of(context).dividerColor;
 
-    // ✅ WRAPPED WITH POPSCOPE
     return PopScope(
       canPop: false, 
       onPopInvoked: (didPop) {
@@ -98,11 +97,114 @@ class AboutScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // --- 2. CENTERED CONTENT CARDS ---
+              // --- 2. LEADERSHIP & CARDS ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   children: [
+                    
+                    // ✅ DIRECTOR GENERAL CARD
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          if (!isDark)
+                            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 4)),
+                        ],
+                        border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.3), width: 1), 
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 80, height: 80,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+                                  image: const DecorationImage(
+                                    image: AssetImage('assets/ascondg.jpg'),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // ✅ UPDATED: Styled Name with "Ph.D" in Black/Thin
+                                    Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: "Mrs. Funke F. Adepoju ",
+                                            style: GoogleFonts.lato(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: primaryColor,
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: "Ph.D",
+                                            style: GoogleFonts.lato(
+                                              fontSize: 16, 
+                                              fontWeight: FontWeight.w500, // Thin
+                                              color: isDark ? Colors.white70 : Colors.black, // Black (Adaptive)
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Director-General",
+                                      style: GoogleFonts.lato(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFFD4AF37), // Gold
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "Leading ASCON's mission to shape the future of public service in Nigeria.",
+                                      style: GoogleFonts.lato(
+                                        fontSize: 12,
+                                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                        fontStyle: FontStyle.italic
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              "\"Our mission is clear: we are building a more effective, responsive, and forward-thinking public sector that meets the evolving needs of our nation.\"",
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.lato(
+                                fontSize: 13,
+                                height: 1.4,
+                                color: isDark ? Colors.grey[300] : Colors.grey[800],
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     // Vision Card
                     _buildInfoCard(
                       context,
@@ -210,7 +312,7 @@ class AboutScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                     
                     Text(
-                      "ASCON Alumni App v1.1.0",
+                      "ASCON Alumni App v2.0.0",
                       style: GoogleFonts.lato(color: Colors.grey[400], fontSize: 12),
                     ),
                     const SizedBox(height: 40),

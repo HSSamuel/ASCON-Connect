@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:convert';
-import 'dart:async'; // ✅ Imported for StreamSubscription
+import 'dart:async'; 
 import 'package:intl/intl.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
 import 'chat_screen.dart'; 
-// ✅ Import DataService for API calls
 import '../services/data_service.dart';
-// ✅ Import SocketService for Real-Time Presence
 import '../services/socket_service.dart';
-// ✅ Import PresenceFormatter for consistent times
 import '../utils/presence_formatter.dart'; 
 
 class AlumniDetailScreen extends StatefulWidget {
@@ -26,59 +23,46 @@ class AlumniDetailScreen extends StatefulWidget {
 class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   final DataService _dataService = DataService();
   
-  // ✅ Mutable state to hold the alumni data
   late Map<String, dynamic> _currentAlumniData;
   
-  // 🔒 SAFETY LOCK: Defaults to TRUE. Button hidden until FALSE.
   bool _isLoadingFullProfile = true; 
-  bool _profileExists = true; // Assumed true until proven false
+  bool _profileExists = true; 
 
-  // ✅ State for Mentorship Logic
   String _mentorshipStatus = "Loading"; 
   String? _requestId; 
   bool _isLoadingStatus = false;
 
-  // ✅ State for Real-Time Presence
   late bool _isOnline;
   String? _lastSeen;
   
-  // ✅ STREAM SUBSCRIPTION
   StreamSubscription? _statusSubscription;
 
   @override
   void initState() {
     super.initState();
-    
-    // ✅ 1. Initialize with passed data (lightweight) so UI loads instantly
     _currentAlumniData = Map<String, dynamic>.from(widget.alumniData);
 
-    // Initialize Status from current data
     _isOnline = _currentAlumniData['isOnline'] == true;
     _lastSeen = _currentAlumniData['lastSeen'];
 
-    // ✅ 2. Fetch full details AND verify existence
     _fetchFullDetails();
 
-    // Only fetch mentorship status if they are actually a mentor
     if (_currentAlumniData['isOpenToMentorship'] == true) {
       _checkStatus();
     } else {
       _mentorshipStatus = "None"; 
     }
 
-    // ✅ Start Listening for Real-Time Updates via Stream
     _setupSocketListeners();
   }
 
   @override
   void dispose() {
-    _statusSubscription?.cancel(); // ✅ Cancel Stream Listener
+    _statusSubscription?.cancel(); 
     super.dispose();
   }
 
-  // ✅ CRITICAL FIX: Verify User Exists & Merge Data
   Future<void> _fetchFullDetails() async {
-    // 💡 Priority: Use 'userId' (Auth ID) if present, else fallback to '_id'
     final String lookupId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     
     final fullData = await _dataService.fetchAlumniById(lookupId);
@@ -86,10 +70,9 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     if (!mounted) return;
 
     if (fullData == null) {
-       // ⛔ CASE: User Deleted/404
        setState(() {
          _isLoadingFullProfile = false;
-         _profileExists = false; // Locks UI
+         _profileExists = false; 
        });
        
        await showDialog(
@@ -102,7 +85,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
              TextButton(
                onPressed: () {
                  Navigator.pop(ctx); 
-                 Navigator.pop(context); // Force exit
+                 Navigator.pop(context); 
                },
                child: const Text("OK"),
              )
@@ -112,7 +95,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
        return;
     }
 
-    // ✅ Success: Unlock UI
     setState(() {
       _currentAlumniData.addAll(fullData);
       _isLoadingFullProfile = false;
@@ -120,18 +102,14 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     });
   }
 
-  // ✅ REAL-TIME PRESENCE LOGIC
   void _setupSocketListeners() {
     final socket = SocketService().socket;
     if (socket == null) return;
     
-    // ✅ FIX: Use correct ID for socket check (Auth ID)
     final targetUserId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
 
-    // 1. Initial Check
     SocketService().checkUserStatus(targetUserId);
 
-    // 2. Listen to the Stream
     _statusSubscription = SocketService().userStatusStream.listen((data) {
       if (!mounted) return;
       if (data['userId'] == targetUserId) {
@@ -143,11 +121,9 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     });
   }
 
-  // ✅ 1. Check current relationship status from Backend
   Future<void> _checkStatus() async {
     if (_mentorshipStatus == "Loading") setState(() => _isLoadingStatus = true);
     
-    // ✅ FIX: Use correct ID (Auth ID)
     final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     
     final result = await _dataService.getMentorshipStatusFull(targetId);
@@ -160,31 +136,24 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
-  // ✅ 2. Handle Pull-to-Refresh
   Future<void> _onRefresh() async {
     setState(() => _isLoadingFullProfile = true); 
     
-    // 1. Fetch latest profile data
     await _fetchFullDetails();
 
-    // 2. Refresh Mentorship Status
     if (_currentAlumniData['isOpenToMentorship'] == true) {
       await _checkStatus();
     }
 
-    // 3. Force Refresh Presence
     final targetUserId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     SocketService().checkUserStatus(targetUserId);
   }
 
-  // ✅ 3. Handle sending the request with a pitch
   Future<void> _handleRequest() async {
-    // Double check existence just in case
     if (!_profileExists) return;
 
     TextEditingController pitchCtrl = TextEditingController();
     
-    // Show Pitch Dialog
     final bool? send = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -215,11 +184,9 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
       ),
     );
 
-    // If user clicked Send
     if (send == true) {
       setState(() => _isLoadingStatus = true);
       
-      // ✅ CRITICAL FIX: Send the Auth ID ('userId'), not Profile ID ('_id')
       final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
       
       final response = await _dataService.sendMentorshipRequest(targetId, pitchCtrl.text);
@@ -227,7 +194,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
       final String message = response['message'] ?? "Failed to send request.";
 
       if (mounted) {
-        // Refresh status immediately to get the new Request ID
         await _checkStatus();
         
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -250,7 +216,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
-  // ✅ UPDATED: Use PresenceFormatter logic
   String _formatLastSeen(String? dateString) {
     if (dateString == null) return "Offline";
     final formatted = PresenceFormatter.format(dateString);
@@ -269,14 +234,14 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     final textColor = isDark ? Colors.white : Colors.black87;
     final subTextColor = isDark ? Colors.grey[400] : Colors.grey[700];
 
-    // ✅ Use _currentAlumniData for all display logic
     final String fullName = _currentAlumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = _currentAlumniData['jobTitle'] ?? '';
     final String org = _currentAlumniData['organization'] ?? '';
+    // ✅ NEW: Extract Industry
+    final String industry = _currentAlumniData['industry'] ?? '';
     
     String rawBio = _currentAlumniData['bio'] ?? '';
     
-    // ✅ ADD: Show a loading message if bio is empty but we are still fetching
     final String bio = rawBio.trim().isNotEmpty 
         ? rawBio 
         : (_isLoadingFullProfile ? 'Loading biography...' : 'No biography provided.');
@@ -284,7 +249,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     final bool showPhone = _currentAlumniData['isPhoneVisible'] == true;
     final bool isMentor = _currentAlumniData['isOpenToMentorship'] == true;
     
-    // ✅ Use Live State for Status
     final String statusText = _isOnline ? "Active Now" : _formatLastSeen(_lastSeen);
 
     final String phone = _currentAlumniData['phoneNumber'] ?? '';
@@ -295,17 +259,13 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     
     final String zoomHeroTag = "zoom_profile_${_currentAlumniData['_id'] ?? DateTime.now().millisecondsSinceEpoch}";
 
-    // ✅ ADD: Show Loading... if programme is empty and we are still fetching
     final String programme = (_currentAlumniData['programmeTitle'] != null && _currentAlumniData['programmeTitle'].toString().isNotEmpty) 
         ? _currentAlumniData['programmeTitle'] 
         : (_isLoadingFullProfile ? 'Loading...' : 'Not Specified');
 
-    // ✅ 4. Helper to Build the Smart Button
     Widget buildMentorshipButton() {
-      // 1. If user not eligible or doesn't exist, hide button
       if (!isMentor || !_profileExists) return const SizedBox.shrink();
 
-      // 2. If loading, show spinner (prevents premature clicks)
       if (_isLoadingFullProfile || _isLoadingStatus) {
         return const Center(
           child: Padding(
@@ -320,13 +280,11 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
       VoidCallback? action = _handleRequest;
       IconData icon = Icons.handshake_rounded;
 
-      // Logic based on API Status
       if (_mentorshipStatus == "Pending") {
-        label = "Withdraw Request"; // ✅ Cancel Option
+        label = "Withdraw Request"; 
         btnColor = Colors.orange[800]!;
         icon = Icons.cancel_outlined;
         
-        // ✅ Withdraw Logic
         action = () async {
            final confirm = await showDialog(
              context: context, 
@@ -344,7 +302,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
              setState(() => _isLoadingStatus = true);
              final success = await _dataService.deleteMentorshipInteraction(_requestId!, 'cancel');
              if (mounted) {
-               await _checkStatus(); // Refresh to "None"
+               await _checkStatus(); 
                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                  content: Text(success ? "Request Withdrawn" : "Failed to withdraw"),
                  backgroundColor: success ? Colors.grey : Colors.red,
@@ -357,7 +315,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
         btnColor = Colors.green[700]!;
         icon = Icons.chat;
         action = () {
-           // ✅ FIX: Use Correct ID for Chat as well
            final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
            Navigator.of(context, rootNavigator: true).push(
              MaterialPageRoute(builder: (_) => ChatScreen(
@@ -395,21 +352,18 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
     return Scaffold(
       backgroundColor: scaffoldBg,
-      // ❌ Removed standard AppBar
       body: Stack(
         children: [
-          // 1️⃣ Main Scrollable Content Wrapped in RefreshIndicator
           RefreshIndicator(
             onRefresh: _onRefresh,
-            color: primaryColor, // Matches app theme
+            color: primaryColor,
             backgroundColor: isDark ? Colors.grey[800] : Colors.white,
             child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(), // Ensures swipe works even if content is short
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 children: [
-                  // --- 1. HEADER SECTION ---
                   SizedBox(
-                    height: 180, // Increased height for immersive look
+                    height: 180, 
                     child: Stack(
                       alignment: Alignment.topCenter,
                       children: [
@@ -426,11 +380,10 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                           ),
                         ),
                         Positioned(
-                          top: 90, // Adjusted position
+                          top: 90, 
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () {
-                              // ✅ FIX: Simplified the image string check to accept ALL valid web URLs & Base64
                               if (imageString.isNotEmpty && (imageString.startsWith('http') || imageString.length > 100)) {
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute(
@@ -463,7 +416,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                   ),
                   const SizedBox(height: 10), 
 
-                  // --- 2. IDENTITY SECTION ---
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
@@ -479,6 +431,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         ),
                         const SizedBox(height: 4),
                         
+                        // Header Work Info (Brief)
                         if (job.isNotEmpty || org.isNotEmpty)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -490,12 +443,13 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                   "$job${(job.isNotEmpty && org.isNotEmpty) ? ' at ' : ''}$org",
                                   style: GoogleFonts.lato(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                                   textAlign: TextAlign.center,
+                                  maxLines: 1, // Truncate here to keep header clean
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
                           ),
                         
-                        // Presence Status
                         Padding(
                           padding: const EdgeInsets.only(top: 8, bottom: 4),
                           child: Row(
@@ -561,27 +515,23 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                     ),
                   ),
 
-                  // ✅ SMART MENTORSHIP BUTTON (Replaces static one)
                   buildMentorshipButton(),
 
                   const SizedBox(height: 10),
 
-                  // --- 3. CONTACT ACTION BUTTONS ---
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
-                        // ✅ FIX: Use Correct ID for Chat
                         final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
-                        // ✅ FIX: Use rootNavigator here as well
                         Navigator.of(context, rootNavigator: true).push(
                           MaterialPageRoute(
                             builder: (_) => ChatScreen(
                               receiverId: targetId,
                               receiverName: fullName,
                               receiverProfilePic: imageString,
-                              isOnline: _isOnline, // ✅ Pass live status
-                              lastSeen: _lastSeen, // ✅ Pass live last seen
+                              isOnline: _isOnline, 
+                              lastSeen: _lastSeen, 
                             ),
                           ),
                         );
@@ -629,7 +579,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                     style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
                                   ),
                                   const Spacer(),
-                                  // ✅ NEW: Show a mini loader if fetching
                                   if (_isLoadingFullProfile)
                                     SizedBox(
                                       width: 14, height: 14, 
@@ -653,6 +602,43 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         ),
 
                         const SizedBox(height: 16),
+
+                        // ✅ NEW: PROFESSIONAL INFO CARD
+                        if (job.isNotEmpty || org.isNotEmpty || industry.isNotEmpty) 
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                if (!isDark)
+                                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3)),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.business_center_outlined, size: 20, color: primaryColor),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "Professional Profile",
+                                      style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                if (job.isNotEmpty) _buildDetailRow(Icons.badge_outlined, "Role", job, textColor),
+                                if (job.isNotEmpty && org.isNotEmpty) const SizedBox(height: 8),
+                                if (org.isNotEmpty) _buildDetailRow(Icons.apartment_rounded, "Organization", org, textColor),
+                                if ((job.isNotEmpty || org.isNotEmpty) && industry.isNotEmpty) const SizedBox(height: 8),
+                                if (industry.isNotEmpty) _buildDetailRow(Icons.category_outlined, "Industry", industry, textColor),
+                              ],
+                            ),
+                          ),
 
                         // Programme Card
                         Container(
@@ -711,16 +697,15 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
             ),
           ),
           
-          // 2️⃣ Custom Floating Back Button (Top Left)
           Positioned(
-            top: 40, // Standard safe area top padding
+            top: 40, 
             left: 16,
             child: GestureDetector(
               onTap: () => Navigator.pop(context),
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.2), // Semi-transparent for visibility
+                  color: Colors.black.withOpacity(0.2), 
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
@@ -732,8 +717,37 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     );
   }
 
+  // ✅ Helper for the new Professional Card rows
+  Widget _buildDetailRow(IconData icon, String label, String value, Color textColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 16, color: Colors.grey[500]),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.lato(fontSize: 11, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildRobustAvatar(String imageString, bool isDark) {
-    // ✅ FIX: Simplified to allow valid Google Avatar URLs to load successfully
     if (imageString.isEmpty) {
       return _buildPlaceholder(isDark);
     }

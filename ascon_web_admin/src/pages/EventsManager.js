@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react"; // ✅ Import useRef
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import api from "../api";
 import {
   FaTrash,
@@ -24,10 +24,12 @@ function EventsManager({ canEdit }) {
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ NEW: File State
+  const [selectedFile, setSelectedFile] = useState(null);
+
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
 
-  // ✅ Create a Ref for the description textarea
   const descriptionRef = useRef(null);
 
   const [eventForm, setEventForm] = useState({
@@ -60,19 +62,22 @@ function EventsManager({ canEdit }) {
     fetchEvents();
   }, [fetchEvents]);
 
-  // ✅ Auto-Resize Logic inside Input Change
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setEventForm({ ...eventForm, [name]: value });
+    const { name, value, files } = e.target;
 
-    // If typing in Description, auto-adjust height
+    // ✅ UPDATED: Handle File Selection
+    if (name === "image" && files) {
+      setSelectedFile(files[0]);
+    } else {
+      setEventForm({ ...eventForm, [name]: value });
+    }
+
     if (name === "description" && e.target) {
-      e.target.style.height = "auto"; // Reset to calculate shrink
-      e.target.style.height = e.target.scrollHeight + "px"; // Set to scroll height
+      e.target.style.height = "auto";
+      e.target.style.height = e.target.scrollHeight + "px";
     }
   };
 
-  // ✅ Effect to Resize Textarea on Form Open / Data Load
   useEffect(() => {
     if (showForm && descriptionRef.current) {
       descriptionRef.current.style.height = "auto";
@@ -84,6 +89,7 @@ function EventsManager({ canEdit }) {
   const resetForm = () => {
     setEditingId(null);
     setShowForm(false);
+    setSelectedFile(null); // Clear file
     setEventForm({
       title: "",
       description: "",
@@ -95,9 +101,9 @@ function EventsManager({ canEdit }) {
     });
   };
 
-  // ... (Keep handleEdit, handleSubmit, handleDelete, exportToExcel exactly the same) ...
   const handleEdit = (event) => {
     setEditingId(event._id);
+    setSelectedFile(null); // Reset file selection on edit
     setEventForm({
       title: event.title,
       description: event.description,
@@ -118,14 +124,30 @@ function EventsManager({ canEdit }) {
     setIsSubmitting(true);
 
     try {
-      const payload = { ...eventForm };
-      if (!payload.date) payload.date = new Date();
+      // ✅ UPDATED: Use FormData for File Uploads
+      const formData = new FormData();
+      formData.append("title", eventForm.title);
+      formData.append("description", eventForm.description);
+      formData.append("type", eventForm.type);
+      formData.append("date", eventForm.date || new Date().toISOString());
+      formData.append("time", eventForm.time);
+      formData.append("location", eventForm.location);
+
+      if (selectedFile) {
+        formData.append("image", selectedFile);
+      } else {
+        // Retain existing image string if no new file
+        formData.append("image", eventForm.image);
+      }
+
+      // Important: Allow axios to set the Content-Type header with the boundary
+      const config = { headers: { "Content-Type": "multipart/form-data" } };
 
       if (editingId) {
-        await api.put(`/api/admin/events/${editingId}`, payload);
+        await api.put(`/api/admin/events/${editingId}`, formData, config);
         showToast("Event updated successfully");
       } else {
-        await api.post("/api/admin/events", payload);
+        await api.post("/api/admin/events", formData, config);
         showToast("Event created successfully");
       }
       resetForm();
@@ -261,15 +283,46 @@ function EventsManager({ canEdit }) {
                 value={eventForm.location}
                 onChange={handleInputChange}
               />
-              <input
-                type="text"
-                name="image"
-                placeholder="Image URL"
-                value={eventForm.image}
-                onChange={handleInputChange}
-                style={{ gridColumn: "1 / -1" }}
-              />
-              {/* ✅ UPDATED TEXTAREA */}
+
+              {/* ✅ UPDATED: File Input for Image */}
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "5px",
+                }}
+              >
+                <label style={{ fontSize: "0.9em", color: "#666" }}>
+                  Event Banner Image
+                </label>
+                <input
+                  type="file"
+                  name="image"
+                  accept="image/*"
+                  onChange={handleInputChange}
+                  style={{
+                    padding: "8px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                  }}
+                />
+                {/* Show existing image link if editing and no new file selected */}
+                {editingId && !selectedFile && eventForm.image && (
+                  <small style={{ color: "#666" }}>
+                    Current Image:{" "}
+                    <a
+                      href={eventForm.image}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "#1B5E3A" }}
+                    >
+                      View
+                    </a>
+                  </small>
+                )}
+              </div>
+
               <textarea
                 ref={descriptionRef}
                 name="description"
@@ -310,7 +363,6 @@ function EventsManager({ canEdit }) {
         </div>
       )}
 
-      {/* Table Section Remains Same */}
       <div className="table-responsive">
         <table className="admin-table">
           <thead>

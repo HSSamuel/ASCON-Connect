@@ -5,9 +5,26 @@ const { sendBroadcastNotification } = require("../utils/notificationHandler");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 
+// ✅ NEW: Image Upload Dependencies
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../config/cloudinary");
+
+// ✅ NEW: Configure Cloudinary Storage
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "ascon_events",
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
+  },
+});
+
+const parser = multer({ storage: storage });
+
 // ==========================================
 // 🛡️ VALIDATION SCHEMA
 // ==========================================
+// Note: We validate the text fields here. The image is handled by Multer.
 const eventSchema = Joi.object({
   title: Joi.string().min(5).required(),
   description: Joi.string().min(10).required(),
@@ -28,6 +45,7 @@ const eventSchema = Joi.object({
       "Induction",
     )
     .default("News"),
+  // Image validation is optional in Joi since we handle it via req.file or req.body string
   image: Joi.string().optional().allow(""),
 });
 
@@ -58,69 +76,94 @@ router.get("/", async (req, res) => {
 });
 
 // @route   POST /api/events
-// @desc    Create a new Event
-router.post("/", verifyToken, verifyAdmin, async (req, res) => {
-  const { error } = eventSchema.validate(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-
-  try {
-    const event = new Event({
-      title: req.body.title,
-      description: req.body.description,
-      date: req.body.date,
-      time: req.body.time,
-      location: req.body.location,
-      type: req.body.type,
-      image: req.body.image,
-    });
-
-    const savedEvent = await event.save();
+// @desc    Create a new Event (Supports File Upload)
+router.post(
+  "/",
+  verifyToken,
+  verifyAdmin,
+  parser.single("image"),
+  async (req, res) => {
+    // Validate text fields
+    const { error } = eventSchema.validate(req.body);
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
     try {
-      // ✅ UPDATED: Removed "New Event:" prefix
-      await sendBroadcastNotification(
-        savedEvent.title, // Just the Title
-        `${savedEvent.description.substring(0, 50)}...`,
-        { route: "event_detail", id: savedEvent._id.toString() },
-      );
-    } catch (notifyErr) {
-      console.error("Notification failed:", notifyErr);
-    }
-
-    res.status(201).json(savedEvent);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-});
-
-// @route   PUT /api/events/:id
-// @desc    Update an existing Event
-router.put("/:id", verifyToken, verifyAdmin, async (req, res) => {
-  const { error } = eventSchema.validate(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-
-  try {
-    const updatedEvent = await Event.findByIdAndUpdate(
-      req.params.id,
-      {
+      const event = new Event({
         title: req.body.title,
         description: req.body.description,
         date: req.body.date,
         time: req.body.time,
         location: req.body.location,
         type: req.body.type,
-        image: req.body.image,
-      },
-      { new: true },
-    );
+        // ✅ USE UPLOADED FILE IF PRESENT, ELSE FALLBACK TO STRING URL
+        image: req.file ? req.file.path : req.body.image,
+      });
 
-    if (!updatedEvent)
-      return res.status(404).json({ message: "Event not found" });
-    res.json(updatedEvent);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+      const savedEvent = await event.save();
+
+      try {
+        await sendBroadcastNotification(
+          savedEvent.title,
+          `${savedEvent.description.substring(0, 50)}...`,
+          { route: "event_detail", id: savedEvent._id.toString() },
+        );
+      } catch (notifyErr) {
+        console.error("Notification failed:", notifyErr);
+      }
+
+      res.status(201).json(savedEvent);
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  },
+);
+
+// @route   PUT /api/events/:id
+// @desc    Update an existing Event (Supports File Upload)
+router.put(
+  "/:id",
+  verifyToken,
+  verifyAdmin,
+  parser.single("image"),
+  async (req, res) => {
+    const { error } = eventSchema.validate(req.body);
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
+
+    try {
+      // Construct the update object
+      const updateData = {
+        title: req.body.title,
+        description: req.body.description,
+        date: req.body.date,
+        time: req.body.time,
+        location: req.body.location,
+        type: req.body.type,
+      };
+
+      // ✅ Only update image if a new file is uploaded
+      if (req.file) {
+        updateData.image = req.file.path;
+      } else if (req.body.image) {
+        // Allow updating image string manually if needed, or keeping existing
+        updateData.image = req.body.image;
+      }
+
+      const updatedEvent = await Event.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true },
+      );
+
+      if (!updatedEvent)
+        return res.status(404).json({ message: "Event not found" });
+      res.json(updatedEvent);
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+);
 
 // @route   DELETE /api/events/:id
 // @desc    Delete an event

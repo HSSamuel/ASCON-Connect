@@ -82,15 +82,17 @@ const handleConnection = (socket) => {
   // Check Status
   socket.on("check_user_status", async ({ userId }) => {
     if (!userId) return;
-    const isOnline = onlineUsers.has(userId) && onlineUsers.get(userId).size > 0;
+    const isOnline =
+      onlineUsers.has(userId) && onlineUsers.get(userId).size > 0;
     let lastSeen = null;
-    
+
     if (!isOnline) {
       try {
         const user = await UserAuth.findById(userId).select("lastSeen");
         if (user) lastSeen = user.lastSeen;
       } catch (e) {
-        console.error("Status check error", e);
+        // ✅ IMPROVEMENT: Use logger instead of console.error
+        logger.error(`Status check error for user ${userId}: ${e.message}`);
       }
     }
     socket.emit("user_status_result", { userId, isOnline, lastSeen });

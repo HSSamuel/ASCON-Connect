@@ -16,7 +16,22 @@ const Programme = require("../models/Programme");
 const UpdatePost = require("../models/UpdatePost");
 const jwt = require("jsonwebtoken");
 const Joi = require("joi");
-const upload = require("../config/cloudinary");
+
+// ✅ NEW: Enhanced Cloudinary Config for Admin Uploads
+const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+// We access the 'cloudinary' object attached to your config export
+const cloudinary = require("../config/cloudinary").cloudinary;
+
+// Configure Storage for Admin Content (Events/Programmes)
+const adminStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "ascon_content", // Clean separate folder
+    allowed_formats: ["jpg", "png", "jpeg", "webp"], // Added WebP support
+  },
+});
+const adminUpload = multer({ storage: adminStorage });
 
 const {
   sendBroadcastNotification,
@@ -131,114 +146,6 @@ router.get("/stats", verifyAdmin, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ==========================================
-// 🛠️ DEBUG & REPAIR TOOLS (DISABLED FOR PRODUCTION)
-// ==========================================
-/*
-// 1. INSPECT A USER (See exactly what exists in DB)
-router.get("/users/:id/debug", verifyAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const [auth, profile, settings, requestsAsMentor, requestsAsMentee] = await Promise.all([
-      UserAuth.findById(userId),
-      UserProfile.findOne({ userId }),
-      UserSettings.findOne({ userId }),
-      MentorshipRequest.find({ mentor: userId }),
-      MentorshipRequest.find({ mentee: userId }),
-    ]);
-
-    res.json({
-      auth: auth || "MISSING",
-      profile: profile || "MISSING",
-      settings: settings || "MISSING",
-      mentorships: {
-        asMentor: requestsAsMentor.length,
-        asMentee: requestsAsMentee.length,
-        data: [...requestsAsMentor, ...requestsAsMentee]
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// 2. FORCE DELETE USER (Nuclear Option)
-router.delete("/users/:id/force", verifyAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    console.log(`☢️ NUCLEAR DELETE INITIATED FOR: ${userId}`);
-
-    const results = await Promise.all([
-      UserAuth.deleteOne({ _id: userId }),
-      UserProfile.deleteMany({ userId: userId }),
-      UserSettings.deleteMany({ userId: userId }),
-      MentorshipRequest.deleteMany({ $or: [{ mentor: userId }, { mentee: userId }] }),
-      Notification.deleteMany({ userId: userId }),
-      Message.deleteMany({ sender: userId }),
-      EventRegistration.deleteMany({ userId: userId }),
-      ProgrammeInterest.deleteMany({ userId: userId }),
-    ]);
-
-    console.log("☢️ Nuclear Delete Complete");
-
-    res.json({
-      message: "Target Eliminated (Force Delete Complete)",
-      details: {
-        auth: results[0].deletedCount,
-        profile: results[1].deletedCount,
-        settings: results[2].deletedCount,
-        mentorships: results[3].deletedCount,
-        notifications: results[4].deletedCount,
-        messages: results[5].deletedCount,
-        events: results[6].deletedCount,
-        programmes: results[7].deletedCount
-      }
-    });
-  } catch (err) {
-    console.error("Force Delete Error:", err);
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// 3. DATABASE CLEANUP (General Maintenance)
-router.post("/fix-database", verifyAdmin, async (req, res) => {
-  try {
-    console.log("🧹 Starting Database Cleanup...");
-    
-    // Find all valid User IDs
-    const validUsers = await UserAuth.find().distinct("_id");
-    const validUserIds = validUsers.map(id => id.toString());
-
-    // Clean Orphaned Records
-    const [p, s, m, er, pi, n, msg] = await Promise.all([
-      UserProfile.deleteMany({ userId: { $nin: validUserIds } }),
-      UserSettings.deleteMany({ userId: { $nin: validUserIds } }),
-      MentorshipRequest.deleteMany({ $or: [{ mentor: { $nin: validUserIds } }, { mentee: { $nin: validUserIds } }] }),
-      EventRegistration.deleteMany({ userId: { $nin: validUserIds } }),
-      ProgrammeInterest.deleteMany({ userId: { $nin: validUserIds } }),
-      Notification.deleteMany({ userId: { $nin: validUserIds } }),
-      Message.deleteMany({ sender: { $nin: validUserIds } })
-    ]);
-
-    console.log("✅ Database Cleanup Complete");
-
-    res.json({
-      message: "Database Integrity Restored",
-      deleted: {
-        profiles: p.deletedCount,
-        settings: s.deletedCount,
-        mentorships: m.deletedCount,
-        registrations: er.deletedCount + pi.deletedCount,
-        notifications: n.deletedCount,
-        messages: msg.deletedCount
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-*/
 
 // ==========================================
 // 1. USER MANAGEMENT (Aggregated)
@@ -437,7 +344,7 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
 router.post(
   "/events",
   verifyEditor,
-  upload.single("image"),
+  adminUpload.single("image"), // ✅ Updated to adminUpload
   async (req, res) => {
     const { error } = eventSchema.validate(req.body);
     if (error)
@@ -477,21 +384,34 @@ router.post(
   },
 );
 
-router.put("/events/:id", verifyEditor, async (req, res) => {
-  const { error } = eventSchema.validate(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
+router.put(
+  "/events/:id",
+  verifyEditor,
+  adminUpload.single("image"), // ✅ Added middleware here too!
+  async (req, res) => {
+    const { error } = eventSchema.validate(req.body);
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-  try {
-    const updatedEvent = await Event.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true },
-    );
-    res.json({ message: "Event updated!", event: updatedEvent });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    try {
+      const updateData = { ...req.body };
+
+      // ✅ Update image only if a new file is uploaded
+      if (req.file) {
+        updateData.image = req.file.path;
+      }
+
+      const updatedEvent = await Event.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true },
+      );
+      res.json({ message: "Event updated!", event: updatedEvent });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+);
 
 router.delete("/events/:id", verifyEditor, async (req, res) => {
   try {
@@ -539,60 +459,80 @@ router.get("/programmes/:id", async (req, res) => {
   }
 });
 
-router.post("/programmes", verifyEditor, upload.single("image"), async (req, res) => {
-  // Validate text fields
-  const { error } = programmeSchema.validate(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
+router.post(
+  "/programmes",
+  verifyEditor,
+  adminUpload.single("image"), // ✅ Updated middleware
+  async (req, res) => {
+    // Validate text fields
+    const { error } = programmeSchema.validate(req.body);
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-  try {
-    const { title, description, location, duration, fee } = req.body;
-    
-    // Check duplication
-    const exists = await Programme.findOne({ title });
-    if (exists) return res.status(400).json({ message: "Programme already exists." });
+    try {
+      const { title, description, location, duration, fee } = req.body;
 
-    let imageUrl = "";
-    if (req.file) {
-      imageUrl = req.file.path; // Cloudinary URL
+      // Check duplication
+      const exists = await Programme.findOne({ title });
+      if (exists)
+        return res.status(400).json({ message: "Programme already exists." });
+
+      let imageUrl = "";
+      if (req.file) {
+        imageUrl = req.file.path; // Cloudinary URL
+      }
+
+      const newProg = new Programme({
+        title,
+        description,
+        location,
+        duration,
+        fee,
+        image: imageUrl, // Save image URL
+      });
+      await newProg.save();
+
+      await sendBroadcastNotification(
+        title,
+        `${description.substring(0, 60)}...`,
+        { route: "programme_detail", id: newProg._id.toString() },
+      );
+
+      res.status(201).json({ message: "Programme added!", programme: newProg });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
     }
+  },
+);
 
-    const newProg = new Programme({
-      title,
-      description,
-      location,
-      duration,
-      fee,
-      image: imageUrl, // Save image URL
-    });
-    await newProg.save();
+router.put(
+  "/programmes/:id",
+  verifyEditor,
+  adminUpload.single("image"), // ✅ Updated middleware
+  async (req, res) => {
+    const { error } = programmeSchema.validate(req.body);
+    if (error)
+      return res.status(400).json({ message: error.details[0].message });
 
-    await sendBroadcastNotification(
-      title,
-      `${description.substring(0, 60)}...`,
-      { route: "programme_detail", id: newProg._id.toString() }
-    );
+    try {
+      const updateData = { ...req.body };
 
-    res.status(201).json({ message: "Programme added!", programme: newProg });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+      // ✅ Update image only if new file
+      if (req.file) {
+        updateData.image = req.file.path;
+      }
 
-router.put("/programmes/:id", verifyEditor, async (req, res) => {
-  const { error } = programmeSchema.validate(req.body);
-  if (error) return res.status(400).json({ message: error.details[0].message });
-
-  try {
-    const updatedProg = await Programme.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true },
-    );
-    res.json({ message: "Programme updated!", programme: updatedProg });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+      const updatedProg = await Programme.findByIdAndUpdate(
+        req.params.id,
+        updateData,
+        { new: true },
+      );
+      res.json({ message: "Programme updated!", programme: updatedProg });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  },
+);
 
 router.delete("/programmes/:id", verifyEditor, async (req, res) => {
   try {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart'; 
+import 'package:google_fonts/google_fonts.dart'; // ✅ Ensure GoogleFonts is imported
 
 import '../services/auth_service.dart';
 import '../services/data_service.dart'; 
@@ -96,15 +97,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ) ?? false;
 
     if (confirm) {
-      // 1. Use the dedicated logout function to update status instantly
       SocketService().logoutUser();
-
-      // 2. Perform local logout
       await _authService.logout();
       
       if (!mounted) return;
-      
-      // 3. Use GoRouter for Logout
       context.go('/login');
     }
   }
@@ -115,7 +111,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try { return MemoryImage(base64Decode(imagePath)); } catch (e) { return null; }
   }
 
-  // Helper to format Last Seen accurately
   String _formatLastSeen(String? dateString) {
     if (dateString == null) return "Offline";
     final formatted = PresenceFormatter.format(dateString);
@@ -123,25 +118,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return "Last seen $formatted";
   }
 
-  // ✅ IMPROVED: Smart International Phone Formatter
   String _formatPhoneNumber(String? phone) {
     if (phone == null || phone.isEmpty) return 'Add Phone Number';
-    
-    // Check if it's already an international number
     if (phone.startsWith('+')) {
-      // e.g., +2348084737049
       if (phone.startsWith('+234') && phone.length >= 14) {
         return '${phone.substring(0, 4)} ${phone.substring(4, 7)} ${phone.substring(7, 10)} ${phone.substring(10)}';
       }
-      // Fallback spacing for other countries (+1, +44, etc)
       else if (phone.length > 6) {
         int splitIndex = phone.length > 11 ? 4 : 3;
         return '${phone.substring(0, splitIndex)} ${phone.substring(splitIndex)}';
       }
-      return phone; // Return as is if it's too short
+      return phone;
     } 
-    
-    // Legacy local numbers (e.g. 08084737049) will show as is until updated by the user
     return phone; 
   }
 
@@ -157,14 +145,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final String fullName = _userProfile?['fullName'] ?? widget.userName ?? "Alumni";
     final String jobTitle = _userProfile?['jobTitle'] ?? '';
     final String org = _userProfile?['organization'] ?? '';
+    // ✅ NEW: Extract Industry
+    final String industry = _userProfile?['industry'] ?? '';
+
     final String programme = (_userProfile?['programmeTitle']?.toString().isNotEmpty ?? false)
         ? _userProfile!['programmeTitle'] : 'Add Programme';
     final String year = _userProfile?['yearOfAttendance']?.toString() ?? 'N/A';
     final String email = _userProfile?['email'] ?? 'No Email';
     
-    // ✅ Phone number is piped through the new formatter
     final String phone = _formatPhoneNumber(_userProfile?['phoneNumber']);
-    
     final String bio = _userProfile?['bio'] ?? '';
 
     final String statusText = _isOnline ? "Active Now" : _formatLastSeen(_lastSeen);
@@ -318,6 +307,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 20),
                     ],
 
+                    // ✅ NEW: PROFESSIONAL INFO CARD
+                    if (jobTitle.isNotEmpty || org.isNotEmpty || industry.isNotEmpty) 
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            if (!isDark)
+                              BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3)),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.business_center_outlined, size: 20, color: primaryColor),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "Professional Profile",
+                                  style: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.bold, color: primaryColor),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            if (jobTitle.isNotEmpty) _buildDetailRow(Icons.badge_outlined, "Role", jobTitle, textColor!),
+                            if (jobTitle.isNotEmpty && org.isNotEmpty) const SizedBox(height: 8),
+                            if (org.isNotEmpty) _buildDetailRow(Icons.apartment_rounded, "Organization", org, textColor!),
+                            if ((jobTitle.isNotEmpty || org.isNotEmpty) && industry.isNotEmpty) const SizedBox(height: 8),
+                            if (industry.isNotEmpty) _buildDetailRow(Icons.category_outlined, "Industry", industry, textColor!),
+                          ],
+                        ),
+                      ),
+
                     // --- EDIT BUTTON ---
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -436,6 +462,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  // ✅ Helper for the new Professional Card rows
+  Widget _buildDetailRow(IconData icon, String label, String value, Color textColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 16, color: Colors.grey[500]),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.lato(fontSize: 11, color: Colors.grey[500]),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.w600, color: textColor),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

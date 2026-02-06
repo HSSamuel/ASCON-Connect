@@ -12,7 +12,10 @@ function ProgrammesTab({
   deleteProgrammeClick,
   showForm,
   setShowForm,
-  isSubmitting, // ✅ Receive the prop
+  isSubmitting,
+  // ✅ NEW PROPS
+  onFileSelect,
+  selectedFile,
 }) {
   const handleAutoResize = (e) => {
     e.target.style.height = "auto";
@@ -113,6 +116,7 @@ function ProgrammesTab({
                   />
                 </div>
 
+                {/* ✅ UPDATED: File Input for Image */}
                 <div style={{ marginBottom: "15px" }}>
                   <label
                     style={{
@@ -122,20 +126,39 @@ function ProgrammesTab({
                       marginBottom: "5px",
                     }}
                   >
-                    Image URL (Optional)
+                    Programme Cover Image
                   </label>
                   <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        onFileSelect(e.target.files[0]);
+                      }
+                    }}
                     style={{
                       width: "100%",
                       padding: "10px",
                       boxSizing: "border-box",
+                      border: "1px solid #ccc",
+                      borderRadius: "4px",
+                      background: "#fff",
                     }}
-                    placeholder="Paste image link here"
-                    value={progForm.image}
-                    onChange={(e) =>
-                      setProgForm({ ...progForm, image: e.target.value })
-                    }
                   />
+                  {/* Show link to existing image if editing and no new file selected */}
+                  {editingId && !selectedFile && progForm.image && (
+                    <div style={{ marginTop: "5px", fontSize: "12px" }}>
+                      Current Image:{" "}
+                      <a
+                        href={progForm.image}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: "#1B5E3A" }}
+                      >
+                        View
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <div
@@ -234,7 +257,6 @@ function ProgrammesTab({
                 </div>
 
                 <div style={{ display: "flex", gap: "10px" }}>
-                  {/* ✅ UPDATE BUTTON WITH SPINNER */}
                   <button
                     type="submit"
                     className="approve-btn"

@@ -79,25 +79,31 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // 2. CONFIGURATION & ROUTES
 // ==========================================
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",");
-const defaultOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5000",
-  "https://asconadmin.netlify.app",
-];
+const defaultOrigins =
+  process.env.NODE_ENV === "production"
+    ? []
+    : [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://asconadmin.netlify.app",
+      ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
+
+      // Check if origin is in the allowed list from ENV or the default dev list
       if (
-        allowedOrigins.indexOf(origin) === -1 &&
-        defaultOrigins.indexOf(origin) === -1
+        allowedOrigins.indexOf(origin) !== -1 ||
+        defaultOrigins.indexOf(origin) !== -1
       ) {
-        if (process.env.NODE_ENV === "production") {
-          return callback(null, true);
-        }
+        return callback(null, true);
+      } else {
+        // ✅ IMPROVEMENT: Strictly block unauthorized origins
+        return callback(new Error("Not allowed by CORS"));
       }
-      return callback(null, true);
     },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "auth-token"],
