@@ -10,7 +10,7 @@ import 'screens/updates_screen.dart';
 import 'screens/directory_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_list_screen.dart';
-import 'screens/chat_screen.dart'; // ✅ ADD THIS IMPORT
+import 'screens/chat_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/polls_screen.dart';
 
@@ -72,7 +72,7 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/directory',
-              builder: (context, state) => const DirectoryScreen(),
+              builder: (context, state) => const DirectoryScreen(), // ✅ Now found
             ),
           ],
         ),
@@ -99,15 +99,12 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const ChatListScreen(),
     ),
     
-    // ✅ NEW: Route for the actual Chat Conversation
-    // We use 'extra' to pass the complex arguments (Map)
     GoRoute(
       path: '/chat_detail',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) {
-        // Expecting a Map of arguments passed via context.push('/chat_detail', extra: {...})
         final args = state.extra as Map<String, dynamic>;
-        return ChatScreen(
+        return ChatScreen( // ✅ No longer ambiguous
           conversationId: args['conversationId'],
           receiverId: args['receiverId'],
           receiverName: args['receiverName'],

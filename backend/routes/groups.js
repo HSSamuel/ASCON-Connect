@@ -236,4 +236,87 @@ router.post("/:groupId/notices", verifyToken, async (req, res) => {
   }
 });
 
+// ==========================================
+// 8. DELETE GROUP ICON (Revert to Default)
+// ==========================================
+router.delete("/:groupId/icon", verifyToken, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    // Check Admin Privileges
+    if (!group.admins.includes(req.user._id)) {
+      return res.status(403).json({ message: "Only Admins can remove the icon." });
+    }
+
+    group.icon = ""; // Clear the icon string
+    await group.save();
+    
+    res.json({ success: true, message: "Group icon removed." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 9. DELETE NOTICE
+// ==========================================
+router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    // Find the notice
+    const notice = group.notices.id(req.params.noticeId);
+    if (!notice) return res.status(404).json({ message: "Notice not found" });
+
+    // Allow Group Admins OR the Original Poster to delete
+    const isPoster = notice.postedBy && notice.postedBy.toString() === req.user._id;
+    const isAdmin = group.admins.includes(req.user._id);
+
+    if (!isPoster && !isAdmin) {
+      return res.status(403).json({ message: "Unauthorized to delete this notice." });
+    }
+
+    // Use pull to remove subdocument
+    group.notices.pull(req.params.noticeId);
+    await group.save();
+
+    res.json({ success: true, message: "Notice deleted." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 10. EDIT NOTICE
+// ==========================================
+router.put("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const group = await Group.findById(req.params.groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    const notice = group.notices.id(req.params.noticeId);
+    if (!notice) return res.status(404).json({ message: "Notice not found" });
+
+    // Allow Group Admins OR the Original Poster to edit
+    const isPoster = notice.postedBy && notice.postedBy.toString() === req.user._id;
+    const isAdmin = group.admins.includes(req.user._id);
+
+    if (!isPoster && !isAdmin) {
+      return res.status(403).json({ message: "Unauthorized to edit this notice." });
+    }
+
+    if (title) notice.title = title;
+    if (content) notice.content = content;
+    
+    await group.save();
+
+    res.json({ success: true, message: "Notice updated." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

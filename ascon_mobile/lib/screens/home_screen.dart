@@ -402,22 +402,20 @@ class _DashboardViewState extends State<DashboardView> {
                       imageUrl: _viewModel.profileImage,
                     ),
 
-                    // ✅ 1. CELEBRATION QUICK WIN
+                    // ✅ 1. CELEBRATION QUICK WIN (Delight first)
                     const CelebrationWidget(),
                     
-                    // ✅ 2. ACTIVE POLL
-                    const ActivePollCard(),
-
-                    // ✅ 3. CHAPTERS / SUB-COMMUNITIES
+                    // ✅ 2. CHAPTERS / SUB-COMMUNITIES (Moved Up - Core Navigation)
+                    // This should be prioritized so users can always find their group quickly.
                     const ChapterCard(),
 
                     const SizedBox(height: 10),
 
-                    // 4. PROFILE COMPLETION ALERT
+                    // 3. PROFILE COMPLETION ALERT
                     if (!_viewModel.isLoading && !_viewModel.isProfileComplete)
                       _buildProfileAlert(context, primaryColor),
 
-                    // 5. ALUMNI NETWORK
+                    // 4. ALUMNI NETWORK
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Row(
@@ -452,6 +450,7 @@ class _DashboardViewState extends State<DashboardView> {
 
                             return GestureDetector(
                               onTap: () {
+                                // ✅ Ensure this screen covers the shell bottom nav
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
                                 );
@@ -669,7 +668,10 @@ class _DashboardViewState extends State<DashboardView> {
           onTap: () {
              final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
              final safeData = {...data.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
-             Navigator.push(context, MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData)));
+             // ✅ Ensure Event Detail also covers navigation
+             Navigator.of(context, rootNavigator: true).push(
+               MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData))
+             );
           },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
@@ -741,7 +743,12 @@ class _DashboardViewState extends State<DashboardView> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
-          onTap: () { Navigator.push(context, MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data))); },
+          onTap: () { 
+            // ✅ Ensure Programme Detail covers navigation
+            Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data))
+            ); 
+          },
           child: Stack(
             children: [
               Positioned.fill(child: _buildSafeImage(imageUrl, fallbackIcon: Icons.business, fit: BoxFit.cover)),

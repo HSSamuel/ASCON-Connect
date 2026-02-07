@@ -31,6 +31,8 @@ import 'group_info_screen.dart';
 // ✅ IMPORT NEW WIDGETS
 import '../widgets/chat/message_bubble.dart';
 import '../widgets/chat/chat_input_area.dart';
+import '../widgets/chat/poll_creation_sheet.dart';
+import '../widgets/active_poll_card.dart'; // ✅ Added Missing Import
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -411,7 +413,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _downloadAndOpenWith(String url, String fileName) async {
-    // Note: Implementation simplified for brevity, refer to original for full logic if needed
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     }
@@ -530,62 +531,40 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showAttachmentMenu() {
     showModalBottomSheet(
       context: context, 
-      builder: (context) => Wrap(
-        alignment: WrapAlignment.spaceEvenly, 
-        children: [
-          _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), 
-          _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), 
-          _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
-          if (widget.isGroup)
-            _attachOption(Icons.how_to_vote, Colors.orange, "Poll", () {
-               Navigator.pop(context); 
-               _showPollCreationDialog();
-            }),
-        ]
+      backgroundColor: Colors.transparent, // ✅ Cleaner Look
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Wrap(
+          alignment: WrapAlignment.spaceEvenly, 
+          children: [
+            _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), 
+            _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), 
+            _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
+            
+            // ✅ UPDATED POLL BUTTON
+            if (widget.isGroup)
+              _attachOption(Icons.bar_chart_rounded, Colors.orange, "Poll", () {
+                 Navigator.pop(context); // Close attachment menu
+                 // Open the new Pro Sheet
+                 showModalBottomSheet(
+                   context: context,
+                   isScrollControlled: true, // ✅ Allows full height
+                   backgroundColor: Colors.transparent,
+                   builder: (c) => PollCreationSheet(groupId: widget.groupId!),
+                 );
+              }),
+          ]
+        ),
       )
     );
   }
   
   Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
     return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
-  }
-
-  void _showPollCreationDialog() {
-    final questionCtrl = TextEditingController();
-    final option1Ctrl = TextEditingController();
-    final option2Ctrl = TextEditingController();
-    
-    showDialog(
-      context: context, 
-      builder: (ctx) => AlertDialog(
-        title: const Text("Create Poll"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: questionCtrl, decoration: const InputDecoration(labelText: "Question")),
-            const SizedBox(height: 10),
-            TextField(controller: option1Ctrl, decoration: const InputDecoration(labelText: "Option 1")),
-            TextField(controller: option2Ctrl, decoration: const InputDecoration(labelText: "Option 2")),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () async {
-              if (questionCtrl.text.isEmpty || option1Ctrl.text.isEmpty || option2Ctrl.text.isEmpty) return;
-              Navigator.pop(ctx); 
-              await _api.post('/api/polls', {
-                'question': questionCtrl.text,
-                'options': [option1Ctrl.text, option2Ctrl.text],
-                'groupId': widget.groupId,
-                'expiresAt': DateTime.now().add(const Duration(days: 7)).toIso8601String()
-              });
-            }, 
-            child: const Text("Create")
-          )
-        ],
-      )
-    );
   }
 
   // --- SELECTION & DELETE ---
@@ -675,6 +654,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         body: Column(
           children: [
+            
+            // ✅ INSERT ACTIVE POLL CARD HERE
+            if (widget.isGroup && widget.groupId != null)
+               ActivePollCard(groupId: widget.groupId),
+
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,

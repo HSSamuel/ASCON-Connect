@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
 import '../services/data_service.dart';
-import '../screens/chat_screen.dart'; // ✅ Import Chat Screen
 
 class ChapterCard extends StatefulWidget {
   const ChapterCard({super.key});
@@ -52,6 +52,7 @@ class _ChapterCardState extends State<ChapterCard> {
     final name = group['name'];
     final id = group['_id']; // Group ID for API calls
     final count = group['memberCount'] ?? 0;
+    final icon = group['icon'];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -81,13 +82,17 @@ class _ChapterCardState extends State<ChapterCard> {
           ),
           ElevatedButton(
             onPressed: () {
-               // ✅ Navigate to Group Chat
-               Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
-                 receiverId: id, // For groups, we use GroupID as receiver
-                 receiverName: name,
-                 isGroup: true,  // ✅ Flag enabled
-                 groupId: id,    // ✅ Pass ID for Polls
-               )));
+               // ✅ Use GoRouter to push to the root navigator (hides bottom bar)
+               context.push('/chat_detail', extra: {
+                 'conversationId': null, // Can be null, backend finds/creates it
+                 'receiverId': id,       // Group ID
+                 'receiverName': name,
+                 'receiverProfilePic': icon,
+                 'isOnline': false,
+                 'lastSeen': null,
+                 'isGroup': true,        // ✅ Flag enabled
+                 'groupId': id,          // ✅ Pass ID for Polls
+               });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.teal,

@@ -734,4 +734,86 @@ class DataService {
       return [];
     }
   }
+
+  // ✅ REMOVE GROUP ICON
+  Future<bool> removeGroupIcon(String groupId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/icon');
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ DELETE NOTICE
+  Future<bool> deleteGroupNotice(String groupId, String noticeId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/notices/$noticeId');
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ EDIT NOTICE
+  Future<bool> editGroupNotice(String groupId, String noticeId, String title, String content) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/notices/$noticeId');
+      final response = await http.put(
+        url, 
+        headers: headers,
+        body: jsonEncode({'title': title, 'content': content})
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ NEW: Fetch Polls for a specific Group
+  Future<List<dynamic>> fetchGroupPolls(String groupId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/polls/group/$groupId');
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+      return data['data'] ?? [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // ✅ DELETE POLL
+  Future<bool> deletePoll(String pollId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.delete(
+        Uri.parse('${AppConfig.baseUrl}/api/polls/$pollId'),
+        headers: headers,
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ✅ EDIT POLL QUESTION
+  Future<bool> updatePollQuestion(String pollId, String newQuestion) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.put(
+        Uri.parse('${AppConfig.baseUrl}/api/polls/$pollId'),
+        headers: headers,
+        body: jsonEncode({'question': newQuestion}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }

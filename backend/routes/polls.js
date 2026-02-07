@@ -1,10 +1,40 @@
 const router = require("express").Router();
 const Poll = require("../models/Poll");
-const Group = require("../models/Group"); // ✅ Import Group
+const Group = require("../models/Group");
 const verifyToken = require("./verifyToken");
 const { sendBroadcastNotification } = require("../utils/notificationHandler");
 
-// GET Polls for a Specific Group
+// ==========================================
+// 1. GET ALL RELEVANT POLLS (Dashboard)
+// ==========================================
+router.get("/", verifyToken, async (req, res) => {
+  try {
+    // 1. Find groups the user belongs to
+    const userGroups = await Group.find({ members: req.user._id }).select(
+      "_id",
+    );
+    const groupIds = userGroups.map((g) => g._id);
+
+    // 2. Fetch Active Polls (Global OR Group-specific)
+    const polls = await Poll.find({
+      isActive: true,
+      $or: [
+        { group: { $in: groupIds } }, // Polls from my groups
+        { group: null }, // Global polls (no group)
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    res.json({ success: true, data: polls });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 2. GET POLLS FOR A SPECIFIC GROUP
+// ==========================================
 router.get("/group/:groupId", verifyToken, async (req, res) => {
   try {
     const polls = await Poll.find({
@@ -17,29 +47,35 @@ router.get("/group/:groupId", verifyToken, async (req, res) => {
   }
 });
 
-// POST Create Poll (Group Context)
+// ==========================================
+// 3. CREATE POLL
+// ==========================================
 router.post("/", verifyToken, async (req, res) => {
   try {
     const { question, options, expiresAt, groupId } = req.body;
 
-    if (!groupId)
-      return res.status(400).json({ message: "Group ID is required." });
-
-    // 1. Check Permissions
-    // User must be Admin OR have 'canCreatePolls' permission
+    // 1. Permissions Check
     if (!req.user.isAdmin && !req.user.canCreatePolls) {
-      return res
-        .status(403)
-        .json({ message: "You do not have permission to create polls." });
-    }
+      // If creating a group poll, check if they are an admin of THAT group
+      if (groupId) {
+        const group = await Group.findById(groupId);
+        if (!group)
+          return res.status(404).json({ message: "Group not found." });
 
-    // 2. Check Group Membership (Optional but good practice)
-    const group = await Group.findById(groupId);
-    if (!group) return res.status(404).json({ message: "Group not found." });
-    if (!group.members.includes(req.user._id) && !req.user.isAdmin) {
-      return res
-        .status(403)
-        .json({ message: "You must be a member of this group." });
+        // Allow if user is a Group Admin
+        if (!group.admins.includes(req.user._id)) {
+          return res
+            .status(403)
+            .json({ message: "Only Group Admins can create polls." });
+        }
+      } else {
+        // Only Super Admins can create Global Polls (no groupId)
+        if (!req.user.isAdmin) {
+          return res
+            .status(403)
+            .json({ message: "Unauthorized to create global polls." });
+        }
+      }
     }
 
     const formattedOptions = options.map((opt) => ({
@@ -52,17 +88,22 @@ router.post("/", verifyToken, async (req, res) => {
       options: formattedOptions,
       createdBy: req.user._id,
       expiresAt,
-      group: groupId, // ✅ Link to Group
+      group: groupId || null, // Allow null for global
       votedUsers: [],
     });
     await poll.save();
 
-    // Notify Group Members
-    await sendBroadcastNotification(
-      "New Group Poll! 🗳️",
-      `${group.name}: ${question}`,
-      { route: "group_chat", id: groupId },
-    );
+    // Notify users
+    if (groupId) {
+      await sendBroadcastNotification("New Group Poll! 🗳️", question, {
+        route: "group_chat",
+        id: groupId,
+      });
+    } else {
+      await sendBroadcastNotification("New Global Poll! 🗳️", question, {
+        route: "polls",
+      });
+    }
 
     res.status(201).json({ success: true, data: poll });
   } catch (err) {
@@ -70,9 +111,10 @@ router.post("/", verifyToken, async (req, res) => {
   }
 });
 
-// PUT Vote (Remains unchanged)
+// ==========================================
+// 4. VOTE
+// ==========================================
 router.put("/:id/vote", verifyToken, async (req, res) => {
-  // ... (Same as before)
   try {
     const { optionId } = req.body;
     const userId = req.user._id;
@@ -96,6 +138,55 @@ router.put("/:id/vote", verifyToken, async (req, res) => {
       req.io.emit("poll_updated", { pollId: poll._id, updatedPoll: poll });
     }
     res.json({ success: true, message: "Vote recorded", data: poll });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 5. DELETE POLL
+// ==========================================
+router.delete("/:id", verifyToken, async (req, res) => {
+  try {
+    const poll = await Poll.findById(req.params.id);
+    if (!poll) return res.status(404).json({ message: "Poll not found" });
+
+    // Check ownership or admin
+    if (poll.createdBy.toString() !== req.user._id && !req.user.isAdmin) {
+      return res.status(403).json({ message: "Unauthorized to delete this poll." });
+    }
+
+    await Poll.findByIdAndDelete(req.params.id);
+    
+    // Notify clients to remove it locally
+    if (req.io) req.io.emit("poll_deleted", { pollId: req.params.id });
+
+    res.json({ success: true, message: "Poll deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 6. EDIT POLL (Question Only)
+// ==========================================
+router.put("/:id", verifyToken, async (req, res) => {
+  try {
+    const { question } = req.body;
+    const poll = await Poll.findById(req.params.id);
+    if (!poll) return res.status(404).json({ message: "Poll not found" });
+
+    // Check ownership or admin
+    if (poll.createdBy.toString() !== req.user._id && !req.user.isAdmin) {
+      return res.status(403).json({ message: "Unauthorized to edit this poll." });
+    }
+
+    poll.question = question || poll.question;
+    await poll.save();
+
+    if (req.io) req.io.emit("poll_updated", { pollId: poll._id, updatedPoll: poll });
+
+    res.json({ success: true, message: "Poll updated", data: poll });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

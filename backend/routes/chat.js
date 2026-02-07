@@ -3,6 +3,7 @@ const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
+const Group = require("../models/Group");
 const verify = require("./verifyToken");
 
 // Cloudinary Config
@@ -131,27 +132,60 @@ router.get("/", verify, async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------
-// 3. START OR GET CONVERSATION
-// ---------------------------------------------------------
+// =========================================================
+// 1. START OR GET CONVERSATION (Updated for Groups)
+// =========================================================
 router.post("/start", verify, async (req, res) => {
-  const { receiverId } = req.body;
-  try {
-    let chat = await Conversation.findOne({
-      isGroup: false,
-      participants: { $all: [req.user._id, receiverId] },
-    });
+  const { receiverId, groupId } = req.body; // ✅ Accept groupId
 
-    if (!chat) {
-      const newChat = new Conversation({
-        participants: [req.user._id, receiverId],
+  try {
+    let chat;
+
+    // A. HANDLE GROUP CHAT
+    if (groupId) {
+      // 1. Find existing chat for this group
+      chat = await Conversation.findOne({ groupId: groupId });
+
+      if (!chat) {
+        // 2. Create if not exists
+        const group = await Group.findById(groupId);
+        if (!group) return res.status(404).json({ message: "Group not found" });
+
+        chat = new Conversation({
+          isGroup: true,
+          groupId: groupId,
+          groupName: group.name,
+          participants: [req.user._id], // Start with current user
+          groupAdmin: group.admins && group.admins.length > 0 ? group.admins[0] : req.user._id
+        });
+        await chat.save();
+      } else {
+        // 3. Ensure current user is in participants
+        if (!chat.participants.includes(req.user._id)) {
+          chat.participants.push(req.user._id);
+          await chat.save();
+        }
+      }
+    } 
+    // B. HANDLE 1-ON-1 CHAT
+    else {
+      chat = await Conversation.findOne({
+        isGroup: false,
+        participants: { $all: [req.user._id, receiverId] },
       });
-      chat = await newChat.save();
+
+      if (!chat) {
+        chat = new Conversation({
+          participants: [req.user._id, receiverId],
+        });
+        await chat.save();
+      }
     }
 
-    // ✅ Manually Populate Profiles
+    // ✅ Populate Profiles
+    const participantIds = chat.participants;
     const profiles = await UserProfile.find({
-      userId: { $in: [req.user._id, receiverId] },
+      userId: { $in: participantIds },
     }).lean();
 
     const profileMap = {};
@@ -167,48 +201,62 @@ router.post("/start", verify, async (req, res) => {
       };
     });
 
-    // Return the chat object with enriched participants
     const responseObj = chat.toObject ? chat.toObject() : chat;
     responseObj.participants = enrichedParticipants;
 
     res.status(200).json(responseObj);
   } catch (err) {
+    console.error("Start Chat Error:", err);
     res.status(500).json(err);
   }
 });
 
-// ---------------------------------------------------------
-// 4. BULK DELETE MESSAGES (HARD DELETE FROM DB)
-// ---------------------------------------------------------
+// =========================================================
+// 2. BULK DELETE MESSAGES (Updated for Admin Rights)
+// =========================================================
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
     const { messageIds, deleteForEveryone } = req.body;
+    
+    // Find the conversation of the first message to check permissions
+    const firstMsg = await Message.findById(messageIds[0]);
+    if (!firstMsg) return res.status(404).json({ message: "Message not found" });
+
+    const conversation = await Conversation.findById(firstMsg.conversationId);
+    let isAdmin = false;
+
+    // Check if User is Group Admin
+    if (conversation && conversation.groupId) {
+       const group = await Group.findById(conversation.groupId);
+       if (group && group.admins.includes(req.user._id)) {
+         isAdmin = true;
+       }
+    }
 
     if (deleteForEveryone) {
-      // 1. Delete for Everyone (Soft Delete Content)
-      await Message.updateMany(
-        { _id: { $in: messageIds }, sender: req.user._id }, // Can only delete own messages for everyone
-        {
-          $set: {
-            isDeleted: true,
-            text: "🚫 This message was deleted",
-            fileUrl: null,
-            type: "text",
-          },
+      // ✅ Allow if Sender OR Admin
+      const query = { _id: { $in: messageIds } };
+      if (!isAdmin) {
+         query.sender = req.user._id; // Restrict to sender if not admin
+      }
+
+      await Message.updateMany(query, {
+        $set: {
+          isDeleted: true,
+          text: "🚫 This message was deleted" + (isAdmin ? " by Admin" : ""),
+          fileUrl: null,
+          type: "text",
         },
-      );
-      // Emit event to update UI live
-      const msg = await Message.findOne({ _id: messageIds[0] });
-      if (msg) _emitDeleteEvent(req, msg.conversationId, messageIds, true);
+      });
+      
+      _emitDeleteEvent(req, firstMsg.conversationId, messageIds, true);
     } else {
-      // 2. Delete for Me (Hide from view)
+      // Delete for Me
       await Message.updateMany(
         { _id: { $in: messageIds } },
         { $addToSet: { deletedFor: req.user._id } },
       );
-      // Emit event so local user sees change immediately
-      const msg = await Message.findOne({ _id: messageIds[0] });
-      if (msg) _emitDeleteEvent(req, msg.conversationId, messageIds, false);
+      _emitDeleteEvent(req, firstMsg.conversationId, messageIds, false);
     }
 
     res.status(200).json({ success: true });

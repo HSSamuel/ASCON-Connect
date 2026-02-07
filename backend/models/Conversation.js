@@ -7,17 +7,21 @@ const conversationSchema = new mongoose.Schema(
     lastMessageSender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
-    }, // To indicate "You: ..."
+    },
     lastMessageAt: { type: Date, default: Date.now },
     isGroup: { type: Boolean, default: false },
     groupName: { type: String, default: "" },
     groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" },
+
+    // ✅ NEW: Link to the Community Group ID
+    groupId: { type: mongoose.Schema.Types.ObjectId, ref: "Group" },
   },
   { timestamps: true },
 );
 
-// Index for fast lookups of a user's chats
 conversationSchema.index({ participants: 1 });
 conversationSchema.index({ lastMessageAt: -1 });
+// ✅ Index for finding the group chat quickly
+conversationSchema.index({ groupId: 1 });
 
 module.exports = mongoose.model("Conversation", conversationSchema);

@@ -28,11 +28,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   Map<String, dynamic>? _groupData;
   List<dynamic> _allMembers = [];
   List<dynamic> _filteredMembers = [];
+  List<dynamic> _admins = [];
+  
   bool _isLoading = true;
   bool _isCurrentUserAdmin = false;
   String? _myUserId;
   
-  bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -42,14 +43,34 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     _loadGroupInfo();
   }
 
-  Future<void> _loadGroupInfo() async {
+ Future<void> _loadGroupInfo() async {
     _myUserId = await AuthService().currentUserId;
     final result = await _dataService.fetchGroupInfo(widget.groupId);
+    
     if (mounted) {
+      // 1. Get the raw list
+      List<dynamic> members = List.from(result?['members'] ?? []);
+
+      // 2. ✅ SORT: Admins first, then Alphabetical by Name
+      members.sort((a, b) {
+        final bool isAdminA = a['isAdmin'] ?? false;
+        final bool isAdminB = b['isAdmin'] ?? false;
+
+        // If A is admin and B is not, A comes first
+        if (isAdminA && !isAdminB) return -1;
+        
+        // If B is admin and A is not, B comes first
+        if (!isAdminA && isAdminB) return 1;
+
+        // If both have same status, sort alphabetically
+        return (a['fullName'] ?? "").toString().compareTo(b['fullName'] ?? "");
+      });
+
       setState(() {
         _groupData = result;
-        _allMembers = result?['members'] ?? [];
-        _filteredMembers = _allMembers;
+        _allMembers = members;
+        _filteredMembers = members; // Filtered list inherits the sort order
+        _admins = result?['admins'] ?? [];
         _isCurrentUserAdmin = result?['isCurrentUserAdmin'] ?? false;
         _isLoading = false;
       });
@@ -70,7 +91,28 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     });
   }
 
-  Future<void> _changeGroupIcon() async {
+  Future<void> _handleGroupIconOptions() async {
+    showModalBottomSheet(
+      context: context, 
+      builder: (ctx) => Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text("Choose from Gallery"),
+            onTap: () { Navigator.pop(ctx); _pickAndUploadIcon(); }
+          ),
+          if (_groupData?['icon'] != null && _groupData!['icon'] != "")
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text("Remove Icon (Revert to Default)", style: TextStyle(color: Colors.red)),
+              onTap: () { Navigator.pop(ctx); _revertIcon(); }
+            ),
+        ],
+      )
+    );
+  }
+
+  Future<void> _pickAndUploadIcon() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
       setState(() => _isLoading = true);
@@ -82,6 +124,18 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update icon.")));
       }
+    }
+  }
+
+  Future<void> _revertIcon() async {
+    setState(() => _isLoading = true);
+    final success = await _dataService.removeGroupIcon(widget.groupId);
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Icon removed.")));
+      _loadGroupInfo();
+    } else {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to remove icon.")));
     }
   }
 
@@ -110,7 +164,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                   children: [
                     const Text("📢 Notice Board", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     if (_isCurrentUserAdmin)
-                      TextButton.icon(onPressed: () => _postNewNotice(context), icon: const Icon(Icons.add, size: 18), label: const Text("Post"))
+                      TextButton.icon(onPressed: () => _postOrEditNotice(context, null), icon: const Icon(Icons.add, size: 18), label: const Text("Post"))
                   ],
                 ),
               ),
@@ -118,10 +172,31 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 child: FutureBuilder(
                   future: _api.get('/api/groups/${widget.groupId}/notices'),
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    final clientResponse = snapshot.data as Map<String, dynamic>;
-                    final backendResponse = clientResponse['data']; 
-                    final List<dynamic> notices = (backendResponse is List) ? backendResponse : [];
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return const Center(child: Text("Failed to load notices"));
+                    }
+                    
+                    // ✅ FIXED: Safe parsing that handles Map vs List
+                    List<dynamic> notices = [];
+                    try {
+                      final wrapper = snapshot.data;
+                      if (wrapper is Map) {
+                        final body = wrapper['data']; // The server response body
+                        
+                        if (body is Map && body.containsKey('data') && body['data'] is List) {
+                          // Standard format: {success: true, data: [...]}
+                          notices = body['data'];
+                        } else if (body is List) {
+                          // Direct list format: [...]
+                          notices = body;
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint("Parsing Error: $e");
+                    }
 
                     if (notices.isEmpty) return const Center(child: Text("No notices yet."));
 
@@ -130,6 +205,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       itemCount: notices.length,
                       itemBuilder: (context, index) {
                         final notice = notices[index];
+                        // ✅ Permissions Check
+                        final bool isPoster = notice['postedBy'] != null && 
+                            (notice['postedBy']['_id'] == _myUserId || notice['postedBy'] == _myUserId);
+                        final bool canManage = _isCurrentUserAdmin || isPoster;
+
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           elevation: 0,
@@ -145,6 +225,20 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                                     const Icon(Icons.push_pin, size: 16, color: Colors.amber),
                                     const SizedBox(width: 8),
                                     Expanded(child: Text(notice['title'] ?? "Notice", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                    
+                                    // ✅ MENU: Edit/Delete
+                                    if (canManage)
+                                      PopupMenuButton<String>(
+                                        onSelected: (val) {
+                                          if (val == 'edit') _postOrEditNotice(context, notice);
+                                          if (val == 'delete') _deleteNotice(notice['_id']);
+                                        },
+                                        itemBuilder: (c) => [
+                                          const PopupMenuItem(value: 'edit', child: Text("Edit")),
+                                          const PopupMenuItem(value: 'delete', child: Text("Delete", style: TextStyle(color: Colors.red))),
+                                        ],
+                                        child: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                      )
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -167,29 +261,46 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     );
   }
 
-  void _postNewNotice(BuildContext parentContext) {
-    final titleCtrl = TextEditingController();
-    final bodyCtrl = TextEditingController();
+  void _postOrEditNotice(BuildContext parentContext, Map<String, dynamic>? existingNotice) {
+    final isEditing = existingNotice != null;
+    final titleCtrl = TextEditingController(text: isEditing ? existingNotice['title'] : "");
+    final bodyCtrl = TextEditingController(text: isEditing ? existingNotice['content'] : "");
+    
     showDialog(
       context: parentContext, 
       builder: (c) => AlertDialog(
-        title: const Text("Post Announcement"),
+        title: Text(isEditing ? "Edit Notice" : "Post Announcement"),
         content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "Title", border: OutlineInputBorder())), const SizedBox(height: 10), TextField(controller: bodyCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Content", border: OutlineInputBorder()))]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: const Text("Cancel")),
           ElevatedButton(onPressed: () async {
               if(titleCtrl.text.isEmpty || bodyCtrl.text.isEmpty) return;
               Navigator.pop(c);
-              try {
+              
+              if (isEditing) {
+                await _dataService.editGroupNotice(widget.groupId, existingNotice['_id'], titleCtrl.text, bodyCtrl.text);
+              } else {
                 await _api.post('/api/groups/${widget.groupId}/notices', {'title': titleCtrl.text, 'content': bodyCtrl.text});
-                Navigator.pop(parentContext);
-                ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Notice Posted!")));
-                _openNoticeBoard();
-              } catch (e) { ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Failed to post."))); }
-            }, child: const Text("Post")),
+              }
+              
+              if (mounted) {
+                Navigator.pop(parentContext); // Close list to refresh
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? "Notice Updated" : "Notice Posted")));
+                _openNoticeBoard(); // Reopen
+              }
+            }, child: Text(isEditing ? "Save" : "Post")),
         ],
       )
     );
+  }
+
+  Future<void> _deleteNotice(String noticeId) async {
+    Navigator.pop(context); // Close list
+    final success = await _dataService.deleteGroupNotice(widget.groupId, noticeId);
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Notice deleted.")));
+      _openNoticeBoard(); 
+    }
   }
 
   Future<void> _toggleAdmin(String userId, String name) async {
@@ -223,11 +334,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         ? const Center(child: CircularProgressIndicator())
         : Stack(
             children: [
-              // ✅ LAYER 1: Scrollable Content
               CustomScrollView(
                 controller: _scrollController,
                 slivers: [
-                  // 1. Image Header (Scrolls away)
                   SliverToBoxAdapter(
                     child: SizedBox(
                       height: 320,
@@ -240,7 +349,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           else
                             Container(color: Colors.teal.shade100, child: const Icon(Icons.groups, size: 80, color: Colors.teal)),
                           
-                          // Gradient for text contrast
                           Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
@@ -250,7 +358,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                             ),
                           ),
                           
-                          // Group Name at Bottom Left of Image
                           Positioned(
                             bottom: 20, left: 20, right: 80,
                             child: Column(
@@ -263,12 +370,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                             ),
                           ),
 
-                          // Admin Edit Icon
                           if (_isCurrentUserAdmin)
                             Positioned(
                               bottom: 20, right: 20,
                               child: GestureDetector(
-                                onTap: _changeGroupIcon,
+                                onTap: _handleGroupIconOptions,
                                 child: CircleAvatar(backgroundColor: Colors.white, radius: 24, child: Icon(Icons.camera_alt, color: primaryColor)),
                               ),
                             ),
@@ -277,7 +383,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ),
                   ),
 
-                  // 2. Action Buttons (Sticky-ish feel in list)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -285,14 +390,34 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _buildActionBtn(Icons.call, "Voice", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call..."))), Colors.green),
-                          _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange), // The New Feature
+                          _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange),
                           _buildActionBtn(Icons.description, "Docs", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Docs (Coming Soon)"))), Colors.blue),
                         ],
                       ),
                     ),
                   ),
 
-                  // 3. Search Bar (Inside Content)
+                  // 3. CLAIM ADMIN RIGHTS
+                  if (_admins.isEmpty)
+                    SliverToBoxAdapter(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.amber)),
+                        child: Column(
+                          children: [
+                            const Text("This group has no admin.", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber)),
+                            const SizedBox(height: 8),
+                            ElevatedButton(
+                              onPressed: () => _toggleAdmin(_myUserId!, "Yourself"), 
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber[800], foregroundColor: Colors.white),
+                              child: const Text("Claim Admin Rights"),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -311,7 +436,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ),
                   ),
 
-                  // 4. Member List Title
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -319,7 +443,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ),
                   ),
 
-                  // 5. The List
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -357,7 +480,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                 ],
               ),
 
-              // ✅ LAYER 2: Floating Navigation (No Bar)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 10,
                 left: 16,
@@ -385,17 +507,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       child: Container(
         width: 100,
         padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600))
-          ],
-        ),
+        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(16)),
+        child: Column(children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600))]),
       ),
     );
   }

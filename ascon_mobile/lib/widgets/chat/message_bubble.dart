@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
 import '../../models/chat_objects.dart';
 import '../../widgets/full_screen_image.dart';
@@ -23,7 +22,7 @@ class MessageBubble extends StatelessWidget {
   final Duration currentPosition;
   final Duration totalDuration;
   final String? downloadingFileId;
-  final bool isAdmin; // ✅ For Admin Shield
+  final bool isAdmin; // ✅ For Admin Privileges
 
   // Callbacks
   final Function(String) onSwipeReply;
@@ -63,7 +62,18 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (msg.isDeleted) return const SizedBox.shrink();
+    // Hide completely deleted messages
+    if (msg.isDeleted && msg.text.contains("🚫")) {
+       return Padding(
+         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+         child: Center(
+           child: Text(
+             msg.text, 
+             style: const TextStyle(color: Colors.grey, fontSize: 12, fontStyle: FontStyle.italic)
+           )
+         ),
+       );
+    }
 
     return Dismissible(
       key: Key(msg.id),
@@ -82,11 +92,12 @@ class MessageBubble extends StatelessWidget {
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           onLongPress: () {
-            if (!isMe || isSelectionMode) return;
+            // ✅ Allow Admin to Long Press ANY message
+            if (!isMe && !isAdmin && !isSelectionMode) return; 
             _showOptionsSheet(context);
           },
           onTap: () {
-            if (isSelectionMode && isMe) onToggleSelection(msg.id);
+            if (isSelectionMode) onToggleSelection(msg.id); // Allow both to select
           },
           child: Container(
             constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
@@ -104,7 +115,7 @@ class MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Admin / Sender Name
+                // ✅ ADMIN / SENDER VISUALS
                 if (!isMe)
                   Padding(
                     padding: const EdgeInsets.only(left: 10, right: 10, top: 8),
@@ -116,6 +127,7 @@ class MessageBubble extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
+                            // Gold Color for Admins
                             color: isAdmin ? Colors.amber[800] : (isDark ? Colors.tealAccent : primaryColor),
                           ),
                         ),
@@ -162,9 +174,18 @@ class MessageBubble extends StatelessWidget {
     showModalBottomSheet(context: context, builder: (c) => Wrap(
       children: [
         ListTile(leading: const Icon(Icons.reply), title: const Text("Reply"), onTap: () { Navigator.pop(c); onReply(msg.id, false); }),
-        if (msg.type == 'text') 
+        
+        // Only sender can edit
+        if (isMe && msg.type == 'text') 
           ListTile(leading: const Icon(Icons.edit), title: const Text("Edit"), onTap: () { Navigator.pop(c); onEdit(msg.id); }),
-        ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Delete", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(c); onDelete(msg.id); }),
+        
+        // ✅ ADMIN DELETE: Shows for Sender OR Group Admin
+        if (isMe || isAdmin)
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red), 
+            title: Text(isAdmin && !isMe ? "Delete (Admin)" : "Delete", style: const TextStyle(color: Colors.red)), 
+            onTap: () { Navigator.pop(c); onDelete(msg.id); }
+          ),
       ],
     ));
   }
