@@ -314,7 +314,7 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. SEND A MESSAGE (Updated for Reply & Edit)
+// 6. SEND A MESSAGE (Fixed for Group Chats)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -344,7 +344,7 @@ router.post(
 
       const savedMessage = await newMessage.save();
 
-      // ✅ POPULATE SENDER DETAILS FOR FRONTEND
+      // ✅ POPULATE SENDER DETAILS
       await savedMessage.populate("sender", "fullName profilePicture");
       await savedMessage.populate({
         path: "replyTo",
@@ -367,35 +367,44 @@ router.post(
         { new: true },
       );
 
-      const receiverId = conversation.participants.find(
-        (id) => id.toString() !== req.user._id,
-      );
+      // ✅ CRITICAL FIX: Broadcast to ALL participants (except sender)
+      // The previous code only picked the *first* person it found.
+      const senderProfile = await UserProfile.findOne({ userId: req.user._id });
 
-      if (receiverId) {
-        // 1. Socket Emit
-        req.io.to(receiverId.toString()).emit("new_message", {
+      conversation.participants.forEach(async (participantId) => {
+        // Skip the sender
+        if (participantId.toString() === req.user._id) return;
+
+        // 1. Socket Emit (Real-time)
+        req.io.to(participantId.toString()).emit("new_message", {
           message: savedMessage,
           conversationId: conversation._id,
         });
 
         // 2. Push Notification
-        const sender = await UserProfile.findOne({ userId: req.user._id });
-
-        if (sender) {
-          await sendPersonalNotification(
-            receiverId.toString(),
-            `Message from ${sender.fullName}`,
-            lastMessagePreview,
-            {
-              type: "chat_message",
-              conversationId: conversation._id.toString(),
-              senderId: req.user._id.toString(),
-              senderName: sender.fullName,
-              senderProfilePic: sender.profilePicture || "",
-            },
-          );
+        // (Optional: You might want to debounce this for large groups to avoid spam)
+        if (senderProfile) {
+          try {
+            await sendPersonalNotification(
+              participantId.toString(),
+              conversation.isGroup 
+                  ? `${conversation.groupName} (${senderProfile.fullName})` // Group Format
+                  : `Message from ${senderProfile.fullName}`,               // DM Format
+              lastMessagePreview,
+              {
+                type: "chat_message",
+                conversationId: conversation._id.toString(),
+                senderId: req.user._id.toString(),
+                senderName: senderProfile.fullName,
+                senderProfilePic: senderProfile.profilePicture || "",
+                isGroup: conversation.isGroup ? "true" : "false",
+              },
+            );
+          } catch (notifyErr) {
+            console.error(`Failed to notify ${participantId}:`, notifyErr);
+          }
         }
-      }
+      });
 
       res.status(200).json(savedMessage);
     } catch (err) {
