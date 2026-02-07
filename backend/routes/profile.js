@@ -1,17 +1,33 @@
 const router = require("express").Router();
-// ✅ NEW: Import the 3 separated models
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
-
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
+
+// ✅ NEW: Centralized Profile Completeness Logic
+const calculateProfileCompleteness = (profile) => {
+  let totalScore = 0;
+  const maxScore = 7;
+
+  if (profile.profilePicture) totalScore++;
+  if (profile.jobTitle) totalScore++;
+  if (profile.organization) totalScore++;
+  if (profile.industry) totalScore++;
+  if (profile.city) totalScore++;
+  if (profile.bio) totalScore++;
+  if (profile.linkedin) totalScore++;
+
+  const percent = totalScore / maxScore;
+  return {
+    percent: percent,
+    isComplete: percent >= 0.85,
+  };
+};
 
 // =========================================================
 // 1. UPDATE PROFILE & SETTINGS
 // =========================================================
-// @route   PUT /api/profile/update
-// @desc    Update profile info AND upload image
 router.put("/update", verifyToken, (req, res) => {
   const uploadMiddleware = upload.single("profilePicture");
 
@@ -25,8 +41,6 @@ router.put("/update", verifyToken, (req, res) => {
     }
 
     try {
-      console.log("📥 RECEIVED DATA:", req.body);
-
       // Sanitize Year
       let year = req.body.yearOfAttendance;
       if (!year || year === "null" || year === "" || isNaN(year)) {
@@ -59,12 +73,11 @@ router.put("/update", verifyToken, (req, res) => {
         customProgramme: req.body.customProgramme,
         industry: req.body.industry || "",
         city: req.body.city || "",
-        state: req.body.state || "", // ✅ FIXED: Now captures state from the mobile app
+        state: req.body.state || "",
         skills: skillsArray,
       };
 
       if (req.file) {
-        console.log("📸 NEW IMAGE:", req.file.path);
         profileUpdateData.profilePicture = req.file.path;
       }
 
@@ -74,7 +87,7 @@ router.put("/update", verifyToken, (req, res) => {
         isOpenToMentorship: isMentor,
       };
 
-      // ✅ 3. RUN BOTH UPDATES IN PARALLEL FOR SPEED
+      // ✅ 3. RUN UPDATES IN PARALLEL
       const [updatedProfile, updatedSettings] = await Promise.all([
         UserProfile.findOneAndUpdate(
           { userId: req.user._id },
@@ -92,8 +105,6 @@ router.put("/update", verifyToken, (req, res) => {
         return res.status(404).json({ message: "User profile not found" });
       }
 
-      console.log("✅ PROFILE UPDATED");
-      // Merge results to send back to mobile app
       res
         .status(200)
         .json({ ...updatedProfile.toObject(), ...updatedSettings.toObject() });
@@ -107,12 +118,10 @@ router.put("/update", verifyToken, (req, res) => {
 });
 
 // =========================================================
-// 2. GET MY PROFILE (Merged)
+// 2. GET MY PROFILE (With Calculated Stats)
 // =========================================================
-// @route   GET /api/profile/me
 router.get("/me", verifyToken, async (req, res) => {
   try {
-    // ✅ Fetch from all 3 tables in parallel
     const [auth, profile, settings] = await Promise.all([
       UserAuth.findById(req.user._id).select("-password"),
       UserProfile.findOne({ userId: req.user._id }),
@@ -123,7 +132,9 @@ router.get("/me", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // ✅ Merge the objects so the Mobile App doesn't need to change its code
+    // ✅ NEW: Calculate stats on the server
+    const completeness = calculateProfileCompleteness(profile);
+
     const fullProfile = {
       _id: auth._id,
       email: auth.email,
@@ -133,6 +144,9 @@ router.get("/me", verifyToken, async (req, res) => {
       lastSeen: auth.lastSeen,
       ...profile.toObject(),
       ...settings.toObject(),
+      // ✅ Inject calculated fields
+      profileCompletionPercent: completeness.percent,
+      isProfileComplete: completeness.isComplete,
     };
 
     res.status(200).json(fullProfile);
@@ -144,7 +158,6 @@ router.get("/me", verifyToken, async (req, res) => {
 // =========================================================
 // 3. WELCOME STATUS
 // =========================================================
-// @route   PUT /api/profile/welcome-seen
 router.put("/welcome-seen", verifyToken, async (req, res) => {
   try {
     const settings = await UserSettings.findOneAndUpdate(

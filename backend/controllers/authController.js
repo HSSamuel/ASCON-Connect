@@ -1,7 +1,8 @@
+const mongoose = require("mongoose");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
-const Group = require("../models/Group"); // ✅ NEW: Import Group for Auto-Join
+const Group = require("../models/Group");
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -10,8 +11,8 @@ const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
 const { generateAlumniId } = require("../utils/idGenerator");
-const asyncHandler = require("../utils/asyncHandler"); // ✅ Import Wrapper
-const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ NEW: Notification
+const asyncHandler = require("../utils/asyncHandler");
+const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -29,7 +30,7 @@ const registerSchema = Joi.object({
     .optional()
     .allow(null, ""),
   customProgramme: Joi.string().optional().allow(""),
-  city: Joi.string().optional().allow(""), // ✅ NEW: City for Chapter Join
+  city: Joi.string().optional().allow(""),
   googleToken: Joi.string().optional().allow(null, ""),
   fcmToken: Joi.string().optional().allow(null, ""),
 });
@@ -58,12 +59,12 @@ const manageFcmToken = async (userId, token) => {
 };
 
 // --------------------------------------------------------------------------
-// 1. REGISTER (Manual Creation - Refactored for 3 Schemas)
+// 1. REGISTER (Atomic Transaction Implemented)
 // --------------------------------------------------------------------------
 exports.register = asyncHandler(async (req, res) => {
   const { error } = registerSchema.validate(req.body);
   if (error) {
-    res.status(400); // Set status before throwing for middleware to pick up
+    res.status(400);
     throw new Error(error.details[0].message);
   }
 
@@ -79,127 +80,148 @@ exports.register = asyncHandler(async (req, res) => {
     fcmToken,
   } = req.body;
 
-  // 1. Check if Auth exists
+  // 1. Check if Auth exists (Read-only, no transaction needed yet)
   const emailExist = await UserAuth.findOne({ email });
   if (emailExist) {
     res.status(400);
     throw new Error("Email already registered. Please Login.");
   }
 
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
-  const newAlumniId = await generateAlumniId(yearOfAttendance);
+  // ✅ START TRANSACTION
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  // ✅ STEP 1: Create the AUTH Document
-  const newUserAuth = new UserAuth({
-    email,
-    password: hashedPassword,
-    isVerified: true,
-    provider: "local",
-    fcmTokens: fcmToken ? [fcmToken] : [],
-    isOnline: true, // Mark online immediately
-  });
-  const savedAuth = await newUserAuth.save();
-
-  // ✅ STEP 2: Create the PROFILE Document using the Auth ID
-  const newUserProfile = new UserProfile({
-    userId: savedAuth._id, // LINK TO AUTH
-    fullName,
-    phoneNumber,
-    yearOfAttendance,
-    programmeTitle,
-    customProgramme: customProgramme || "",
-    city: city || "", // ✅ Save City
-    alumniId: newAlumniId,
-  });
-  const savedProfile = await newUserProfile.save();
-
-  // ✅ STEP 3: Create the SETTINGS Document
-  const newUserSettings = new UserSettings({
-    userId: savedAuth._id, // LINK TO AUTH
-    hasSeenWelcome: false,
-    isEmailVisible: true,
-    isPhoneVisible: false,
-  });
-  await newUserSettings.save();
-
-  // ✅ STEP 4: AUTO-JOIN GROUPS (Class & Location)
   try {
-    // 1. Class Group (e.g., "Class of 2024")
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    const newAlumniId = await generateAlumniId(yearOfAttendance);
+
+    // STEP 1: Create Auth
+    const newUserAuth = new UserAuth({
+      email,
+      password: hashedPassword,
+      isVerified: true,
+      provider: "local",
+      fcmTokens: fcmToken ? [fcmToken] : [],
+      isOnline: true,
+    });
+    const savedAuth = await newUserAuth.save({ session });
+
+    // STEP 2: Create Profile
+    const newUserProfile = new UserProfile({
+      userId: savedAuth._id,
+      fullName,
+      phoneNumber,
+      yearOfAttendance,
+      programmeTitle,
+      customProgramme: customProgramme || "",
+      city: city || "",
+      alumniId: newAlumniId,
+    });
+    await newUserProfile.save({ session });
+
+    // STEP 3: Create Settings
+    const newUserSettings = new UserSettings({
+      userId: savedAuth._id,
+      hasSeenWelcome: false,
+      isEmailVisible: true,
+      isPhoneVisible: false,
+    });
+    await newUserSettings.save({ session });
+
+    // STEP 4: Auto-Join Groups
     if (yearOfAttendance) {
       const classGroupName = `Class of ${yearOfAttendance}`;
       await Group.findOneAndUpdate(
         { name: classGroupName, type: "Class" },
-        { 
+        {
           $addToSet: { members: savedAuth._id },
-          $setOnInsert: { description: `Official group for the ${classGroupName}` }
+          $setOnInsert: {
+            description: `Official group for the ${classGroupName}`,
+          },
         },
-        { upsert: true, new: true }
+        { upsert: true, new: true, session },
       );
     }
 
-    // 2. Location Chapter (e.g., "Lagos Chapter")
     if (city) {
       const chapterName = `${city} Chapter`;
       await Group.findOneAndUpdate(
         { name: chapterName, type: "Chapter" },
-        { 
+        {
           $addToSet: { members: savedAuth._id },
-          $setOnInsert: { description: `Official chapter for alumni in ${city}` }
+          $setOnInsert: {
+            description: `Official chapter for alumni in ${city}`,
+          },
         },
-        { upsert: true, new: true }
-      );
-
-      // ✅ NEW: PUSH NOTIFICATION (WELCOME)
-      await sendPersonalNotification(
-         savedAuth._id,
-         `Welcome to the ${city} Chapter!`,
-         `You have been automatically added to the ${city} alumni group. Tap to say hi!`,
-         { route: "chapter_chat", id: chapterName }
+        { upsert: true, new: true, session },
       );
     }
-  } catch (groupErr) {
-    console.error("Auto-Join Group Error:", groupErr);
-    // Proceed without failing registration
-  }
 
-  // Broadcast presence
-  if (req.io) {
-    req.io.emit("user_status_update", {
-      userId: savedAuth._id,
-      isOnline: true,
-      lastSeen: new Date(),
+    // ✅ COMMIT TRANSACTION
+    await session.commitTransaction();
+    session.endSession();
+
+    // 5. Post-Transaction Actions (Notifications & Socket)
+    try {
+      if (req.io) {
+        // Notify Admin Dashboard
+        req.io.emit("admin_stats_update", { type: "NEW_USER" });
+
+        // Notify Mobile Users (Presence)
+        req.io.emit("user_status_update", {
+          userId: savedAuth._id,
+          isOnline: true,
+          lastSeen: new Date(),
+        });
+      }
+
+      if (city) {
+        await sendPersonalNotification(
+          savedAuth._id,
+          `Welcome to the ${city} Chapter!`,
+          `You have been automatically added to the ${city} alumni group. Tap to say hi!`,
+          { route: "chapter_chat", id: `${city} Chapter` },
+        );
+      }
+    } catch (notifyErr) {
+      console.error("Post-registration notification error:", notifyErr);
+    }
+
+    const token = jwt.sign(
+      { _id: savedAuth._id, isAdmin: false, canEdit: false },
+      process.env.JWT_SECRET,
+      { expiresIn: "2h" },
+    );
+
+    const refreshToken = jwt.sign(
+      { _id: savedAuth._id },
+      process.env.REFRESH_SECRET,
+      { expiresIn: "30d" },
+    );
+
+    res.status(201).json({
+      message: "Registration successful!",
+      token: token,
+      refreshToken: refreshToken,
+      user: {
+        id: savedAuth._id,
+        fullName: savedProfile.fullName,
+        email: savedAuth.email,
+        alumniId: savedProfile.alumniId,
+        hasSeenWelcome: false,
+      },
     });
+  } catch (err) {
+    // ❌ ABORT TRANSACTION ON ERROR
+    await session.abortTransaction();
+    session.endSession();
+    throw err; // Pass error to global handler
   }
-
-  const token = jwt.sign(
-    { _id: savedAuth._id, isAdmin: false, canEdit: false },
-    process.env.JWT_SECRET,
-    { expiresIn: "2h" },
-  );
-
-  const refreshToken = jwt.sign(
-    { _id: savedAuth._id },
-    process.env.REFRESH_SECRET,
-    { expiresIn: "30d" },
-  );
-
-  res.status(201).json({
-    message: "Registration successful!",
-    token: token,
-    refreshToken: refreshToken,
-    user: {
-      id: savedAuth._id,
-      fullName: savedProfile.fullName,
-      email: savedAuth.email,
-      alumniId: savedProfile.alumniId,
-      hasSeenWelcome: false,
-    },
-  });
 });
 
 // --------------------------------------------------------------------------
-// 2. LOGIN (Refactored for Auth Schema)
+// 2. LOGIN
 // --------------------------------------------------------------------------
 exports.login = asyncHandler(async (req, res) => {
   const { error } = loginSchema.validate(req.body);
@@ -210,7 +232,6 @@ exports.login = asyncHandler(async (req, res) => {
 
   const { email, password, fcmToken } = req.body;
 
-  // ✅ Query ONLY the UserAuth table (Much faster)
   let userAuth = await UserAuth.findOne({ email });
   if (!userAuth) {
     res.status(400);
@@ -228,7 +249,6 @@ exports.login = asyncHandler(async (req, res) => {
     throw new Error("Account pending approval.");
   }
 
-  // Fetch Public Profile and Settings Details
   const userProfile = await UserProfile.findOne({ userId: userAuth._id });
   const userSettings = await UserSettings.findOne({ userId: userAuth._id });
 
@@ -236,14 +256,10 @@ exports.login = asyncHandler(async (req, res) => {
     await manageFcmToken(userAuth._id, fcmToken);
   }
 
-  // ========================================================
-  // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Immediate Online Status)
-  // ========================================================
   userAuth.isOnline = true;
   userAuth.lastSeen = new Date();
   await userAuth.save();
 
-  // Broadcast instantly to global IO instance
   if (req.io) {
     req.io.emit("user_status_update", {
       userId: userAuth._id,
@@ -251,7 +267,6 @@ exports.login = asyncHandler(async (req, res) => {
       lastSeen: userAuth.lastSeen,
     });
   }
-  // ========================================================
 
   const token = jwt.sign(
     { _id: userAuth._id, isAdmin: userAuth.isAdmin, canEdit: userAuth.canEdit },
@@ -262,9 +277,7 @@ exports.login = asyncHandler(async (req, res) => {
   const refreshToken = jwt.sign(
     { _id: userAuth._id },
     process.env.REFRESH_SECRET,
-    {
-      expiresIn: "30d",
-    },
+    { expiresIn: "30d" },
   );
 
   res.json({
@@ -284,13 +297,12 @@ exports.login = asyncHandler(async (req, res) => {
 });
 
 // --------------------------------------------------------------------------
-// 3. GOOGLE LOGIN (Refactored)
+// 3. GOOGLE LOGIN
 // --------------------------------------------------------------------------
 exports.googleLogin = asyncHandler(async (req, res) => {
   const { token, fcmToken } = req.body;
   let name, email, picture;
 
-  // Detect Token Type (ID Token vs Access Token)
   const isIdToken = token.split(".").length === 3;
   if (isIdToken) {
     const ticket = await client.verifyIdToken({
@@ -321,7 +333,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     const hashedPassword = await bcrypt.hash(randomPassword, salt);
     const newAlumniId = await generateAlumniId(currentYear);
 
-    // 1. Create Auth
     userAuth = new UserAuth({
       email: email,
       password: hashedPassword,
@@ -332,7 +343,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     });
     await userAuth.save();
 
-    // 2. Create Profile
     userProfile = new UserProfile({
       userId: userAuth._id,
       fullName: name,
@@ -342,14 +352,15 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     });
     await userProfile.save();
 
-    // 3. Create Settings
     userSettings = new UserSettings({
       userId: userAuth._id,
       hasSeenWelcome: false,
     });
     await userSettings.save();
+
+    // ✅ Emit admin event for Google Signups too
+    if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
   } else {
-    // If existing user, fetch their profile and settings
     userProfile = await UserProfile.findOne({ userId: userAuth._id });
     userSettings = await UserSettings.findOne({ userId: userAuth._id });
   }
@@ -363,14 +374,10 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     await manageFcmToken(userAuth._id, fcmToken);
   }
 
-  // ========================================================
-  // ✅ NEW: DOUBLE-TAP PRESENCE FIX (Google Auth)
-  // ========================================================
   userAuth.isOnline = true;
   userAuth.lastSeen = new Date();
   await userAuth.save();
 
-  // Broadcast instantly to global IO instance
   if (req.io) {
     req.io.emit("user_status_update", {
       userId: userAuth._id,
@@ -378,7 +385,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       lastSeen: userAuth.lastSeen,
     });
   }
-  // ========================================================
 
   const authToken = jwt.sign(
     { _id: userAuth._id, isAdmin: userAuth.isAdmin, canEdit: userAuth.canEdit },
@@ -389,9 +395,7 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   const refreshToken = jwt.sign(
     { _id: userAuth._id },
     process.env.REFRESH_SECRET,
-    {
-      expiresIn: "30d",
-    },
+    { expiresIn: "30d" },
   );
 
   return res.json({
@@ -442,7 +446,7 @@ exports.refreshToken = asyncHandler(async (req, res) => {
 });
 
 // --------------------------------------------------------------------------
-// 5. FORGOT PASSWORD (Universal)
+// 5. FORGOT PASSWORD
 // --------------------------------------------------------------------------
 exports.forgotPassword = asyncHandler(async (req, res) => {
   if (!req.body.email) {

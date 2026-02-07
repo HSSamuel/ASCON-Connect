@@ -3,7 +3,7 @@ const Group = require("../models/Group");
 const UserProfile = require("../models/UserProfile");
 const verifyToken = require("./verifyToken");
 
-// ✅ NEW: Cloudinary & Multer Config for Group Icons
+// Cloudinary & Multer Config for Group Icons
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary").cloudinary;
@@ -48,6 +48,8 @@ router.get("/:groupId/info", verifyToken, async (req, res) => {
       data: {
         ...group,
         members: enrichedMembers,
+        // Return raw admin IDs for easy checking on frontend
+        admins: group.admins || [],
         isCurrentUserAdmin: (group.admins || [])
           .map((id) => id.toString())
           .includes(req.user._id),
@@ -70,7 +72,7 @@ router.put(
       const group = await Group.findById(req.params.groupId);
       if (!group) return res.status(404).json({ message: "Group not found" });
 
-      // Check Admin Priveleges
+      // Check Admin Privileges
       if (!group.admins.includes(req.user._id)) {
         return res
           .status(403)
@@ -173,6 +175,62 @@ router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
 
     await group.save();
     res.json({ success: true, message: "User removed from group." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 6. GET GROUP NOTICES (Notice Board)
+// ==========================================
+router.get("/:groupId/notices", verifyToken, async (req, res) => {
+  try {
+    // Only fetch the notices array to be lightweight
+    const group = await Group.findById(req.params.groupId)
+      .select("notices")
+      // Optional: Populate who posted it if you want names
+      .populate("notices.postedBy", "email");
+
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    // Sort notices: Newest first
+    const sortedNotices = group.notices.sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+
+    res.json({ success: true, data: sortedNotices });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 7. POST NEW NOTICE (Admin Only)
+// ==========================================
+router.post("/:groupId/notices", verifyToken, async (req, res) => {
+  try {
+    const { title, content } = req.body;
+    const group = await Group.findById(req.params.groupId);
+
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    // ✅ STRICT ADMIN CHECK
+    if (!group.admins.includes(req.user._id)) {
+      return res
+        .status(403)
+        .json({ message: "Only Group Admins can post notices." });
+    }
+
+    // Add to array
+    group.notices.push({
+      title,
+      content,
+      postedBy: req.user._id,
+      createdAt: new Date(),
+    });
+
+    await group.save();
+    res.json({ success: true, message: "Notice posted successfully!" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

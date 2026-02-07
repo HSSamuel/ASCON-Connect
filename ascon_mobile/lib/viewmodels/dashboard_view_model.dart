@@ -21,7 +21,7 @@ class DashboardViewModel extends ChangeNotifier {
   // ✅ NEW: Error State for UI Feedback
   String? errorMessage;
 
-  // ✅ NEW: Profile Completion Logic
+  // ✅ UPDATED: Now populated directly from API
   double profileCompletionPercent = 0.0;
   bool isProfileComplete = false;
   
@@ -67,7 +67,7 @@ class DashboardViewModel extends ChangeNotifier {
       });
       programmes = fetchedProgrammes;
 
-      // 5. Process Profile Data & Completion Calculation
+      // 5. Process Profile Data
       final profile = results[2] as Map<String, dynamic>?;
       if (profile != null) {
         profileImage = profile['profilePicture'] ?? "";
@@ -84,7 +84,15 @@ class DashboardViewModel extends ChangeNotifier {
           await prefs.setString('alumni_id', apiId);
         }
 
-        _calculateProfileCompleteness(profile);
+        // ✅ IMPROVEMENT: Use Backend calculation
+        if (profile.containsKey('profileCompletionPercent')) {
+          profileCompletionPercent = (profile['profileCompletionPercent'] as num).toDouble();
+          isProfileComplete = profile['isProfileComplete'] ?? false;
+        } else {
+          // Fallback if backend isn't updated yet (Graceful degradation)
+          profileCompletionPercent = 0.0; 
+          isProfileComplete = false;
+        }
       }
 
       // 6. Process Alumni Network (Randomized) ✅
@@ -112,21 +120,5 @@ class DashboardViewModel extends ChangeNotifier {
       isLoading = false;
       notifyListeners(); 
     }
-  }
-
-  void _calculateProfileCompleteness(Map<String, dynamic> profile) {
-    int totalScore = 0;
-    int maxScore = 7; // Total number of fields we check
-
-    if ((profile['profilePicture'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['jobTitle'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['organization'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['industry'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['city'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['bio'] ?? "").toString().isNotEmpty) totalScore++;
-    if ((profile['linkedin'] ?? "").toString().isNotEmpty) totalScore++;
-
-    profileCompletionPercent = totalScore / maxScore;
-    isProfileComplete = profileCompletionPercent >= 0.85; // Consider "Complete" if 85% filled
   }
 }

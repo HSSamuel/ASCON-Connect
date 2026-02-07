@@ -78,7 +78,7 @@ router.get("/unread-status", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. GET ALL CONVERSATIONS (Inbox) - ✅ FIXED NAME LOOKUP
+// 2. GET ALL CONVERSATIONS (Inbox)
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
@@ -132,7 +132,7 @@ router.get("/", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. START OR GET CONVERSATION - ✅ FIXED NAME LOOKUP
+// 3. START OR GET CONVERSATION
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId } = req.body;
@@ -182,34 +182,33 @@ router.post("/start", verify, async (req, res) => {
 // ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
-    const { messageIds, deleteForEveryone } = req.body; // ✅ New flag
-    
+    const { messageIds, deleteForEveryone } = req.body;
+
     if (deleteForEveryone) {
       // 1. Delete for Everyone (Soft Delete Content)
       await Message.updateMany(
         { _id: { $in: messageIds }, sender: req.user._id }, // Can only delete own messages for everyone
-        { 
-          $set: { 
-            isDeleted: true, 
-            text: "🚫 This message was deleted", 
-            fileUrl: null, 
-            type: "text" 
-          } 
-        }
+        {
+          $set: {
+            isDeleted: true,
+            text: "🚫 This message was deleted",
+            fileUrl: null,
+            type: "text",
+          },
+        },
       );
       // Emit event to update UI live
       const msg = await Message.findOne({ _id: messageIds[0] });
-      if(msg) _emitDeleteEvent(req, msg.conversationId, messageIds, true);
-
+      if (msg) _emitDeleteEvent(req, msg.conversationId, messageIds, true);
     } else {
       // 2. Delete for Me (Hide from view)
       await Message.updateMany(
         { _id: { $in: messageIds } },
-        { $addToSet: { deletedFor: req.user._id } }
+        { $addToSet: { deletedFor: req.user._id } },
       );
       // Emit event so local user sees change immediately
       const msg = await Message.findOne({ _id: messageIds[0] });
-      if(msg) _emitDeleteEvent(req, msg.conversationId, messageIds, false);
+      if (msg) _emitDeleteEvent(req, msg.conversationId, messageIds, false);
     }
 
     res.status(200).json({ success: true });
@@ -228,7 +227,7 @@ async function _emitDeleteEvent(req, conversationId, messageIds, isHardDelete) {
         req.io.to(userId.toString()).emit("messages_deleted_bulk", {
           conversationId,
           messageIds,
-          isHardDelete
+          isHardDelete,
         });
       }
     });
@@ -254,8 +253,9 @@ router.get("/:conversationId", verify, async (req, res) => {
     if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
+      .populate("sender", "fullName profilePicture") // ✅ ADDED: Populate Sender
       .populate("replyTo", "text sender type fileUrl")
-      .populate("replyTo.sender", "fullName") // Note: This might still fail if UserAuth has no name, but Reply UI is less critical
+      .populate("replyTo.sender", "fullName")
       .sort({ createdAt: -1 })
       .limit(limit);
 
@@ -296,6 +296,8 @@ router.post(
 
       const savedMessage = await newMessage.save();
 
+      // ✅ POPULATE SENDER DETAILS FOR FRONTEND
+      await savedMessage.populate("sender", "fullName profilePicture");
       await savedMessage.populate({
         path: "replyTo",
         select: "text sender type",
@@ -441,17 +443,5 @@ router.delete("/message/:id", verify, async (req, res) => {
     res.status(500).json(err);
   }
 });
-
-async function _emitDeleteEvent(req, conversationId, messageIds) {
-  const conversation = await Conversation.findById(conversationId);
-  if (conversation) {
-    conversation.participants.forEach((userId) => {
-      req.io.to(userId.toString()).emit("messages_deleted_bulk", {
-        conversationId,
-        messageIds,
-      });
-    });
-  }
-}
 
 module.exports = router;

@@ -1,13 +1,24 @@
 const admin = require("../config/firebase");
 const UserAuth = require("../models/UserAuth");
-const UserProfile = require("../models/UserProfile");
 const Notification = require("../models/Notification");
 const logger = require("./logger");
+
+// ✅ Helper: Extract Unique Tokens
+const getUniqueTokens = (user) => {
+  let allTokens = [];
+  if (user.fcmTokens && user.fcmTokens.length > 0) {
+    allTokens = [...user.fcmTokens];
+  }
+  // Legacy support for older schema versions
+  if (user.deviceToken && !allTokens.includes(user.deviceToken)) {
+    allTokens.push(user.deviceToken);
+  }
+  return [...new Set(allTokens)];
+};
 
 const cleanupTokens = async (userId, tokensToRemove) => {
   if (tokensToRemove.length === 0) return;
   try {
-    // ✅ FIX: Use UserAuth instead of User
     await UserAuth.findByIdAndUpdate(userId, {
       $pull: { fcmTokens: { $in: tokensToRemove } },
     });
@@ -30,14 +41,13 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
     await newNotification.save();
     logger.info("💾 Broadcast saved to database.");
 
-    // ✅ FIX: Use UserAuth instead of User
-    // Look for BOTH 'fcmTokens' (New) AND 'deviceToken' (Old)
+    // ✅ Optimize Query: Only fetch needed fields
     const usersWithTokens = await UserAuth.find({
       $or: [
         { fcmTokens: { $exists: true, $not: { $size: 0 } } },
         { deviceToken: { $exists: true, $ne: null, $ne: "" } },
       ],
-    });
+    }).select("_id fcmTokens deviceToken");
 
     if (usersWithTokens.length === 0) {
       logger.warn("⚠️ No users found with FCM Tokens. Notification skipped.");
@@ -48,24 +58,13 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
       `📣 Preparing broadcast for ${usersWithTokens.length} users...`,
     );
 
-    for (const user of usersWithTokens) {
-      // ✅ FIX: Combine New and Old tokens into one unique list
-      let allTokens = [];
-      if (user.fcmTokens && user.fcmTokens.length > 0) {
-        allTokens = [...user.fcmTokens];
-      }
-      // Add legacy token if it exists and isn't already in the list
-      if (user.deviceToken && !allTokens.includes(user.deviceToken)) {
-        allTokens.push(user.deviceToken);
-      }
-
-      const uniqueTokens = [...new Set(allTokens)];
-
-      if (uniqueTokens.length === 0) continue;
+    // ✅ PARALLEL BATCH PROCESSING
+    const promises = usersWithTokens.map(async (user) => {
+      const uniqueTokens = getUniqueTokens(user);
+      if (uniqueTokens.length === 0) return;
 
       const message = {
         notification: { title, body },
-        // ✅ CRITICAL: Android Channel ID
         android: {
           notification: {
             channelId: "ascon_high_importance",
@@ -96,12 +95,12 @@ const sendBroadcastNotification = async (title, body, data = {}) => {
           await cleanupTokens(user._id, failedTokens);
         }
       } catch (sendError) {
-        logger.error(
-          `❌ Failed to send to user ${user._id}: ${sendError.message}`,
-        );
+        // Log warning but don't stop the broadcast
+        logger.warn(`Failed to send to user ${user._id}: ${sendError.message}`);
       }
-    }
+    });
 
+    await Promise.all(promises);
     logger.info(`✅ Broadcast cycle complete.`);
   } catch (error) {
     logger.error(`❌ Broadcast Failed: ${error.message}`);
@@ -119,28 +118,19 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
     });
     await newNotification.save();
 
-    // ✅ FIX: Use UserAuth instead of User
-    const user = await UserAuth.findById(userId);
+    const user = await UserAuth.findById(userId).select(
+      "fcmTokens deviceToken",
+    );
+    if (!user) return;
 
-    // ✅ FIX: Robust Token Check
-    let allTokens = [];
-    if (user.fcmTokens && user.fcmTokens.length > 0) {
-      allTokens = [...user.fcmTokens];
-    }
-    if (user.deviceToken && !allTokens.includes(user.deviceToken)) {
-      allTokens.push(user.deviceToken);
-    }
-
-    if (allTokens.length === 0) {
+    const uniqueTokens = getUniqueTokens(user);
+    if (uniqueTokens.length === 0) {
       logger.warn(`⚠️ User ${userId} has no tokens.`);
       return;
     }
 
-    const uniqueTokens = [...new Set(allTokens)];
-
     const message = {
       notification: { title, body },
-      // ✅ CRITICAL: Android Channel ID
       android: {
         notification: {
           channelId: "ascon_high_importance",

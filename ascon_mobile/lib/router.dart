@@ -10,8 +10,9 @@ import 'screens/updates_screen.dart';
 import 'screens/directory_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_list_screen.dart';
+import 'screens/chat_screen.dart'; // ✅ ADD THIS IMPORT
 import 'screens/about_screen.dart';
-import 'screens/polls_screen.dart'; // ✅ NEW: Import Polls Screen
+import 'screens/polls_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -97,14 +98,34 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: rootNavigatorKey, 
       builder: (context, state) => const ChatListScreen(),
     ),
+    
+    // ✅ NEW: Route for the actual Chat Conversation
+    // We use 'extra' to pass the complex arguments (Map)
+    GoRoute(
+      path: '/chat_detail',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) {
+        // Expecting a Map of arguments passed via context.push('/chat_detail', extra: {...})
+        final args = state.extra as Map<String, dynamic>;
+        return ChatScreen(
+          conversationId: args['conversationId'],
+          receiverId: args['receiverId'],
+          receiverName: args['receiverName'],
+          receiverProfilePic: args['receiverProfilePic'],
+          isOnline: args['isOnline'] ?? false,
+          lastSeen: args['lastSeen'],
+          isGroup: args['isGroup'] ?? false,
+          groupId: args['groupId'],
+        );
+      },
+    ),
+
     GoRoute(
       path: '/about',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const AboutScreen(),
     ),
     
-    // ✅ NEW: Polls History Route
-    // This allows push notifications to open 'route: polls'
     GoRoute(
       path: '/polls',
       parentNavigatorKey: rootNavigatorKey,

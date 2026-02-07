@@ -1,10 +1,11 @@
-import 'dart:typed_data'; // ✅ FIXED Typo: Changed from dart:typed_material
+import 'dart:typed_data'; 
 
 enum MessageStatus { sending, sent, delivered, read, error }
 
 class ChatMessage {
   final String id;
   final String senderId;
+  final String? senderName; // ✅ ADDED THIS FIELD
   String text; 
   final DateTime createdAt;
   
@@ -15,11 +16,11 @@ class ChatMessage {
   // Store file bytes for Web support
   final Uint8List? localBytes; 
   
-  // Reply Data (for Swipe-to-Reply)
+  // Reply Data
   final String? replyToId;
   final String? replyToText;
   final String? replyToSenderName;
-  final String? replyToType; // 'text', 'image', etc.
+  final String? replyToType;
   
   bool isDeleted;
   bool isEdited;
@@ -29,6 +30,7 @@ class ChatMessage {
   ChatMessage({
     required this.id,
     required this.senderId,
+    this.senderName, // ✅ ADDED TO CONSTRUCTOR
     required this.text,
     required this.createdAt,
     this.type = 'text',
@@ -66,7 +68,9 @@ class ChatMessage {
 
     return ChatMessage(
       id: json['_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      // ✅ Handle both String ID and Populated Object for Sender
       senderId: (json['sender'] is Map) ? json['sender']['_id'] : json['sender'] ?? '',
+      senderName: (json['sender'] is Map) ? json['sender']['fullName'] : null, // ✅ EXTRACT NAME
       text: json['text'] ?? '',
       createdAt: DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now(),
       type: json['type'] ?? 'text',
@@ -86,7 +90,8 @@ class ChatMessage {
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
-      'sender': senderId,
+      'sender': senderId, // When sending locally, we might only have ID
+      'senderName': senderName, // Optional cache
       'text': text,
       'createdAt': createdAt.toIso8601String(),
       'type': type,
@@ -128,15 +133,13 @@ class ChatConversation {
   });
 
   factory ChatConversation.fromJson(Map<String, dynamic> json, String myUserId) {
-    final participants = (json['participants'] as List?) ?? []; // ✅ Safe null check
+    final participants = (json['participants'] as List?) ?? [];
     
-    // ✅ Safe search for the other participant
     var otherUser = participants.firstWhere(
       (user) => user != null && user['_id'].toString() != myUserId, 
       orElse: () => null,
     );
 
-    // Fallback if the other user isn't found
     if (otherUser == null && participants.isNotEmpty) {
       otherUser = participants[0];
     }

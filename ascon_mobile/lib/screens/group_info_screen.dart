@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart'; 
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
-import 'alumni_detail_screen.dart'; // ✅ Import Detail Screen
+import '../services/api_client.dart'; 
+import 'alumni_detail_screen.dart';
 
 class GroupInfoScreen extends StatefulWidget {
   final String groupId;
@@ -20,18 +22,19 @@ class GroupInfoScreen extends StatefulWidget {
 
 class _GroupInfoScreenState extends State<GroupInfoScreen> {
   final DataService _dataService = DataService();
+  final ApiClient _api = ApiClient();
   final ImagePicker _picker = ImagePicker();
   
   Map<String, dynamic>? _groupData;
   List<dynamic> _allMembers = [];
-  List<dynamic> _filteredMembers = []; // ✅ For Search
+  List<dynamic> _filteredMembers = [];
   bool _isLoading = true;
   bool _isCurrentUserAdmin = false;
   String? _myUserId;
   
-  // ✅ Search State
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -46,14 +49,13 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
       setState(() {
         _groupData = result;
         _allMembers = result?['members'] ?? [];
-        _filteredMembers = _allMembers; // Init filter
+        _filteredMembers = _allMembers;
         _isCurrentUserAdmin = result?['isCurrentUserAdmin'] ?? false;
         _isLoading = false;
       });
     }
   }
 
-  // ✅ 4. SEARCH FUNCTIONALITY
   void _filterMembers(String query) {
     setState(() {
       if (query.isEmpty) {
@@ -68,7 +70,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     });
   }
 
-  // ✅ 5. ADMIN CHANGE ICON
   Future<void> _changeGroupIcon() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
@@ -84,6 +85,113 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     }
   }
 
+  // --- NOTICE BOARD LOGIC ---
+  void _openNoticeBoard() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("📢 Notice Board", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    if (_isCurrentUserAdmin)
+                      TextButton.icon(onPressed: () => _postNewNotice(context), icon: const Icon(Icons.add, size: 18), label: const Text("Post"))
+                  ],
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder(
+                  future: _api.get('/api/groups/${widget.groupId}/notices'),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                    final clientResponse = snapshot.data as Map<String, dynamic>;
+                    final backendResponse = clientResponse['data']; 
+                    final List<dynamic> notices = (backendResponse is List) ? backendResponse : [];
+
+                    if (notices.isEmpty) return const Center(child: Text("No notices yet."));
+
+                    return ListView.builder(
+                      controller: scrollController,
+                      itemCount: notices.length,
+                      itemBuilder: (context, index) {
+                        final notice = notices[index];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          elevation: 0,
+                          color: Colors.amber.withOpacity(0.05),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.amber.withOpacity(0.2))),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.push_pin, size: 16, color: Colors.amber),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(notice['title'] ?? "Notice", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(notice['content'] ?? "", style: TextStyle(color: Colors.grey[800])),
+                                const SizedBox(height: 12),
+                                Text("Posted on ${DateFormat('MMM d, y').format(DateTime.parse(notice['createdAt']))}", style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _postNewNotice(BuildContext parentContext) {
+    final titleCtrl = TextEditingController();
+    final bodyCtrl = TextEditingController();
+    showDialog(
+      context: parentContext, 
+      builder: (c) => AlertDialog(
+        title: const Text("Post Announcement"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: "Title", border: OutlineInputBorder())), const SizedBox(height: 10), TextField(controller: bodyCtrl, maxLines: 3, decoration: const InputDecoration(labelText: "Content", border: OutlineInputBorder()))]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Cancel")),
+          ElevatedButton(onPressed: () async {
+              if(titleCtrl.text.isEmpty || bodyCtrl.text.isEmpty) return;
+              Navigator.pop(c);
+              try {
+                await _api.post('/api/groups/${widget.groupId}/notices', {'title': titleCtrl.text, 'content': bodyCtrl.text});
+                Navigator.pop(parentContext);
+                ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Notice Posted!")));
+                _openNoticeBoard();
+              } catch (e) { ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Failed to post."))); }
+            }, child: const Text("Post")),
+        ],
+      )
+    );
+  }
+
   Future<void> _toggleAdmin(String userId, String name) async {
     await _dataService.toggleGroupAdmin(widget.groupId, userId);
     _loadGroupInfo(); 
@@ -95,201 +203,197 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     _loadGroupInfo();
   }
 
-  // ✅ 3. ALUMNI PROFILE POPUP
   Future<void> _viewProfile(String userId) async {
-    // Show loading indicator
     showDialog(context: context, builder: (c) => const Center(child: CircularProgressIndicator()));
-    
-    // Fetch full details
     final fullProfile = await _dataService.fetchAlumniById(userId);
-    Navigator.pop(context); // Close loader
-
+    Navigator.pop(context);
     if (fullProfile != null && mounted) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: fullProfile)));
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not load profile.")));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
     final String? iconUrl = _groupData?['icon'];
+    final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
-      appBar: AppBar(
-        title: _isSearching 
-          ? TextField(
-              controller: _searchController,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: "Search members, job titles...",
-                hintStyle: TextStyle(color: Colors.white70),
-                border: InputBorder.none
-              ),
-              onChanged: _filterMembers,
-            )
-          : const Text("Group Info"),
-        actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchController.clear();
-                  _filteredMembers = _allMembers;
-                }
-              });
-            },
-          )
-        ],
-      ),
+      backgroundColor: Colors.white,
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
-        : _groupData == null 
-            ? const Center(child: Text("Could not load info"))
-            : SingleChildScrollView(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
-                    
-                    // 1. Header with Edit Icon
-                    Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: Colors.teal.shade100,
-                          backgroundImage: (iconUrl != null && iconUrl.isNotEmpty) 
-                              ? CachedNetworkImageProvider(iconUrl) 
-                              : null,
-                          child: (iconUrl == null || iconUrl.isEmpty) 
-                              ? const Icon(Icons.groups, size: 50, color: Colors.teal) 
-                              : null,
-                        ),
-                        if (_isCurrentUserAdmin)
-                          Positioned(
-                            bottom: 0, right: 0,
-                            child: GestureDetector(
-                              onTap: _changeGroupIcon,
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: const BoxDecoration(color: Colors.teal, shape: BoxShape.circle),
-                                child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+        : Stack(
+            children: [
+              // ✅ LAYER 1: Scrollable Content
+              CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  // 1. Image Header (Scrolls away)
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 320,
+                      width: double.infinity,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (iconUrl != null && iconUrl.isNotEmpty)
+                            CachedNetworkImage(imageUrl: iconUrl, fit: BoxFit.cover)
+                          else
+                            Container(color: Colors.teal.shade100, child: const Icon(Icons.groups, size: 80, color: Colors.teal)),
+                          
+                          // Gradient for text contrast
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                                colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.8)],
                               ),
                             ),
-                          )
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Text(widget.groupName, style: GoogleFonts.lato(fontSize: 22, fontWeight: FontWeight.bold)),
-                    Text("${_allMembers.length} Members", style: const TextStyle(color: Colors.grey)),
-                    
-                    const SizedBox(height: 20),
-                    
-                    // 2. Actions (Removed Exit Button)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildActionBtn(Icons.call, "Voice Call", () {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Starting Group Call...")));
-                        }),
-                        _buildActionBtn(Icons.video_call, "Video", () {
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Starting Video Call...")));
-                        }),
-                        _buildActionBtn(Icons.file_present, "Docs", () {
-                           // Future: Open Media Gallery
-                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Media & Docs (Coming Soon)")));
-                        }),
-                      ],
-                    ),
-                    const Divider(height: 40),
+                          ),
+                          
+                          // Group Name at Bottom Left of Image
+                          Positioned(
+                            bottom: 20, left: 20, right: 80,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(widget.groupName, style: GoogleFonts.lato(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
+                                const SizedBox(height: 4),
+                                Text("${_allMembers.length} Members • Group", style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                              ],
+                            ),
+                          ),
 
-                    // 3. Members List with Admin Badge
-                    Container(
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text("Participants (${_filteredMembers.length})", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)),
+                          // Admin Edit Icon
+                          if (_isCurrentUserAdmin)
+                            Positioned(
+                              bottom: 20, right: 20,
+                              child: GestureDetector(
+                                onTap: _changeGroupIcon,
+                                child: CircleAvatar(backgroundColor: Colors.white, radius: 24, child: Icon(Icons.camera_alt, color: primaryColor)),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _filteredMembers.length,
-                      itemBuilder: (context, index) {
+                  ),
+
+                  // 2. Action Buttons (Sticky-ish feel in list)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildActionBtn(Icons.call, "Voice", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call..."))), Colors.green),
+                          _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange), // The New Feature
+                          _buildActionBtn(Icons.description, "Docs", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Docs (Coming Soon)"))), Colors.blue),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // 3. Search Bar (Inside Content)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: _filterMembers,
+                        decoration: InputDecoration(
+                          hintText: "Search members...",
+                          prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 4. Member List Title
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                      child: Text("Participants (${_filteredMembers.length})", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+                    ),
+                  ),
+
+                  // 5. The List
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
                         final m = _filteredMembers[index];
                         final bool isAdmin = m['isAdmin'] ?? false;
                         final bool isMe = m['_id'] == _myUserId;
 
                         return ListTile(
-                          onTap: () => _viewProfile(m['_id']), // ✅ CLICK TO PROFILE
+                          onTap: () => _viewProfile(m['_id']),
                           leading: CircleAvatar(
-                            backgroundImage: (m['profilePicture'] != null && m['profilePicture'] != "") 
-                              ? CachedNetworkImageProvider(m['profilePicture'])
-                              : null,
-                            child: (m['profilePicture'] == null || m['profilePicture'] == "") 
-                              ? const Icon(Icons.person) : null,
+                            backgroundImage: (m['profilePicture'] != null && m['profilePicture'] != "") ? CachedNetworkImageProvider(m['profilePicture']) : null,
+                            child: (m['profilePicture'] == null || m['profilePicture'] == "") ? const Icon(Icons.person) : null,
                           ),
                           title: Text(isMe ? "You" : m['fullName'], style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(m['jobTitle'] ?? "Member"),
-                          
-                          // ✅ 2. ADMIN INDICATION
                           trailing: isAdmin 
                             ? Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.1), 
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: Colors.green.withOpacity(0.5))
-                                ),
-                                child: const Text("Group Admin", style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
+                                decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.green)),
+                                child: const Text("Admin", style: TextStyle(fontSize: 10, color: Colors.green, fontWeight: FontWeight.bold)),
                               )
                             : null,
-                            
                           onLongPress: (_isCurrentUserAdmin && !isMe) ? () {
-                             showModalBottomSheet(context: context, builder: (c) => Wrap(
-                               children: [
-                                 ListTile(
-                                   leading: const Icon(Icons.shield),
-                                   title: Text(isAdmin ? "Dismiss as Admin" : "Make Group Admin"),
-                                   onTap: () { Navigator.pop(c); _toggleAdmin(m['_id'], m['fullName']); }
-                                 ),
-                                 ListTile(
-                                   leading: const Icon(Icons.person_remove, color: Colors.red),
-                                   title: const Text("Remove from Group", style: TextStyle(color: Colors.red)),
-                                   onTap: () { Navigator.pop(c); _removeMember(m['_id']); }
-                                 ),
-                               ],
-                             ));
+                             showModalBottomSheet(context: context, builder: (c) => Wrap(children: [
+                               ListTile(leading: const Icon(Icons.shield), title: Text(isAdmin ? "Dismiss as Admin" : "Make Group Admin"), onTap: () { Navigator.pop(c); _toggleAdmin(m['_id'], m['fullName']); }),
+                               ListTile(leading: const Icon(Icons.person_remove, color: Colors.red), title: const Text("Remove from Group", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(c); _removeMember(m['_id']); }),
+                             ]));
                           } : null,
                         );
                       },
+                      childCount: _filteredMembers.length,
                     ),
-                    const SizedBox(height: 30),
-                  ],
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                ],
+              ),
+
+              // ✅ LAYER 2: Floating Navigation (No Bar)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 10,
+                left: 16,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                  ),
                 ),
               ),
+            ],
+          ),
     );
   }
 
-  Widget _buildActionBtn(IconData icon, String label, VoidCallback onTap, {Color color = Colors.teal}) {
+  Widget _buildActionBtn(IconData icon, String label, VoidCallback onTap, Color color) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 80,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        width: 100,
+        padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.1))
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 26),
-            const SizedBox(height: 6),
-            Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600))
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600))
           ],
         ),
       ),
