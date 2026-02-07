@@ -79,10 +79,20 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // 2. CONFIGURATION & ROUTES
 // ==========================================
 
-// ✅ IMPROVEMENT: Strict control via ENV
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",")
-  : [];
+// ✅ IMPROVEMENT: Robust Origin Parsing
+const getOrigins = () => {
+  const envOrigins = process.env.ALLOWED_ORIGINS;
+  if (envOrigins) {
+    return envOrigins.split(",").map((origin) => origin.trim());
+  }
+  // Fallback for Development
+  if (process.env.NODE_ENV !== "production") {
+    return ["http://localhost:3000", "http://localhost:5000"];
+  }
+  return [];
+};
+
+const allowedOrigins = getOrigins();
 
 app.use(
   cors({
@@ -93,7 +103,7 @@ app.use(
       if (allowedOrigins.indexOf(origin) !== -1) {
         return callback(null, true);
       } else {
-        // ✅ IMPROVEMENT: Log rejected origin for debugging
+        // Log rejected origin for debugging
         logger.warn(`🚫 Blocked CORS request from: ${origin}`);
         return callback(new Error("Not allowed by CORS"));
       }

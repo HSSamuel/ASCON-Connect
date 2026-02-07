@@ -151,22 +151,36 @@ router.post("/start", verify, async (req, res) => {
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
 
+        // ✅ CRITICAL FIX: Add ALL group members to participants list immediately
+        let initialParticipants = group.members || [];
+
+        // Ensure current user is also in the list if not already
+        const isUserInGroup = initialParticipants.some(
+          (id) => id.toString() === req.user._id,
+        );
+        if (!isUserInGroup) {
+          initialParticipants.push(req.user._id);
+        }
+
         chat = new Conversation({
           isGroup: true,
           groupId: groupId,
           groupName: group.name,
-          participants: [req.user._id], // Start with current user
-          groupAdmin: group.admins && group.admins.length > 0 ? group.admins[0] : req.user._id
+          participants: initialParticipants, // ✅ Correctly includes everyone
+          groupAdmin:
+            group.admins && group.admins.length > 0
+              ? group.admins[0]
+              : req.user._id,
         });
         await chat.save();
       } else {
-        // 3. Ensure current user is in participants
+        // 3. Ensure current user is in participants locally
         if (!chat.participants.includes(req.user._id)) {
           chat.participants.push(req.user._id);
           await chat.save();
         }
       }
-    } 
+    }
     // B. HANDLE 1-ON-1 CHAT
     else {
       chat = await Conversation.findOne({
@@ -217,27 +231,28 @@ router.post("/start", verify, async (req, res) => {
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
     const { messageIds, deleteForEveryone } = req.body;
-    
+
     // Find the conversation of the first message to check permissions
     const firstMsg = await Message.findById(messageIds[0]);
-    if (!firstMsg) return res.status(404).json({ message: "Message not found" });
+    if (!firstMsg)
+      return res.status(404).json({ message: "Message not found" });
 
     const conversation = await Conversation.findById(firstMsg.conversationId);
     let isAdmin = false;
 
     // Check if User is Group Admin
     if (conversation && conversation.groupId) {
-       const group = await Group.findById(conversation.groupId);
-       if (group && group.admins.includes(req.user._id)) {
-         isAdmin = true;
-       }
+      const group = await Group.findById(conversation.groupId);
+      if (group && group.admins.includes(req.user._id)) {
+        isAdmin = true;
+      }
     }
 
     if (deleteForEveryone) {
       // ✅ Allow if Sender OR Admin
       const query = { _id: { $in: messageIds } };
       if (!isAdmin) {
-         query.sender = req.user._id; // Restrict to sender if not admin
+        query.sender = req.user._id; // Restrict to sender if not admin
       }
 
       await Message.updateMany(query, {
@@ -248,7 +263,7 @@ router.post("/delete-multiple", verify, async (req, res) => {
           type: "text",
         },
       });
-      
+
       _emitDeleteEvent(req, firstMsg.conversationId, messageIds, true);
     } else {
       // Delete for Me
@@ -357,6 +372,7 @@ router.post(
       if (type === "audio") lastMessagePreview = "🎤 Sent a voice note";
       if (type === "file") lastMessagePreview = "📎 Sent a document";
 
+      // 1. Update Conversation Stats
       const conversation = await Conversation.findByIdAndUpdate(
         req.params.conversationId,
         {
@@ -367,29 +383,39 @@ router.post(
         { new: true },
       );
 
-      // ✅ CRITICAL FIX: Broadcast to ALL participants (except sender)
-      // The previous code only picked the *first* person it found.
+      // ✅ 2. CRITICAL FIX FOR GROUPS: Sync Participants
+      // If this is a group chat, FORCE sync with Group model to ensure everyone gets the message.
+      if (conversation.isGroup && conversation.groupId) {
+        const group = await Group.findById(conversation.groupId);
+        if (group && group.members) {
+          // Force update participants list from Group model
+          conversation.participants = group.members;
+          await conversation.save();
+        }
+      }
+
+      // 3. Broadcast to ALL participants (except sender)
       const senderProfile = await UserProfile.findOne({ userId: req.user._id });
 
+      // Use the potentially updated participant list
       conversation.participants.forEach(async (participantId) => {
         // Skip the sender
         if (participantId.toString() === req.user._id) return;
 
-        // 1. Socket Emit (Real-time)
+        // A. Socket Emit (Real-time)
         req.io.to(participantId.toString()).emit("new_message", {
           message: savedMessage,
           conversationId: conversation._id,
         });
 
-        // 2. Push Notification
-        // (Optional: You might want to debounce this for large groups to avoid spam)
+        // B. Push Notification
         if (senderProfile) {
           try {
             await sendPersonalNotification(
               participantId.toString(),
-              conversation.isGroup 
-                  ? `${conversation.groupName} (${senderProfile.fullName})` // Group Format
-                  : `Message from ${senderProfile.fullName}`,               // DM Format
+              conversation.isGroup
+                ? `${conversation.groupName} (${senderProfile.fullName})` // Group Format
+                : `Message from ${senderProfile.fullName}`, // DM Format
               lastMessagePreview,
               {
                 type: "chat_message",
@@ -429,15 +455,17 @@ router.put("/read/:conversationId", verify, async (req, res) => {
     );
 
     const conversation = await Conversation.findById(req.params.conversationId);
-    const senderId = conversation.participants.find(
-      (id) => id.toString() !== req.user._id,
-    );
 
-    if (senderId) {
-      req.io.to(senderId.toString()).emit("messages_read", {
-        conversationId: req.params.conversationId,
-      });
-    }
+    // Notify all other participants that I read it
+    conversation.participants.forEach((participantId) => {
+      if (participantId.toString() !== req.user._id) {
+        req.io.to(participantId.toString()).emit("messages_read", {
+          conversationId: req.params.conversationId,
+          readerId: req.user._id,
+        });
+      }
+    });
+
     res.status(200).json({ success: true });
   } catch (err) {
     res.status(500).json(err);

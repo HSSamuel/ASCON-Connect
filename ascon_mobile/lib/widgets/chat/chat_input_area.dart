@@ -48,6 +48,42 @@ class ChatInputArea extends StatelessWidget {
     required this.onTyping,
   });
 
+  // ✅ NEW: Helper to insert text formatting and maintain focus
+  void _applyFormat(String tag) {
+    final text = controller.text;
+    final selection = controller.selection;
+    
+    String newText;
+    int newCursorPos;
+
+    // 1. If invalid selection (lost focus), insert at end
+    if (!selection.isValid || selection.start == -1) {
+      newText = text + "$tag$tag";
+      newCursorPos = newText.length - tag.length; // Place cursor inside tags
+    } 
+    // 2. If valid selection range (text highlighted)
+    else {
+      final selectedText = text.substring(selection.start, selection.end);
+      newText = text.replaceRange(
+        selection.start, 
+        selection.end, 
+        "$tag$selectedText$tag"
+      );
+      newCursorPos = selection.end + (tag.length * 2); // Cursor after closing tag
+    }
+
+    // 3. Update Controller
+    controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCursorPos),
+    );
+
+    // 4. ✅ CRITICAL FIX: Re-request focus to keep keyboard open
+    if (!focusNode.hasFocus) {
+      focusNode.requestFocus();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -58,12 +94,11 @@ class ChatInputArea extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             color: isDark ? Colors.grey[850] : Colors.grey[100],
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildFormatBtn(Icons.format_bold, "*", isDark),
-                const SizedBox(width: 8),
-                _buildFormatBtn(Icons.format_italic, "_", isDark),
-                const SizedBox(width: 8),
-                _buildFormatBtn(Icons.format_underlined, "~", isDark),
+                _buildFormatBtn(Icons.format_bold, "**", "Bold"),
+                _buildFormatBtn(Icons.format_italic, "_", "Italic"),
+                _buildFormatBtn(Icons.code, "`", "Code"),
               ],
             ),
           ),
@@ -158,23 +193,14 @@ class ChatInputArea extends StatelessWidget {
     );
   }
 
-  Widget _buildFormatBtn(IconData icon, String char, bool isDark) {
-    return GestureDetector(
-      onTap: () {
-        final text = controller.text;
-        final selection = controller.selection;
-        if (!selection.isValid || selection.start == -1) {
-          controller.value = TextEditingValue(text: text + "$char$char", selection: TextSelection.collapsed(offset: text.length + 1));
-        } else {
-          final newText = text.replaceRange(selection.start, selection.end, "$char${text.substring(selection.start, selection.end)}$char");
-          controller.value = TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: selection.end + 2));
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: isDark ? Colors.grey[700] : Colors.grey[300], borderRadius: BorderRadius.circular(4)),
-        child: Icon(icon, size: 18, color: isDark ? Colors.white : Colors.black87),
-      ),
+  // ✅ NEW: Uses IconButton instead of GestureDetector for better click feedback
+  Widget _buildFormatBtn(IconData icon, String tag, String tooltip) {
+    return IconButton(
+      icon: Icon(icon, color: isDark ? Colors.white : Colors.black87),
+      tooltip: tooltip,
+      onPressed: () => _applyFormat(tag),
+      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(),
     );
   }
 }

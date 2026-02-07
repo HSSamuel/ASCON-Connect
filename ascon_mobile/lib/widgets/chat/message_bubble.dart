@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:vibration/vibration.dart';
+import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ NEW: Markdown Support
+
 import '../../models/chat_objects.dart';
 import '../../widgets/full_screen_image.dart';
 
@@ -22,7 +24,7 @@ class MessageBubble extends StatelessWidget {
   final Duration currentPosition;
   final Duration totalDuration;
   final String? downloadingFileId;
-  final bool isAdmin; // ✅ For Admin Privileges
+  final bool isAdmin; 
 
   // Callbacks
   final Function(String) onSwipeReply;
@@ -97,7 +99,7 @@ class MessageBubble extends StatelessWidget {
             _showOptionsSheet(context);
           },
           onTap: () {
-            if (isSelectionMode) onToggleSelection(msg.id); // Allow both to select
+            if (isSelectionMode) onToggleSelection(msg.id); 
           },
           child: Container(
             constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
@@ -259,7 +261,30 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    return Text.rich(TextSpan(children: _parseFormattedText(msg.text, TextStyle(color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87), fontSize: 15))));
+    // ✅ NEW: FLUTTER MARKDOWN RENDERING
+    return MarkdownBody(
+      data: msg.text,
+      styleSheet: MarkdownStyleSheet(
+        p: TextStyle(
+          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+          fontSize: 15,
+        ),
+        strong: TextStyle( // Bold
+          fontWeight: FontWeight.bold,
+          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black),
+        ),
+        em: TextStyle( // Italic
+          fontStyle: FontStyle.italic,
+          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black),
+        ),
+        code: TextStyle( // Code (used for Monospace)
+          backgroundColor: isMe ? Colors.black26 : Colors.grey[200],
+          color: isMe ? Colors.white : Colors.black,
+          fontFamily: 'monospace',
+          fontSize: 13,
+        ),
+      ),
+    );
   }
 
   Widget _buildImage(Widget imageWidget, BuildContext context) {
@@ -278,21 +303,5 @@ class MessageBubble extends StatelessWidget {
       default: icon = msg.isRead ? Icons.done_all : Icons.check; color = msg.isRead ? Colors.lightBlueAccent : Colors.white70; break;
     }
     return Icon(icon, size: 14, color: color);
-  }
-
-  List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
-    final List<TextSpan> spans = [];
-    final RegExp exp = RegExp(r'([*_~])(.*?)\1'); 
-    text.splitMapJoin(exp, onMatch: (Match m) {
-        final String marker = m.group(1)!; final String content = m.group(2)!;
-        TextStyle newStyle = baseStyle;
-        if (marker == '*') newStyle = newStyle.copyWith(fontWeight: FontWeight.bold);
-        if (marker == '_') newStyle = newStyle.copyWith(fontStyle: FontStyle.italic);
-        if (marker == '~') newStyle = newStyle.copyWith(decoration: TextDecoration.underline);
-        spans.add(TextSpan(text: content, style: newStyle));
-        return '';
-      }, onNonMatch: (String s) { spans.add(TextSpan(text: s, style: baseStyle)); return ''; },
-    );
-    return spans;
   }
 }
