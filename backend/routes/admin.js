@@ -576,4 +576,22 @@ router.put("/users/:id/fix-id", verifyEditor, async (req, res) => {
   }
 });
 
+// ✅ NEW: Toggle Poll Creator Permission
+router.put("/users/:id/toggle-poll-admin", verifyEditor, async (req, res) => {
+  try {
+    const userAuth = await UserAuth.findById(req.params.id);
+    if (!userAuth) return res.status(404).json({ message: "User not found" });
+
+    userAuth.canCreatePolls = !userAuth.canCreatePolls;
+    await userAuth.save();
+
+    res.json({
+      message: `Poll Creator permission ${userAuth.canCreatePolls ? "GRANTED" : "REVOKED"}`,
+      canCreatePolls: userAuth.canCreatePolls
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

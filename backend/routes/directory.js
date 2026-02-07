@@ -429,27 +429,61 @@ router.get("/celebrations", verifyToken, async (req, res) => {
   try {
     const today = new Date();
     const day = today.getDate();
-    const month = today.getMonth() + 1; // MongoDB months are 1-based in aggregation
+    const month = today.getMonth() + 1;
+    const currentYear = today.getFullYear();
 
-    const celebrants = await UserProfile.aggregate([
+    // 1. Birthdays (Existing Logic)
+    const birthdays = await UserProfile.aggregate([
       {
         $project: {
           fullName: 1,
           profilePicture: 1,
           jobTitle: 1,
           dobDay: { $dayOfMonth: "$dateOfBirth" },
-          dobMonth: { $month: "$dateOfBirth" }
-        }
+          dobMonth: { $month: "$dateOfBirth" },
+        },
       },
-      {
-        $match: {
-          dobDay: day,
-          dobMonth: month
-        }
-      }
+      { $match: { dobDay: day, dobMonth: month } },
     ]);
 
-    res.json({ success: true, data: celebrants });
+    // 2. ✅ NEW: Class Anniversaries (Milestones: 5, 10, 15... 50 years)
+    // We search for users whose class year results in a generic "0" or "5" delta
+    const milestoneYears = [];
+    for (let i = 5; i <= 60; i += 5) {
+      milestoneYears.push(currentYear - i);
+    }
+
+    const anniversaries = await UserProfile.aggregate([
+      {
+        $match: {
+          yearOfAttendance: { $in: milestoneYears },
+        },
+      },
+      {
+        $group: {
+          _id: "$yearOfAttendance",
+          count: { $sum: 1 },
+          representativeImages: { $push: "$profilePicture" }, // Grab a few pics for the UI
+        },
+      },
+      {
+        $project: {
+          year: "$_id",
+          yearsAgo: { $subtract: [currentYear, "$_id"] },
+          count: 1,
+          images: { $slice: ["$representativeImages", 3] }, // Show top 3 faces
+        },
+      },
+      { $sort: { year: -1 } },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        birthdays,
+        anniversaries, // e.g. [{ year: 2014, yearsAgo: 10, count: 42 }]
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

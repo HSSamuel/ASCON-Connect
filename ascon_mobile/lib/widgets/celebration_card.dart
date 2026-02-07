@@ -11,7 +11,8 @@ class CelebrationWidget extends StatefulWidget {
 }
 
 class _CelebrationWidgetState extends State<CelebrationWidget> {
-  List<dynamic> _celebrants = [];
+  List<dynamic> _birthdays = [];
+  List<dynamic> _anniversaries = []; 
   bool _isLoading = true;
 
   @override
@@ -21,11 +22,19 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
   }
 
   Future<void> _loadCelebrants() async {
-    // Note: Ensure fetchCelebrants() is added to DataService as per previous plan
-    final data = await DataService().fetchCelebrants();
+    // Dynamic return type handles both List (old) and Map (new)
+    final result = await DataService().fetchCelebrants(); 
+    
     if (mounted) {
       setState(() {
-        _celebrants = data;
+        if (result is Map) {
+            _birthdays = result['birthdays'] ?? [];
+            _anniversaries = result['anniversaries'] ?? [];
+        } else if (result is List) {
+            // Fallback for older backend versions
+            _birthdays = result; 
+            _anniversaries = [];
+        }
         _isLoading = false;
       });
     }
@@ -33,15 +42,14 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
 
   @override
   Widget build(BuildContext context) {
-    // Hide widget completely if no one is celebrating
-    if (!_isLoading && _celebrants.isEmpty) return const SizedBox.shrink();
+    if (!_isLoading && _birthdays.isEmpty && _anniversaries.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)], // Warm Celebration Colors
+          colors: [Color(0xFFFFF3E0), Color(0xFFFFE0B2)], 
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -58,78 +66,113 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.cake_rounded, color: Colors.deepOrange, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                "Celebrating Today! 🎂", 
-                style: GoogleFonts.lato(
-                  fontSize: 16, 
-                  fontWeight: FontWeight.bold, 
-                  color: Colors.deepOrange[900]
-                )
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: SizedBox(
-                height: 20, width: 20, 
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepOrange)
-              ),
-            )
-          else
-            SizedBox(
-              height: 80,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _celebrants.length,
-                itemBuilder: (context, index) {
-                  final user = _celebrants[index];
-                  final name = (user['fullName'] ?? "User").split(" ")[0]; // First Name
-                  final img = user['profilePicture'];
+          // 1. Birthdays Section
+          if (_birthdays.isNotEmpty) ...[
+              _buildHeader("Celebrating Today! 🎂", Colors.deepOrange[900]!),
+              const SizedBox(height: 12),
+              _buildHorizontalList(_birthdays, isAnniversary: false),
+          ],
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 20.0),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: CircleAvatar(
-                            radius: 24,
-                            backgroundColor: Colors.white,
-                            backgroundImage: (img != null && img.isNotEmpty) 
-                                ? CachedNetworkImageProvider(img) 
-                                : null,
-                            child: (img == null || img.isEmpty) 
-                                ? const Icon(Icons.person, color: Colors.grey) 
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          name, 
-                          style: GoogleFonts.lato(
-                            fontSize: 11, 
-                            fontWeight: FontWeight.w600, 
-                            color: Colors.brown[800]
-                          )
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+          // 2. Anniversaries Section
+          if (_anniversaries.isNotEmpty) ...[
+              if (_birthdays.isNotEmpty) const Divider(height: 24, color: Colors.orangeAccent),
+              _buildHeader("Class Anniversaries 🎓", Colors.blue[800]!),
+              const SizedBox(height: 12),
+              _buildHorizontalList(_anniversaries, isAnniversary: true),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(String title, Color color) {
+     return Row(
+       children: [
+         if (title.contains("Today")) const Icon(Icons.cake_rounded, color: Colors.deepOrange, size: 20),
+         if (title.contains("Class")) const Icon(Icons.school, color: Colors.blue, size: 20),
+         const SizedBox(width: 8),
+         Text(
+           title, 
+           style: GoogleFonts.lato(
+             fontSize: 16, 
+             fontWeight: FontWeight.bold, 
+             color: color
+           )
+         ),
+       ],
+     );
+  }
+
+  Widget _buildHorizontalList(List<dynamic> items, {required bool isAnniversary}) {
+    if (_isLoading) {
+       return const Padding(
+          padding: EdgeInsets.all(8.0),
+          child: SizedBox(
+            height: 20, width: 20, 
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepOrange)
+          ),
+        );
+    }
+
+    return SizedBox(
+      height: 90,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+            final item = items[index];
+            
+            final String title = isAnniversary 
+                ? "Class of ${item['year']}" 
+                : (item['fullName'] ?? "User").split(" ")[0]; 
+            
+            final String subtitle = isAnniversary 
+                ? "${item['yearsAgo']} Years" 
+                : "Birthday";
+
+            final String? img = isAnniversary ? null : item['profilePicture'];
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 20.0),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: isAnniversary ? Colors.blue[100] : Colors.white,
+                      backgroundImage: (img != null && img.isNotEmpty) 
+                          ? CachedNetworkImageProvider(img) 
+                          : null,
+                      child: (img == null || img.isEmpty) 
+                          ? Icon(
+                              isAnniversary ? Icons.school : Icons.person, 
+                              color: isAnniversary ? Colors.blue : Colors.grey
+                            ) 
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    title, 
+                    style: GoogleFonts.lato(
+                      fontSize: 11, 
+                      fontWeight: FontWeight.w600, 
+                      color: Colors.brown[800]
+                    )
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 10, color: Colors.grey)
+                  ),
+                ],
+              ),
+            );
+        },
       ),
     );
   }

@@ -27,7 +27,8 @@ import '../models/chat_objects.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../widgets/full_screen_image.dart'; 
-import '../utils/presence_formatter.dart'; 
+import '../utils/presence_formatter.dart';
+import 'group_info_screen.dart'; // ✅ Import Group Info Screen
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -36,6 +37,10 @@ class ChatScreen extends StatefulWidget {
   final String? receiverProfilePic;
   final bool isOnline;
   final String? lastSeen;
+  
+  // ✅ NEW: Group Context
+  final bool isGroup; 
+  final String? groupId; 
 
   const ChatScreen({
     super.key,
@@ -45,6 +50,8 @@ class ChatScreen extends StatefulWidget {
     this.receiverProfilePic,
     this.isOnline = false,
     this.lastSeen,
+    this.isGroup = false, 
+    this.groupId,
   });
 
   @override
@@ -110,26 +117,28 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    if (!_isPeerOnline) {
+    if (!_isPeerOnline && !widget.isGroup) {
       _startStatusPolling();
     }
     
-    _statusSubscription = SocketService().userStatusStream.listen((data) {
-      if (!mounted) return;
-      if (data['userId'] == widget.receiverId) {
-        setState(() {
-          _isPeerOnline = data['isOnline'];
-          if (!_isPeerOnline && data['lastSeen'] != null) {
-            _peerLastSeen = data['lastSeen'];
-          }
-          if (_isPeerOnline) {
-            _statusPollingTimer?.cancel();
-          }
-        });
-      }
-    });
+    // Only poll presence for direct messages
+    if (!widget.isGroup) {
+      _statusSubscription = SocketService().userStatusStream.listen((data) {
+        if (!mounted) return;
+        if (data['userId'] == widget.receiverId) {
+          setState(() {
+            _isPeerOnline = data['isOnline'];
+            if (!_isPeerOnline && data['lastSeen'] != null) {
+              _peerLastSeen = data['lastSeen'];
+            }
+            if (_isPeerOnline) {
+              _statusPollingTimer?.cancel();
+            }
+          });
+        }
+      });
+    }
 
-    // ✅ Listen to focus change to show/hide toolbar
     _focusNode.addListener(() {
       setState(() => _showFormatting = _focusNode.hasFocus);
     });
@@ -150,7 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _checkStatusSafe() {
-    SocketService().checkUserStatus(widget.receiverId);
+    if(!widget.isGroup) SocketService().checkUserStatus(widget.receiverId);
   }
 
   void _setupAudioPlayerListeners() {
@@ -218,7 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     void checkStatus() {
-      SocketService().checkUserStatus(widget.receiverId);
+      if(!widget.isGroup) SocketService().checkUserStatus(widget.receiverId);
     }
 
     if (socket.connected) {
@@ -271,8 +280,17 @@ class _ChatScreenState extends State<ChatScreen> {
     socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == _activeConversationId) {
         List<dynamic> ids = data['messageIds'];
+        bool isHardDelete = data['isHardDelete'] ?? true;
+
         setState(() {
-          _messages.removeWhere((m) => ids.contains(m.id));
+          if (isHardDelete) {
+             // Remove completely
+             _messages.removeWhere((m) => ids.contains(m.id));
+          } else {
+             // Just hide it locally? Usually backend handles filtering for 'soft deletes'
+             // But if we receive this event, it means someone deleted for everyone
+             _messages.removeWhere((m) => ids.contains(m.id));
+          }
         });
         _cacheMessages();
       }
@@ -396,6 +414,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _getStatusText() {
+    if (widget.isGroup) return "Group";
     if (_isPeerTyping) return "Typing...";
     if (_isPeerOnline) return "Active Now";
     if (_peerLastSeen == null) return "Offline";
@@ -409,7 +428,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _textController.text;
     final selection = _textController.selection;
     
-    // If no valid selection, just insert markers
     if (!selection.isValid || selection.start == -1) {
       final newText = text + "$char$char";
       _textController.value = TextEditingValue(
@@ -423,7 +441,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final end = selection.end;
     final selectedText = text.substring(start, end);
     
-    // Check if already formatted (Toggle Off)
     if (start >= 1 && end <= text.length - 1 && text[start - 1] == char && text[end] == char) {
         final newText = text.replaceRange(start - 1, end + 1, selectedText);
         _textController.value = TextEditingValue(
@@ -431,7 +448,6 @@ class _ChatScreenState extends State<ChatScreen> {
           selection: TextSelection(baseOffset: start - 1, extentOffset: end - 1),
         );
     } else {
-      // Apply format
       final newText = text.replaceRange(start, end, "$char$selectedText$char");
       _textController.value = TextEditingValue(
         text: newText,
@@ -504,7 +520,6 @@ class _ChatScreenState extends State<ChatScreen> {
       final file = File('${tempDir.path}/$safeName');
 
       if (await file.exists()) {
-        debugPrint("📂 Opening cached file: ${file.path}");
         final result = await OpenFile.open(file.path);
         if (result.type != ResultType.done) {
            _shareFile(file.path, fileName);
@@ -523,7 +538,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted) {
         setState(() => _downloadingFileId = null);
-        
         final result = await OpenFile.open(file.path);
         if (result.type != ResultType.done) {
            _shareFile(file.path, fileName);
@@ -751,6 +765,89 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // --------------------------------------------------------
+  // 🗳️ POLL CREATION UI
+  // --------------------------------------------------------
+  void _showPollCreationDialog() {
+    if (!widget.isGroup || widget.groupId == null) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Polls can only be created in Groups.")));
+       return;
+    }
+
+    final questionCtrl = TextEditingController();
+    final option1Ctrl = TextEditingController();
+    final option2Ctrl = TextEditingController();
+    
+    showDialog(
+      context: context, 
+      builder: (ctx) => AlertDialog(
+        title: const Text("Create Poll"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: questionCtrl, decoration: const InputDecoration(labelText: "Question")),
+            const SizedBox(height: 10),
+            TextField(controller: option1Ctrl, decoration: const InputDecoration(labelText: "Option 1")),
+            TextField(controller: option2Ctrl, decoration: const InputDecoration(labelText: "Option 2")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              if (questionCtrl.text.isEmpty || option1Ctrl.text.isEmpty || option2Ctrl.text.isEmpty) return;
+              
+              Navigator.pop(ctx); 
+              
+              try {
+                final res = await _api.post('/api/polls', {
+                  'question': questionCtrl.text,
+                  'options': [option1Ctrl.text, option2Ctrl.text],
+                  'groupId': widget.groupId,
+                  'expiresAt': DateTime.now().add(const Duration(days: 7)).toIso8601String()
+                });
+                
+                if (res['success'] == true) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Poll Created!")));
+                }
+              } catch (e) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to create poll. Permissions required?")));
+              }
+            }, 
+            child: const Text("Create")
+          )
+        ],
+      )
+    );
+  }
+
+  // --------------------------------------------------------
+  // ✅ UPDATED ATTACHMENT MENU
+  // --------------------------------------------------------
+  void _showAttachmentMenu() {
+    showModalBottomSheet(
+      context: context, 
+      builder: (context) => Wrap(
+        alignment: WrapAlignment.spaceEvenly, 
+        children: [
+          _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), 
+          _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), 
+          _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
+          
+          if (widget.isGroup)
+            _attachOption(Icons.how_to_vote, Colors.orange, "Poll", () {
+               Navigator.pop(context); 
+               _showPollCreationDialog();
+            }),
+        ]
+      )
+    );
+  }
+  
+  Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
+    return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
+  }
+
+  // --------------------------------------------------------
   // ✅ SELECTION & BULK ACTIONS
   // --------------------------------------------------------
   void _toggleSelection(String messageId) {
@@ -766,14 +863,51 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteSelectedMessages() async {
+    // Check if user owns all selected messages (to allow 'Delete for Everyone')
+    bool canDeleteForEveryone = true;
+    for (var id in _selectedMessageIds) {
+      final msg = _messages.firstWhere((m) => m.id == id);
+      if (msg.senderId != _myUserId) canDeleteForEveryone = false;
+    }
+
+    bool deleteForEveryone = false;
+
+    if (canDeleteForEveryone) {
+      final choice = await showDialog<String>(
+        context: context, 
+        builder: (c) => AlertDialog(
+          title: const Text("Delete Message?"),
+          content: const Text("Delete for everyone or just yourself?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, 'cancel'), child: const Text("Cancel")),
+            TextButton(onPressed: () => Navigator.pop(c, 'me'), child: const Text("Delete for Me")),
+            TextButton(onPressed: () => Navigator.pop(c, 'everyone'), child: const Text("Delete for Everyone", style: TextStyle(color: Colors.red))),
+          ],
+        )
+      );
+      if (choice == 'cancel' || choice == null) return;
+      deleteForEveryone = (choice == 'everyone');
+    }
+
     final idsToDelete = _selectedMessageIds.toList();
+    
+    // UI Update immediately
     setState(() {
-      _messages.removeWhere((m) => idsToDelete.contains(m.id));
+      if (deleteForEveryone) {
+         // Should show "This message was deleted" technically, but removing for now
+         _messages.removeWhere((m) => idsToDelete.contains(m.id));
+      } else {
+         _messages.removeWhere((m) => idsToDelete.contains(m.id));
+      }
       _isSelectionMode = false;
       _selectedMessageIds.clear();
     });
+
     try {
-      await _api.post('/api/chat/delete-multiple', {'messageIds': idsToDelete});
+      await _api.post('/api/chat/delete-multiple', {
+        'messageIds': idsToDelete,
+        'deleteForEveryone': deleteForEveryone
+      });
     } catch (e) {
       debugPrint("Bulk delete failed: $e");
     }
@@ -908,6 +1042,28 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: primaryColor,
             foregroundColor: Colors.white,
+            actions: [
+              // ✅ Voice Call (Placeholder)
+              if (widget.isGroup)
+                IconButton(
+                  icon: const Icon(Icons.call),
+                  onPressed: () {
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call Initiated (Integration pending)")));
+                  },
+                ),
+              
+              // ✅ Group Info Navigation
+              if (widget.isGroup && widget.groupId != null)
+                IconButton(
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => GroupInfoScreen(
+                      groupId: widget.groupId!, 
+                      groupName: widget.receiverName
+                    )));
+                  },
+                ),
+            ],
           ),
         body: Column(
           children: [
@@ -1133,14 +1289,6 @@ class _ChatScreenState extends State<ChatScreen> {
       }, onNonMatch: (String s) { spans.add(TextSpan(text: s, style: baseStyle)); return ''; },
     );
     return spans;
-  }
-  
-  void _showAttachmentMenu() {
-    showModalBottomSheet(context: context, builder: (context) => Wrap(alignment: WrapAlignment.spaceEvenly, children: [_attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), _attachOption(Icons.insert_drive_file, Colors.blue, "Document (PDF)", _pickFile)]));
-  }
-  
-  Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
-    return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
   }
   
   Widget _buildInputArea(bool isDark, Color primary) {

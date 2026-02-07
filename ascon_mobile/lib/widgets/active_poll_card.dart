@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 
@@ -24,7 +25,6 @@ class _ActivePollCardState extends State<ActivePollCard> {
 
   Future<void> _loadPoll() async {
     final userId = await AuthService().currentUserId;
-    // Note: Ensure fetchPolls() is added to DataService
     final polls = await DataService().fetchPolls();
     
     if (mounted) {
@@ -35,12 +35,10 @@ class _ActivePollCardState extends State<ActivePollCard> {
         _isLoading = false;
         
         if (_poll != null && _myUserId != null) {
-          // Check if user has already voted in any option
-          for (var option in _poll!['options']) {
-            if ((option['votes'] as List).contains(_myUserId)) {
-              _hasVoted = true;
-              break;
-            }
+          // ✅ NEW LOGIC: Check 'votedUsers' array instead of options
+          final List votedUsers = _poll!['votedUsers'] ?? [];
+          if (votedUsers.contains(_myUserId)) {
+            _hasVoted = true;
           }
         }
       });
@@ -50,11 +48,21 @@ class _ActivePollCardState extends State<ActivePollCard> {
   Future<void> _vote(String optionId) async {
     if (_poll == null) return;
     
-    // Optimistic Update
-    setState(() => _hasVoted = true);
+    // ✅ Optimistic Update for Instant Feedback
+    setState(() {
+      _hasVoted = true;
+      
+      // Increment local count for the UI
+      final options = _poll!['options'] as List;
+      final optIndex = options.indexWhere((o) => o['_id'] == optionId);
+      if (optIndex != -1) {
+        int currentCount = options[optIndex]['voteCount'] ?? 0;
+        options[optIndex]['voteCount'] = currentCount + 1;
+      }
+    });
     
     await DataService().votePoll(_poll!['_id'], optionId);
-    _loadPoll(); // Refresh to show updated stats
+    // Note: No need to reload; optimistic update holds until next refresh
   }
 
   @override
@@ -63,7 +71,9 @@ class _ActivePollCardState extends State<ActivePollCard> {
 
     final question = _poll!['question'];
     final List options = _poll!['options'];
-    final int totalVotes = options.fold(0, (sum, item) => sum + (item['votes'] as List).length as int);
+    
+    // ✅ NEW LOGIC: Calculate total from voteCount
+    final int totalVotes = options.fold(0, (sum, item) => sum + (item['voteCount'] ?? 0) as int);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -85,11 +95,17 @@ class _ActivePollCardState extends State<ActivePollCard> {
               const SizedBox(width: 8),
               Text("Active Poll", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue[900])),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(4)),
-                child: const Text("LIVE", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-              )
+              
+              // ✅ HISTORY BUTTON (Navigates to Full List)
+              IconButton(
+                icon: const Icon(Icons.history, color: Colors.grey, size: 22),
+                tooltip: "Past Polls",
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () {
+                  GoRouter.of(context).push('/polls'); 
+                },
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -97,9 +113,11 @@ class _ActivePollCardState extends State<ActivePollCard> {
           const SizedBox(height: 12),
           
           ...options.map((opt) {
-            final int votes = (opt['votes'] as List).length;
+            final int votes = opt['voteCount'] ?? 0;
             final double percent = totalVotes == 0 ? 0 : votes / totalVotes;
-            final bool isSelected = (opt['votes'] as List).contains(_myUserId);
+            
+            // Since voting is anonymous, we don't highlight a specific "selected" option anymore.
+            // We just show the results view if the user has participated.
 
             if (_hasVoted) {
               // Result View
@@ -111,8 +129,8 @@ class _ActivePollCardState extends State<ActivePollCard> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(opt['text'], style: TextStyle(fontSize: 13, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                        if (isSelected) const Icon(Icons.check_circle, size: 14, color: Colors.blue),
+                        Text(opt['text'], style: const TextStyle(fontSize: 13)),
+                        // No checkmark because we are anonymous
                       ],
                     ),
                     const SizedBox(height: 4),

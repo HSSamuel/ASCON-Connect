@@ -10,6 +10,8 @@ const userAuthSchema = new mongoose.Schema(
     isVerified: { type: Boolean, default: true },
     isAdmin: { type: Boolean, default: false },
     canEdit: { type: Boolean, default: false },
+    canCreatePolls: { type: Boolean, default: false },
+    
     provider: { type: String, default: "local", enum: ["local", "google"] },
 
     // Password Reset

@@ -182,27 +182,58 @@ router.post("/start", verify, async (req, res) => {
 // ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
-    const { messageIds } = req.body;
-    if (!messageIds || messageIds.length === 0)
-      return res.status(400).json("No IDs provided");
+    const { messageIds, deleteForEveryone } = req.body; // ✅ New flag
+    
+    if (deleteForEveryone) {
+      // 1. Delete for Everyone (Soft Delete Content)
+      await Message.updateMany(
+        { _id: { $in: messageIds }, sender: req.user._id }, // Can only delete own messages for everyone
+        { 
+          $set: { 
+            isDeleted: true, 
+            text: "🚫 This message was deleted", 
+            fileUrl: null, 
+            type: "text" 
+          } 
+        }
+      );
+      // Emit event to update UI live
+      const msg = await Message.findOne({ _id: messageIds[0] });
+      if(msg) _emitDeleteEvent(req, msg.conversationId, messageIds, true);
 
-    const messages = await Message.find({ _id: { $in: messageIds } });
+    } else {
+      // 2. Delete for Me (Hide from view)
+      await Message.updateMany(
+        { _id: { $in: messageIds } },
+        { $addToSet: { deletedFor: req.user._id } }
+      );
+      // Emit event so local user sees change immediately
+      const msg = await Message.findOne({ _id: messageIds[0] });
+      if(msg) _emitDeleteEvent(req, msg.conversationId, messageIds, false);
+    }
 
-    if (messages.length === 0)
-      return res.status(200).json({ message: "No messages found to delete" });
-
-    const conversationId = messages[0].conversationId;
-
-    await Message.deleteMany({ _id: { $in: messageIds } });
-
-    _emitDeleteEvent(req, conversationId, messageIds);
-
-    res.status(200).json({ success: true, deletedIds: messageIds });
+    res.status(200).json({ success: true });
   } catch (err) {
-    console.error(err);
     res.status(500).json(err);
   }
 });
+
+// Update helper to send "mode"
+async function _emitDeleteEvent(req, conversationId, messageIds, isHardDelete) {
+  const conversation = await Conversation.findById(conversationId);
+  if (conversation) {
+    conversation.participants.forEach((userId) => {
+      // Only emit hard deletes to everyone. Soft deletes only to self (handled by UI mostly)
+      if (isHardDelete || userId.toString() === req.user._id) {
+        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
+          conversationId,
+          messageIds,
+          isHardDelete
+        });
+      }
+    });
+  }
+}
 
 // =========================================================
 // ⚠️ DANGER ZONE: WILDCARD ROUTES (:id) MUST BE LAST
@@ -215,7 +246,10 @@ router.get("/:conversationId", verify, async (req, res) => {
   try {
     const { beforeId } = req.query;
     const limit = 20;
-    let query = { conversationId: req.params.conversationId };
+    let query = {
+      conversationId: req.params.conversationId,
+      deletedFor: { $ne: req.user._id },
+    };
 
     if (beforeId) query._id = { $lt: beforeId };
 

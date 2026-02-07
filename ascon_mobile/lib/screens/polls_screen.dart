@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
+import '../services/socket_service.dart'; // ✅ NEW: Socket Import
 
 class PollsScreen extends StatefulWidget {
   const PollsScreen({super.key});
@@ -20,6 +21,28 @@ class _PollsScreenState extends State<PollsScreen> {
   void initState() {
     super.initState();
     _loadData();
+    _setupSocketListeners(); // ✅ Initialize Socket
+  }
+
+  // ✅ NEW: Listen for real-time votes
+  void _setupSocketListeners() {
+    final socket = SocketService().getSocket();
+    
+    socket.on('poll_updated', (data) {
+      if (!mounted) return;
+      
+      setState(() {
+        final updatedPoll = data['updatedPoll'];
+        // Find the poll in our list and replace it
+        final index = _polls.indexWhere((p) => p['_id'] == updatedPoll['_id']);
+        if (index != -1) {
+          _polls[index] = updatedPoll;
+        } else {
+          // If it's a new poll entirely, add it to the top
+          _polls.insert(0, updatedPoll);
+        }
+      });
+    });
   }
 
   Future<void> _loadData() async {
@@ -39,21 +62,21 @@ class _PollsScreenState extends State<PollsScreen> {
     setState(() {
       final pollIndex = _polls.indexWhere((p) => p['_id'] == pollId);
       if (pollIndex != -1) {
-        // Remove my vote from any other option
-        for (var opt in _polls[pollIndex]['options']) {
-          List votes = opt['votes'];
-          votes.remove(_myUserId);
-        }
-        // Add to new option
         final optIndex = _polls[pollIndex]['options'].indexWhere((o) => o['_id'] == optionId);
         if (optIndex != -1) {
-          _polls[pollIndex]['options'][optIndex]['votes'].add(_myUserId);
+           // Increment count locally (will be overwritten by socket update shortly)
+           int currentCount = _polls[pollIndex]['options'][optIndex]['voteCount'] ?? 0;
+           _polls[pollIndex]['options'][optIndex]['voteCount'] = currentCount + 1;
+           
+           // Also add to votedUsers locally to disable button immediately
+           List votedUsers = _polls[pollIndex]['votedUsers'] ?? [];
+           if (_myUserId != null) votedUsers.add(_myUserId);
+           _polls[pollIndex]['votedUsers'] = votedUsers;
         }
       }
     });
 
     await _dataService.votePoll(pollId, optionId);
-    _loadData(); // Refresh to sync
   }
 
   @override
@@ -78,7 +101,13 @@ class _PollsScreenState extends State<PollsScreen> {
 
   Widget _buildPollCard(Map<String, dynamic> poll) {
     final List options = poll['options'];
-    final int totalVotes = options.fold(0, (sum, item) => sum + (item['votes'] as List).length as int);
+    
+    // Calculate Total Votes using the new 'voteCount' field
+    final int totalVotes = options.fold(0, (sum, item) => sum + (item['voteCount'] ?? 0) as int);
+
+    // Check participation via 'votedUsers' array
+    final List votedUsers = poll['votedUsers'] ?? [];
+    final bool hasUserVoted = votedUsers.contains(_myUserId);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -93,19 +122,18 @@ class _PollsScreenState extends State<PollsScreen> {
             Text("$totalVotes Votes", style: const TextStyle(color: Colors.grey, fontSize: 12)),
             const Divider(),
             ...options.map((opt) {
-              final bool isVoted = (opt['votes'] as List).contains(_myUserId);
-              final int votes = (opt['votes'] as List).length;
+              final int votes = opt['voteCount'] ?? 0;
               final double percent = totalVotes == 0 ? 0 : votes / totalVotes;
-
+              
               return InkWell(
-                onTap: () => _vote(poll['_id'], opt['_id']),
+                onTap: hasUserVoted ? null : () => _vote(poll['_id'], opt['_id']),
                 child: Container(
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isVoted ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.grey[100],
+                    color: Colors.grey[100],
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: isVoted ? Theme.of(context).primaryColor : Colors.transparent),
+                    border: Border.all(color: Colors.transparent),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,14 +141,18 @@ class _PollsScreenState extends State<PollsScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(opt['text'], style: TextStyle(fontWeight: isVoted ? FontWeight.bold : FontWeight.normal)),
-                          if (isVoted) const Icon(Icons.check_circle, size: 16, color: Colors.green),
+                          Text(opt['text'], style: const TextStyle(fontWeight: FontWeight.normal)),
+                          if (hasUserVoted)
+                            const SizedBox.shrink(), 
                         ],
                       ),
                       const SizedBox(height: 6),
-                      LinearProgressIndicator(value: percent, backgroundColor: Colors.grey[300], color: Theme.of(context).primaryColor),
-                      const SizedBox(height: 4),
-                      Text("${(percent * 100).toStringAsFixed(1)}% ($votes votes)", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      // Only show results if user has voted
+                      if (hasUserVoted) ...[
+                        LinearProgressIndicator(value: percent, backgroundColor: Colors.grey[300], color: Theme.of(context).primaryColor),
+                        const SizedBox(height: 4),
+                        Text("${(percent * 100).toStringAsFixed(1)}% ($votes votes)", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      ]
                     ],
                   ),
                 ),

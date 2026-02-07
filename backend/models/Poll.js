@@ -5,9 +5,14 @@ const pollSchema = new mongoose.Schema({
   options: [
     {
       text: { type: String, required: true },
-      votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }], // Track who voted
+      voteCount: { type: Number, default: 0 },
     },
   ],
+  votedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
+
+  // ✅ NEW: Link to Group (Required)
+  group: { type: mongoose.Schema.Types.ObjectId, ref: "Group", required: true },
+
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" },
   isActive: { type: Boolean, default: true },
   expiresAt: { type: Date },

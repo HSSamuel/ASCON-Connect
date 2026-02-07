@@ -1,7 +1,7 @@
-// ✅ NEW: Import all three separated models
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
+const Group = require("../models/Group"); // ✅ NEW: Import Group for Auto-Join
 
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -11,6 +11,7 @@ const Joi = require("joi");
 const axios = require("axios");
 const { generateAlumniId } = require("../utils/idGenerator");
 const asyncHandler = require("../utils/asyncHandler"); // ✅ Import Wrapper
+const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ NEW: Notification
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -28,6 +29,7 @@ const registerSchema = Joi.object({
     .optional()
     .allow(null, ""),
   customProgramme: Joi.string().optional().allow(""),
+  city: Joi.string().optional().allow(""), // ✅ NEW: City for Chapter Join
   googleToken: Joi.string().optional().allow(null, ""),
   fcmToken: Joi.string().optional().allow(null, ""),
 });
@@ -73,6 +75,7 @@ exports.register = asyncHandler(async (req, res) => {
     yearOfAttendance,
     programmeTitle,
     customProgramme,
+    city,
     fcmToken,
   } = req.body;
 
@@ -106,6 +109,7 @@ exports.register = asyncHandler(async (req, res) => {
     yearOfAttendance,
     programmeTitle,
     customProgramme: customProgramme || "",
+    city: city || "", // ✅ Save City
     alumniId: newAlumniId,
   });
   const savedProfile = await newUserProfile.save();
@@ -118,6 +122,46 @@ exports.register = asyncHandler(async (req, res) => {
     isPhoneVisible: false,
   });
   await newUserSettings.save();
+
+  // ✅ STEP 4: AUTO-JOIN GROUPS (Class & Location)
+  try {
+    // 1. Class Group (e.g., "Class of 2024")
+    if (yearOfAttendance) {
+      const classGroupName = `Class of ${yearOfAttendance}`;
+      await Group.findOneAndUpdate(
+        { name: classGroupName, type: "Class" },
+        { 
+          $addToSet: { members: savedAuth._id },
+          $setOnInsert: { description: `Official group for the ${classGroupName}` }
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    // 2. Location Chapter (e.g., "Lagos Chapter")
+    if (city) {
+      const chapterName = `${city} Chapter`;
+      await Group.findOneAndUpdate(
+        { name: chapterName, type: "Chapter" },
+        { 
+          $addToSet: { members: savedAuth._id },
+          $setOnInsert: { description: `Official chapter for alumni in ${city}` }
+        },
+        { upsert: true, new: true }
+      );
+
+      // ✅ NEW: PUSH NOTIFICATION (WELCOME)
+      await sendPersonalNotification(
+         savedAuth._id,
+         `Welcome to the ${city} Chapter!`,
+         `You have been automatically added to the ${city} alumni group. Tap to say hi!`,
+         { route: "chapter_chat", id: chapterName }
+      );
+    }
+  } catch (groupErr) {
+    console.error("Auto-Join Group Error:", groupErr);
+    // Proceed without failing registration
+  }
 
   // Broadcast presence
   if (req.io) {

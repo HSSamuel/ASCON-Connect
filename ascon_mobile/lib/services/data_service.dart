@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -273,7 +274,7 @@ class DataService {
   }
 
   // ==========================================
-  // 4. UPDATES (Social Feed) - REPLACES JOBS
+  // 4. UPDATES (Social Feed)
   // ==========================================
   Future<List<dynamic>> fetchUpdates() async {
     const String cacheKey = 'cached_updates';
@@ -284,7 +285,6 @@ class DataService {
       final data = _handleResponse(response);
 
       List<dynamic> updates = [];
-      // ✅ Strict Type Check to avoid _JsonMap error
       if (data is List) {
         updates = data;
       } else if (data is Map && data.containsKey('data') && data['data'] is List) {
@@ -301,7 +301,7 @@ class DataService {
   }
 
   // ==========================================
-  // 5. DIRECTORY
+  // 5. DIRECTORY & GROUPS
   // ==========================================
   Future<Map<String, dynamic>?> fetchAlumniById(String userId) async {
     try {
@@ -309,8 +309,6 @@ class DataService {
       final url = Uri.parse('${AppConfig.baseUrl}/api/directory/$userId'); 
       final response = await http.get(url, headers: headers);
       
-      // ✅ STRICT CHECK: Only return data if status is 200 OK.
-      // 404, 304, 500 will all result in null, triggering the "User Not Found" logic.
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['data'] ?? data; 
@@ -351,6 +349,94 @@ class DataService {
       }
       return [];
     }
+  }
+
+  // ✅ Fetch My Groups
+  Future<List<dynamic>> fetchMyGroups() async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/groups/my-groups');
+      final response = await http.get(url, headers: headers);
+      final data = _handleResponse(response);
+
+      if (data != null && data['success'] == true && data['data'] is List) {
+        return data['data'];
+      }
+      return [];
+    } catch (e) {
+      debugPrint("Fetch Groups Error: $e");
+      return [];
+    }
+  }
+
+  // ✅ Fetch Group Info (Members & Admins)
+  Future<Map<String, dynamic>?> fetchGroupInfo(String groupId) async {
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/info'), headers: headers);
+      final data = _handleResponse(response);
+      return data['data'];
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ✅ Update Group Icon (Missing Method Fixed)
+  Future<bool> updateGroupIcon(String groupId, XFile imageFile) async {
+    try {
+      final token = await AuthService().getToken();
+      if (token == null) return false;
+
+      final uri = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/icon');
+      final request = http.MultipartRequest('PUT', uri);
+
+      request.headers.addAll({'auth-token': token});
+
+      final bytes = await imageFile.readAsBytes();
+      String mimeType = "image/jpeg";
+      if (imageFile.name.toLowerCase().endsWith(".png")) mimeType = "image/png";
+      
+      var type = MediaType.parse(mimeType);
+
+      request.files.add(http.MultipartFile.fromBytes(
+        'icon',
+        bytes,
+        filename: imageFile.name,
+        contentType: type,
+      ));
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("❌ Group Icon Update Error: $e");
+      return false;
+    }
+  }
+
+  // ✅ Toggle Group Admin
+  Future<void> toggleGroupAdmin(String groupId, String targetUserId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.put(
+        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/toggle-admin'),
+        headers: headers,
+        body: jsonEncode({'targetUserId': targetUserId})
+      );
+    } catch (_) {}
+  }
+
+  // ✅ Remove Member
+  Future<void> removeGroupMember(String groupId, String targetUserId) async {
+    try {
+      final headers = await _getHeaders();
+      await http.put(
+        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/remove-member'),
+        headers: headers,
+        body: jsonEncode({'targetUserId': targetUserId})
+      );
+    } catch (_) {}
   }
 
   // ==========================================
@@ -574,7 +660,6 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      // ✅ Strict Type Check
       if (data != null && data['success'] == true && data['data'] is List) {
         await _cacheData(cacheKey, data['data']);
         return data['data'];
@@ -599,7 +684,6 @@ class DataService {
       final response = await http.get(url, headers: headers);
       final data = _handleResponse(response);
 
-      // ✅ Strict Type Check
       if (data != null && data['success'] == true && data['data'] is List) {
         return data['data'];
       }
@@ -640,7 +724,7 @@ class DataService {
   // ==========================================
   // 🎂 CELEBRATIONS
   // ==========================================
-  Future<List<dynamic>> fetchCelebrants() async {
+  Future<dynamic> fetchCelebrants() async {
     try {
       final headers = await _getHeaders();
       final response = await http.get(Uri.parse('${AppConfig.baseUrl}/api/directory/celebrations'), headers: headers);

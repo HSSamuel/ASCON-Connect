@@ -32,6 +32,12 @@ const messageSchema = new mongoose.Schema(
     isEdited: { type: Boolean, default: false },
 
     isRead: { type: Boolean, default: false },
+
+    // ✅ NEW: Soft Delete (Delete for Everyone)
+    isDeleted: { type: Boolean, default: false },
+
+    // ✅ NEW: Hidden For Specific Users (Delete for Me)
+    deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
   },
   { timestamps: true },
 );

@@ -11,6 +11,7 @@ import 'screens/directory_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_list_screen.dart';
 import 'screens/about_screen.dart';
+import 'screens/polls_screen.dart'; // ✅ NEW: Import Polls Screen
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> shellNavigatorKey = GlobalKey<NavigatorState>();
@@ -100,6 +101,14 @@ final GoRouter appRouter = GoRouter(
       path: '/about',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const AboutScreen(),
+    ),
+    
+    // ✅ NEW: Polls History Route
+    // This allows push notifications to open 'route: polls'
+    GoRoute(
+      path: '/polls',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const PollsScreen(),
     ),
   ],
 );

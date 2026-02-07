@@ -28,19 +28,25 @@ class SocketService with WidgetsBindingObserver {
         initSocket();
       }
     }
-    // 2️⃣ REMOVED: Do not disconnect on 'paused'. 
-    // Let the socket linger. The OS will kill it if needed, 
-    // or the server heartbeat will handle timeouts. This stops "Flickering".
   }
 
-  void initSocket({String? userIdOverride}) async {
-    if (userIdOverride != null) _currentUserId = userIdOverride;
-    if (_currentUserId == null) _currentUserId = await _storage.read(key: "userId");
+  // ✅ NEW: Getter for the Socket instance (Required by PollsScreen)
+  IO.Socket getSocket() {
+    if (socket == null) {
+      // Initialize immediately if accessed before init
+      initSocket();
+    }
+    // We assume initSocket creates the object synchronously (see below)
+    return socket!;
+  }
 
+  void initSocket({String? userIdOverride}) {
+    // 1. Prepare URL
     String socketUrl = AppConfig.baseUrl;
     if (socketUrl.endsWith('/')) socketUrl = socketUrl.substring(0, socketUrl.length - 1);
     if (socketUrl.endsWith('/api')) socketUrl = socketUrl.replaceAll('/api', '');
 
+    // 2. Create Socket Object Synchronously (so getSocket() never fails)
     if (socket == null) {
       debugPrint("🔌 Socket Connecting to: $socketUrl");
 
@@ -52,6 +58,7 @@ class SocketService with WidgetsBindingObserver {
         'reconnectionDelay': 1000,
       });
 
+      // 3. Setup Listeners
       socket!.onConnect((_) {
         debugPrint('✅ Socket Connected');
         _emitUserConnected();
@@ -62,15 +69,12 @@ class SocketService with WidgetsBindingObserver {
         _emitUserConnected();
       });
 
-      // 3️⃣ LISTEN FOR UPDATES: This was missing!
       socket!.on('user_status_update', (data) {
-        // data = { userId: "...", isOnline: true/false, lastSeen: "..." }
         if (data != null) {
           _userStatusController.add(Map<String, dynamic>.from(data));
         }
       });
 
-      // Handle the specific check result
       socket!.on('user_status_result', (data) {
          if (data != null) {
           _userStatusController.add(Map<String, dynamic>.from(data));
@@ -80,7 +84,15 @@ class SocketService with WidgetsBindingObserver {
       socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
     }
 
-    if (!socket!.connected) {
+    // 4. Handle Auth & Connection (Async part)
+    _finalizeConnection(userIdOverride);
+  }
+
+  Future<void> _finalizeConnection(String? userIdOverride) async {
+    if (userIdOverride != null) _currentUserId = userIdOverride;
+    if (_currentUserId == null) _currentUserId = await _storage.read(key: "userId");
+
+    if (socket != null && !socket!.connected) {
       socket!.connect();
     } else {
       _emitUserConnected();
@@ -93,9 +105,7 @@ class SocketService with WidgetsBindingObserver {
     }
   }
 
-  // Use this to check specific status (e.g., in a Chat Screen)
   void checkUserStatus(String targetUserId) {
-    // ✅ FIX: Prevent sending status checks if we aren't logged in/connected
     if (socket != null && socket!.connected && _currentUserId != null) {
       socket!.emit("check_user_status", {'userId': targetUserId});
     }
@@ -126,7 +136,7 @@ class SocketService with WidgetsBindingObserver {
   void disconnect() {
     if (socket != null) {
       socket!.disconnect();
-      socket = null; // Ensure we recreate it next time to avoid stale states
+      socket = null; 
     }
   }
 }

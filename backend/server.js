@@ -136,6 +136,7 @@ app.use("/api/documents", require("./routes/documents"));
 app.use("/api/mentorship", require("./routes/mentorship"));
 app.use("/api/updates", require("./routes/updates"));
 app.use("/api/polls", require("./routes/polls"));
+app.use("/api/groups", require("./routes/groups"));
 
 app.use(errorHandler);
 

@@ -2,14 +2,16 @@ const mongoose = require("mongoose");
 
 const groupSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  description: { type: String },
+  description: { type: String, default: "" },
   type: {
     type: String,
-    enum: ["Chapter", "Interest", "Class"], // e.g., "Lagos Chapter", "Tech SIG", "Class of 2024"
+    enum: ["Chapter", "Interest", "Class", "General"],
     default: "Interest",
   },
-  icon: { type: String, default: "" }, // URL to icon
+  icon: { type: String, default: "" },
   members: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
+  // ✅ NEW: Track Admins specifically
+  admins: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
   createdAt: { type: Date, default: Date.now },
 });
 
