@@ -28,6 +28,9 @@ class _PollsScreenState extends State<PollsScreen> {
   void _setupSocketListeners() {
     final socket = SocketService().getSocket();
     
+    // ✅ FIX: Check if socket is null before using it
+    if (socket == null) return;
+    
     socket.on('poll_updated', (data) {
       if (!mounted) return;
       

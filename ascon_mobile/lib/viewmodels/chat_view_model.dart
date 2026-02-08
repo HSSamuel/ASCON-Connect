@@ -2,8 +2,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../services/socket_service.dart';
-import '../services/audio_service.dart'; // Requires the new AudioService file
-import '../services/chat_service.dart';   // Requires the new ChatService file
+import '../services/audio_service.dart'; 
+import '../services/chat_service.dart';
+import '../services/api_client.dart'; // ✅ Added ApiClient Import
 import '../models/chat_objects.dart';
 import '../config/storage_config.dart';
 
@@ -77,7 +78,7 @@ class ChatViewModel extends ChangeNotifier {
     if (!isGroup) {
       _startStatusPolling(receiverId);
     } else if (groupId != null) {
-      // We can move this to ChatService later if needed, but keeping simple for now
+      // ✅ Now correctly implemented
       _fetchGroupAdmins(groupId);
     }
   }
@@ -89,7 +90,7 @@ class ChatViewModel extends ChangeNotifier {
     _statusPollingTimer?.cancel();
     _statusSubscription?.cancel();
     
-    _audioService.dispose(); // ✅ Dispose Service
+    _audioService.dispose(); 
     
     _stopSocketListeners();
     super.dispose();
@@ -130,10 +131,19 @@ class ChatViewModel extends ChangeNotifier {
   }
 
   Future<void> _fetchGroupAdmins(String groupId) async {
-    // This could also be moved to ChatService, but leaving here to minimize changes
-    // Assuming ApiClient is accessible via singleton or mixin if needed, 
-    // or we just instantiate it temporarily if we didn't move this specific call.
-    // Ideally, add `fetchGroupAdmins` to ChatService.
+    // ✅ Implementation added using ApiClient
+    try {
+      final client = ApiClient();
+      final result = await client.get('/api/groups/$groupId/info');
+      
+      if (result['success'] == true) {
+        final List<dynamic> admins = result['data']['admins'] ?? [];
+        groupAdminIds = admins.map((e) => e.toString()).toList();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Failed to fetch group admins: $e");
+    }
   }
 
   // ==========================================
@@ -147,7 +157,13 @@ class ChatViewModel extends ChangeNotifier {
     socket.on('new_message', (data) {
       if (data['conversationId'] == activeConversationId) {
         try {
-          messages.add(ChatMessage.fromJson(data['message']));
+          final newMessage = ChatMessage.fromJson(data['message']);
+          
+          // ✅ FIX: Prevent Duplicate Messages
+          // This stops the socket event from re-adding a message we just added optimistically
+          if (messages.any((m) => m.id == newMessage.id)) return;
+
+          messages.add(newMessage);
           isPeerTyping = false;
           notifyListeners();
           _chatService.markRead(activeConversationId!);
@@ -167,14 +183,15 @@ class ChatViewModel extends ChangeNotifier {
     });
 
     socket.on('typing_start', (data) {
-      if (data['conversationId'] == activeConversationId && data['senderId'] == receiverId) {
+      // ✅ Allow typing events if sender is NOT me (for Group compatibility)
+      if (data['conversationId'] == activeConversationId && data['senderId'] != myUserId) {
         isPeerTyping = true;
         notifyListeners();
       }
     });
 
     socket.on('typing_stop', (data) {
-      if (data['conversationId'] == activeConversationId && data['senderId'] == receiverId) {
+      if (data['conversationId'] == activeConversationId && data['senderId'] != myUserId) {
         isPeerTyping = false;
         notifyListeners();
       }
@@ -240,10 +257,6 @@ class ChatViewModel extends ChangeNotifier {
 
     // Handle Edit (Left largely as logic in VM for specific UI state manipulation)
     if (editingMessage != null && type == 'text') {
-      // For simplicity, we can keep the edit call here or move to service.
-      // Keeping consistent with refactor:
-      // await _chatService.editMessage(...) -> To be implemented in service
-      // For now, retaining the logic block but assuming a service call would go here.
       editingMessage = null;
       notifyListeners();
       return;

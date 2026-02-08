@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
+import '../services/socket_service.dart'; // ✅ Added Socket Service
 
 class ActivePollCard extends StatefulWidget {
   final String? groupId; 
@@ -23,6 +24,63 @@ class _ActivePollCardState extends State<ActivePollCard> {
   void initState() {
     super.initState();
     _loadPoll();
+    _setupSocketListeners(); // ✅ Setup Listeners
+  }
+
+  @override
+  void dispose() {
+    // ✅ Clean up specific listeners if needed, though off() is usually handled by service or unique keys
+    // For simple implementations, we rely on the widget rebuilding or the service handling events
+    super.dispose();
+  }
+
+  // ✅ NEW: Real-time Updates
+  void _setupSocketListeners() {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    // Listen for NEW polls in this group
+    socket.on('poll_created', (data) {
+      if (!mounted) return;
+      // If we are in the specific group context or it's a global poll we care about
+      final newPoll = data['poll'];
+      if (widget.groupId != null && newPoll['group'] == widget.groupId) {
+        // Replace current poll with the newer one (assuming we show 1 active poll)
+        setState(() {
+          _poll = newPoll;
+          _hasVoted = false; // Reset vote status for new poll
+        });
+      }
+    });
+
+    // Listen for UPDATES (Votes/Edits)
+    socket.on('poll_updated', (data) {
+      if (!mounted) return;
+      if (_poll != null && data['pollId'] == _poll!['_id']) {
+        setState(() {
+          // Preserve my vote status if I already voted locally to avoid flicker
+          // But technically the server data is source of truth
+          _poll = data['updatedPoll'];
+          
+          if (_poll != null && _myUserId != null) {
+            final List votedUsers = _poll!['votedUsers'] ?? [];
+            _hasVoted = votedUsers.contains(_myUserId);
+          }
+        });
+      }
+    });
+
+    // Listen for DELETES
+    socket.on('poll_deleted', (data) {
+      if (!mounted) return;
+      if (_poll != null && data['pollId'] == _poll!['_id']) {
+        setState(() {
+          _poll = null; 
+        });
+        // Try to load the NEXT available poll
+        _loadPoll(); 
+      }
+    });
   }
 
   Future<void> _loadPoll() async {
@@ -54,6 +112,7 @@ class _ActivePollCardState extends State<ActivePollCard> {
   Future<void> _vote(String optionId) async {
     if (_poll == null) return;
     
+    // Optimistic Update
     setState(() {
       _hasVoted = true;
       final options = _poll!['options'] as List;
@@ -67,7 +126,6 @@ class _ActivePollCardState extends State<ActivePollCard> {
     await DataService().votePoll(_poll!['_id'], optionId);
   }
 
-  // ✅ ACTION: Delete Poll
   Future<void> _deletePoll() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -84,11 +142,10 @@ class _ActivePollCardState extends State<ActivePollCard> {
     if (confirm == true && _poll != null) {
       setState(() => _isLoading = true);
       await DataService().deletePoll(_poll!['_id']);
-      if (mounted) _loadPoll(); // Refresh to show next poll or empty
+      if (mounted) _loadPoll(); 
     }
   }
 
-  // ✅ ACTION: Edit Poll
   Future<void> _editPoll() async {
     final ctrl = TextEditingController(text: _poll!['question']);
     final newQuestion = await showDialog<String>(
@@ -125,7 +182,6 @@ class _ActivePollCardState extends State<ActivePollCard> {
     final List options = _poll!['options'];
     final int totalVotes = options.fold(0, (sum, item) => sum + (item['voteCount'] ?? 0) as int);
     
-    // ✅ Check Ownership (Only creator sees the menu)
     final bool isCreator = _poll!['createdBy'] == _myUserId;
 
     return Container(
@@ -152,7 +208,6 @@ class _ActivePollCardState extends State<ActivePollCard> {
               ),
               const Spacer(),
               
-              // ✅ CREATOR MENU (Edit / Delete)
               if (isCreator)
                 PopupMenuButton<String>(
                   onSelected: (val) {

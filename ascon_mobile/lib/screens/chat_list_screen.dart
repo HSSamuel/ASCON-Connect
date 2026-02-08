@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -28,7 +28,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
   List<ChatConversation> _conversations = [];
   List<ChatConversation> _filteredConversations = [];
   
-  // Presence Data
   final Map<String, dynamic> _userPresence = {}; 
   
   bool _isLoading = true;
@@ -43,7 +42,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.initState();
     _loadChats();
     
-    // ✅ Listen for Presence Updates
     _statusSubscription = SocketService().userStatusStream.listen((data) {
       if (!mounted) return;
       setState(() {
@@ -62,7 +60,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.dispose();
   }
 
-  // ✅ FILTERING LOGIC
   void _onSearchChanged(String query) {
     setState(() {
       if (query.isEmpty) {
@@ -78,6 +75,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _loadChats() async {
+    // ✅ FIX: Ensure ID is loaded BEFORE parsing chats
     _myUserId = await _storage.read(key: 'userId');
     if (_myUserId == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -94,12 +92,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
       if (mounted && result['success'] == true) {
         final List<dynamic> data = result['data'];
         
+        // Pass _myUserId to properly identify the OTHER person
         final loaded = data
             .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
             .where((chat) => chat.otherUserId != _myUserId) 
             .toList();
 
-        // Sort by time (Newest first)
         loaded.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
 
         setState(() {
@@ -133,38 +131,34 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       await _api.delete('/api/chat/$conversationId');
     } catch (e) {
-      _loadChats(); // Revert on error
+      _loadChats(); 
     }
   }
 
-  // ✅ PRO DATE FORMATTER
   String _getSmartDate(DateTime date) {
     final now = DateTime.now();
     final localDate = date.toLocal();
     final difference = now.difference(localDate).inDays;
 
     if (difference == 0 && localDate.day == now.day) {
-      return DateFormat('h:mm a').format(localDate); // "10:30 AM"
+      return DateFormat('h:mm a').format(localDate); 
     } else if (difference == 1 || (difference == 0 && localDate.day != now.day)) {
       return "Yesterday";
     } else if (difference < 7) {
-      return DateFormat('EEEE').format(localDate); // "Monday"
+      return DateFormat('EEEE').format(localDate); 
     } else {
-      return DateFormat('MMM d').format(localDate); // "Oct 25"
+      return DateFormat('MMM d').format(localDate); 
     }
   }
 
-  // ✅ SAFE AVATAR BUILDER (Fixes the 429/Encoding Errors)
   Widget _buildAvatar(String? url, String name) {
     final primaryColor = Theme.of(context).primaryColor;
     
-    // 1. Filter out Garbage/Placeholder URLs
     bool isInvalid = url == null || 
                      url.isEmpty || 
                      url.contains('profile/picture/1') || 
                      url.contains('googleusercontent.com/profile/picture');
 
-    // 2. Fallback Widget (Initials)
     Widget fallback = Center(
       child: Text(
         name.isNotEmpty ? name[0].toUpperCase() : '?', 
@@ -176,7 +170,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
       return CircleAvatar(radius: 28, backgroundColor: Colors.grey[300], child: fallback);
     }
 
-    // 3. Web Implementation (Bypasses CanvasKit CORS restrictions)
     if (kIsWeb) {
        return CircleAvatar(
          radius: 28,
@@ -187,13 +180,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
              width: 56,
              height: 56,
              fit: BoxFit.cover,
-             errorBuilder: (ctx, err, stack) => fallback, // Gracefully fail to initials
+             errorBuilder: (ctx, err, stack) => fallback, 
            ),
          ),
        );
     }
 
-    // 4. Mobile Implementation (Using Widget, NOT Provider, for better error catching)
     return CircleAvatar(
       radius: 28,
       backgroundColor: Colors.grey[300],
@@ -204,7 +196,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           height: 56,
           fit: BoxFit.cover,
           placeholder: (context, url) => Container(color: Colors.grey[300]),
-          errorWidget: (context, url, error) => fallback, // Catches 429/Encoding errors
+          errorWidget: (context, url, error) => fallback, 
         ),
       ),
     );
@@ -301,12 +293,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               )));
                               _loadChats(); 
                             },
-                            // ✅ USING THE NEW SAFE AVATAR BUILDER
                             leading: Stack(
                               children: [
                                 _buildAvatar(chat.otherUserImage, chat.otherUserName),
-                                
-                                // ✅ PRO PRESENCE INDICATOR (With Border)
                                 if (isOnline)
                                   Positioned(
                                     right: 2, bottom: 2,

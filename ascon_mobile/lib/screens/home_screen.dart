@@ -16,10 +16,9 @@ import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
 
-// ✅ WIDGET IMPORTS
 import '../widgets/celebration_card.dart';
-import '../widgets/active_poll_card.dart'; // Feature 2: Polls
-import '../widgets/chapter_card.dart';     // Feature 4: Chapters
+import '../widgets/active_poll_card.dart'; 
+import '../widgets/chapter_card.dart';     
 import '../widgets/digital_id_card.dart';
 
 import '../viewmodels/dashboard_view_model.dart';
@@ -124,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final navBarColor = Theme.of(context).cardColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    // ✅ DETECT KEYBOARD
     final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
     final uiIndex = widget.navigationShell.currentIndex;
@@ -135,7 +133,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onPopInvoked: (didPop) async {
         if (didPop) return;
 
-        // ✅ CRITICAL FIX: Access LIVE index
         final int liveIndex = widget.navigationShell.currentIndex;
 
         if (liveIndex != 0) {
@@ -214,7 +211,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
         body: widget.navigationShell,
 
-        // ✅ HIDE FAB WHEN KEYBOARD IS OPEN
         floatingActionButton: isKeyboardOpen 
           ? null 
           : SizedBox(
@@ -230,7 +226,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         
-        // ✅ HIDE BOTTOM NAV BAR WHEN KEYBOARD IS OPEN
         bottomNavigationBar: isKeyboardOpen 
           ? null 
           : SizedBox(
@@ -292,9 +287,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// ==========================================
-// 🏠 DASHBOARD VIEW (With Web Image Fix)
-// ==========================================
 class DashboardView extends StatefulWidget {
   final String? userName; 
   const DashboardView({super.key, this.userName});
@@ -326,19 +318,15 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
-  // ✅ CRITICAL FIX: Robust Image Loading for Web & Garbage Filter
   Widget _buildSafeImage(String? imageUrl, {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
-    // 1. Null or Empty Check
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
     }
 
-    // 2. Filter Garbage Google URLs (The Cause of 429 Error)
     if (imageUrl.contains('profile/picture/1') || imageUrl.contains('googleusercontent.com/profile/picture')) {
        return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
     }
 
-    // 3. WEB FIX: Use Image.network directly (Bypasses CachedNetworkImage CORS issues)
     if (kIsWeb && imageUrl.startsWith('http')) {
        return Image.network(
          imageUrl,
@@ -353,7 +341,6 @@ class _DashboardViewState extends State<DashboardView> {
        );
     }
 
-    // 4. MOBILE: Use CachedNetworkImage
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl, fit: fit,
@@ -362,7 +349,6 @@ class _DashboardViewState extends State<DashboardView> {
       );
     }
 
-    // 5. BASE64 fallback
     try {
       String cleanBase64 = imageUrl;
       if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
@@ -402,18 +388,17 @@ class _DashboardViewState extends State<DashboardView> {
                       imageUrl: _viewModel.profileImage,
                     ),
 
-                    // ✅ 1. CELEBRATION QUICK WIN (Delight first)
-                    const CelebrationWidget(),
-                    
-                    // ✅ 2. CHAPTERS / SUB-COMMUNITIES (Moved Up - Core Navigation)
-                    // This should be prioritized so users can always find their group quickly.
-                    const ChapterCard(),
-
-                    const SizedBox(height: 10),
-
-                    // 3. PROFILE COMPLETION ALERT
+                    // ✅ 1. PROFILE COMPLETION (Compact & Auto-Refresh)
                     if (!_viewModel.isLoading && !_viewModel.isProfileComplete)
                       _buildProfileAlert(context, primaryColor),
+
+                    // ✅ 2. CHAPTERS (Compact)
+                    const ChapterCard(),
+
+                    // ✅ 3. CELEBRATION
+                    const CelebrationWidget(),
+
+                    const SizedBox(height: 10),
 
                     // 4. ALUMNI NETWORK
                     Padding(
@@ -450,7 +435,6 @@ class _DashboardViewState extends State<DashboardView> {
 
                             return GestureDetector(
                               onTap: () {
-                                // ✅ Ensure this screen covers the shell bottom nav
                                 Navigator.of(context, rootNavigator: true).push(
                                   MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
                                 );
@@ -465,7 +449,6 @@ class _DashboardViewState extends State<DashboardView> {
                                       child: CircleAvatar(
                                         radius: 28,
                                         backgroundColor: Colors.grey[200],
-                                        // ✅ SAFE IMAGE
                                         child: ClipOval(child: SizedBox(width: 56, height: 56, child: _buildSafeImage(img, fallbackIcon: Icons.person))),
                                       ),
                                     ),
@@ -560,69 +543,54 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // ✅ Profile Alert
+  // ✅ COMPACT PROFILE ALERT
   Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final percent = _viewModel.profileCompletionPercent;
     
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 5, 16, 10), // Reduced Margin
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Reduced Padding
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark 
-            ? [const Color(0xFF424242), const Color(0xFF303030)] 
-            : [const Color(0xFFFFF8E1), const Color(0xFFFFECB3)],
-          begin: Alignment.topLeft, end: Alignment.bottomRight
-        ),
+        color: isDark ? const Color(0xFF424242) : const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.amber.withOpacity(0.5)),
-        boxShadow: [
-          BoxShadow(color: Colors.amber.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
-        ]
       ),
       child: Row(
         children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: percent,
-                backgroundColor: Colors.amber.withOpacity(0.2),
-                color: Colors.amber[800],
-                strokeWidth: 4,
-              ),
-              Text(
-                "${(percent * 100).toInt()}%", 
-                style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber[900])
-              ),
-            ],
+          CircularProgressIndicator(
+            value: percent,
+            backgroundColor: Colors.amber.withOpacity(0.2),
+            color: Colors.amber[800],
+            strokeWidth: 3, 
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Complete your Profile", 
-                  style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 15, color: isDark ? Colors.white : Colors.black87)
+                  "Complete Profile (${(percent * 100).toInt()}%)", 
+                  style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)
                 ),
-                const SizedBox(height: 2),
                 Text(
-                  "Add your job, bio & city to get better matches.", 
-                  style: GoogleFonts.lato(fontSize: 12, color: isDark ? Colors.grey[300] : Colors.grey[800])
+                  "Add bio & city to connect.", 
+                  style: GoogleFonts.lato(fontSize: 11, color: isDark ? Colors.grey[300] : Colors.grey[800])
                 ),
               ],
             ),
           ),
           ElevatedButton(
-            onPressed: () => context.go('/profile'), 
+            onPressed: () async {
+              // ✅ AUTO-REFRESH ON RETURN
+              await context.push('/profile');
+              _viewModel.loadData(); 
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber[800],
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              minimumSize: const Size(0, 32),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text("Finish", style: TextStyle(fontSize: 12)),
@@ -668,7 +636,6 @@ class _DashboardViewState extends State<DashboardView> {
           onTap: () {
              final String resolvedId = (data['_id'] ?? data['id'] ?? '').toString();
              final safeData = {...data.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
-             // ✅ Ensure Event Detail also covers navigation
              Navigator.of(context, rootNavigator: true).push(
                MaterialPageRoute(builder: (c) => EventDetailScreen(eventData: safeData))
              );
@@ -744,7 +711,6 @@ class _DashboardViewState extends State<DashboardView> {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () { 
-            // ✅ Ensure Programme Detail covers navigation
             Navigator.of(context, rootNavigator: true).push(
               MaterialPageRoute(builder: (c) => ProgrammeDetailScreen(programme: data))
             ); 

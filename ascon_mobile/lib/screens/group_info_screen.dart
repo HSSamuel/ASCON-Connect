@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
+import '../services/socket_service.dart'; // ✅ Added SocketService
 import 'alumni_detail_screen.dart';
 
 class GroupInfoScreen extends StatefulWidget {
@@ -41,6 +42,43 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void initState() {
     super.initState();
     _loadGroupInfo();
+    _setupSocketListener(); // ✅ Init Listener
+  }
+
+  @override
+  void dispose() {
+    final socket = SocketService().socket;
+    socket?.off('removed_from_group'); // ✅ Clean up
+    super.dispose();
+  }
+
+  // ✅ REAL-TIME EVICTION HANDLING
+  void _setupSocketListener() {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    socket.on('removed_from_group', (data) {
+      if (!mounted) return;
+      if (data['groupId'] == widget.groupId) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            title: const Text("Access Revoked"),
+            content: const Text("You have been removed from this group."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(c); // Close Dialog
+                  Navigator.of(context).popUntil((route) => route.isFirst); // Go back to Dashboard
+                },
+                child: const Text("OK"),
+              )
+            ],
+          ),
+        );
+      }
+    });
   }
 
  Future<void> _loadGroupInfo() async {
@@ -56,20 +94,15 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         final bool isAdminA = a['isAdmin'] ?? false;
         final bool isAdminB = b['isAdmin'] ?? false;
 
-        // If A is admin and B is not, A comes first
         if (isAdminA && !isAdminB) return -1;
-        
-        // If B is admin and A is not, B comes first
         if (!isAdminA && isAdminB) return 1;
-
-        // If both have same status, sort alphabetically
         return (a['fullName'] ?? "").toString().compareTo(b['fullName'] ?? "");
       });
 
       setState(() {
         _groupData = result;
         _allMembers = members;
-        _filteredMembers = members; // Filtered list inherits the sort order
+        _filteredMembers = members; 
         _admins = result?['admins'] ?? [];
         _isCurrentUserAdmin = result?['isCurrentUserAdmin'] ?? false;
         _isLoading = false;
@@ -179,18 +212,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       return const Center(child: Text("Failed to load notices"));
                     }
                     
-                    // ✅ FIXED: Safe parsing that handles Map vs List
                     List<dynamic> notices = [];
                     try {
                       final wrapper = snapshot.data;
                       if (wrapper is Map) {
-                        final body = wrapper['data']; // The server response body
-                        
+                        final body = wrapper['data']; 
                         if (body is Map && body.containsKey('data') && body['data'] is List) {
-                          // Standard format: {success: true, data: [...]}
                           notices = body['data'];
                         } else if (body is List) {
-                          // Direct list format: [...]
                           notices = body;
                         }
                       }
@@ -205,7 +234,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       itemCount: notices.length,
                       itemBuilder: (context, index) {
                         final notice = notices[index];
-                        // ✅ Permissions Check
                         final bool isPoster = notice['postedBy'] != null && 
                             (notice['postedBy']['_id'] == _myUserId || notice['postedBy'] == _myUserId);
                         final bool canManage = _isCurrentUserAdmin || isPoster;
@@ -226,7 +254,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                                     const SizedBox(width: 8),
                                     Expanded(child: Text(notice['title'] ?? "Notice", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                                     
-                                    // ✅ MENU: Edit/Delete
                                     if (canManage)
                                       PopupMenuButton<String>(
                                         onSelected: (val) {
@@ -284,9 +311,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
               }
               
               if (mounted) {
-                Navigator.pop(parentContext); // Close list to refresh
+                Navigator.pop(parentContext); 
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEditing ? "Notice Updated" : "Notice Posted")));
-                _openNoticeBoard(); // Reopen
+                _openNoticeBoard(); 
               }
             }, child: Text(isEditing ? "Save" : "Post")),
         ],
@@ -295,7 +322,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   Future<void> _deleteNotice(String noticeId) async {
-    Navigator.pop(context); // Close list
+    Navigator.pop(context); 
     final success = await _dataService.deleteGroupNotice(widget.groupId, noticeId);
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Notice deleted.")));
@@ -397,7 +424,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ),
                   ),
 
-                  // 3. CLAIM ADMIN RIGHTS
                   if (_admins.isEmpty)
                     SliverToBoxAdapter(
                       child: Container(

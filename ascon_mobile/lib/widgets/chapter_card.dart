@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
+import 'package:go_router/go_router.dart';
 import '../services/data_service.dart';
 
 class ChapterCard extends StatefulWidget {
@@ -50,58 +50,57 @@ class _ChapterCardState extends State<ChapterCard> {
 
     final group = _groups.first;
     final name = group['name'];
-    final id = group['_id']; // Group ID for API calls
+    final id = group['_id'];
     final count = group['memberCount'] ?? 0;
     final icon = group['icon'];
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-      padding: const EdgeInsets.all(16),
+      // ✅ COMPACT HEIGHT & MARGINS
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFFF3F4F6),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.withOpacity(0.2)),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8), // Reduced padding
             decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            child: const Icon(Icons.groups, color: Colors.teal),
+            child: const Icon(Icons.groups, color: Colors.teal, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("MY COMMUNITY", style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.grey[600])),
-                Text(name, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
-                Text("$count Members", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text("MY COMMUNITY", style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.grey[600])),
+                Text(name, style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
               ],
             ),
           ),
           ElevatedButton(
             onPressed: () {
-               // ✅ Use GoRouter to push to the root navigator (hides bottom bar)
                context.push('/chat_detail', extra: {
-                 'conversationId': null, // Can be null, backend finds/creates it
-                 'receiverId': id,       // Group ID
+                 'conversationId': null,
+                 'receiverId': id,       
                  'receiverName': name,
                  'receiverProfilePic': icon,
                  'isOnline': false,
                  'lastSeen': null,
-                 'isGroup': true,        // ✅ Flag enabled
-                 'groupId': id,          // ✅ Pass ID for Polls
+                 'isGroup': true,        
+                 'groupId': id,          
                });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.teal,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              minimumSize: const Size(0, 32),
+              minimumSize: const Size(0, 30), // Smaller Button
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
-            child: const Text("Chat", style: TextStyle(fontSize: 12)),
+            child: const Text("Chat", style: TextStyle(fontSize: 11)),
           )
         ],
       ),

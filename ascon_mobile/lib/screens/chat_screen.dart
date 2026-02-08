@@ -28,11 +28,10 @@ import '../widgets/full_screen_image.dart';
 import '../utils/presence_formatter.dart';
 import 'group_info_screen.dart'; 
 
-// ✅ IMPORT NEW WIDGETS
 import '../widgets/chat/message_bubble.dart';
 import '../widgets/chat/chat_input_area.dart';
 import '../widgets/chat/poll_creation_sheet.dart';
-import '../widgets/active_poll_card.dart'; // ✅ Added Missing Import
+import '../widgets/active_poll_card.dart';
 
 class ChatScreen extends StatefulWidget {
   final String? conversationId;
@@ -117,10 +116,15 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    if (!_isPeerOnline && !widget.isGroup) {
+    // ✅ FIX: Join Group Room Explicitly & Fetch Admins
+    if (widget.isGroup && widget.groupId != null) {
+      SocketService().socket?.emit('join_room', widget.groupId);
+      _fetchGroupAdmins();
+    } else if (!_isPeerOnline) {
       _startStatusPolling();
     }
     
+    // Status Listener (For 1-on-1)
     if (!widget.isGroup) {
       _statusSubscription = SocketService().userStatusStream.listen((data) {
         if (!mounted) return;
@@ -136,8 +140,6 @@ class _ChatScreenState extends State<ChatScreen> {
           });
         }
       });
-    } else if (widget.isGroup && widget.groupId != null) {
-      _fetchGroupAdmins();
     }
 
     _focusNode.addListener(() {
@@ -206,7 +208,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_isTyping && _activeConversationId != null) {
       SocketService().socket?.emit('stop_typing', {
         'receiverId': widget.receiverId,
-        'conversationId': _activeConversationId
+        'conversationId': _activeConversationId,
+        'groupId': widget.isGroup ? widget.groupId : null
       });
     }
 
@@ -215,6 +218,7 @@ class _ChatScreenState extends State<ChatScreen> {
     SocketService().socket?.off('messages_deleted_bulk');
     SocketService().socket?.off('typing_start');
     SocketService().socket?.off('typing_stop');
+    SocketService().socket?.off('removed_from_group');
 
     super.dispose();
   }
@@ -240,7 +244,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (data['conversationId'] == _activeConversationId) {
         setState(() {
             try {
-              _messages.add(ChatMessage.fromJson(data['message']));
+              final newMessage = ChatMessage.fromJson(data['message']);
+              if (_messages.any((m) => m.id == newMessage.id)) return;
+
+              _messages.add(newMessage);
               _isPeerTyping = false;
             } catch (e) {
               debugPrint("Error parsing incoming message: $e");
@@ -262,13 +269,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
 
     socket.on('typing_start', (data) {
-       if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
+       if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] != _myUserId) {
         setState(() => _isPeerTyping = true);
       }
     });
 
     socket.on('typing_stop', (data) {
-      if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] == widget.receiverId) {
+      if (mounted && data['conversationId'] == _activeConversationId && data['senderId'] != _myUserId) {
         setState(() => _isPeerTyping = false);
       }
     });
@@ -284,6 +291,29 @@ class _ChatScreenState extends State<ChatScreen> {
              _messages.removeWhere((m) => ids.contains(m.id));
           }
         });
+      }
+    });
+
+    socket.on('removed_from_group', (data) {
+      if (!mounted) return;
+      if (widget.isGroup && widget.groupId == data['groupId']) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (c) => AlertDialog(
+            title: const Text("Access Revoked"),
+            content: const Text("You have been removed from this group by an admin."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(c);
+                  Navigator.pop(context);
+                },
+                child: const Text("OK"),
+              )
+            ],
+          ),
+        );
       }
     });
   }
@@ -311,6 +341,11 @@ class _ChatScreenState extends State<ChatScreen> {
         if (initial) {
           _scrollToBottom();
           _markMessagesAsRead();
+        }
+      } else {
+        if (result['statusCode'] == 403) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You no longer have access to this chat.")));
+           Navigator.pop(context);
         }
       }
     } catch (e) { 
@@ -342,7 +377,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _findOrCreateConversation() async {
     try {
-      final result = await _api.post('/api/chat/start', {'receiverId': widget.receiverId});
+      final result = await _api.post('/api/chat/start', {
+        'receiverId': widget.receiverId, 
+        'groupId': widget.isGroup ? widget.groupId : null
+      });
       if (mounted && result['success'] == true) {
         setState(() => _activeConversationId = result['data']['_id']);
         await _loadMessages(initial: true);
@@ -422,7 +460,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if ((text == null || text.trim().isEmpty) && filePath == null && fileBytes == null) return;
     if (_activeConversationId == null || _myUserId == null) return;
 
-    // Handle Edit
     if (_editingMessage != null && type == 'text') {
       try {
         await _api.put('/api/chat/message/${_editingMessage!.id}', {'text': text});
@@ -494,6 +531,12 @@ class _ChatScreenState extends State<ChatScreen> {
           final index = _messages.indexWhere((m) => m.id == tempId);
           if (index != -1) _messages[index] = realMessage;
         });
+      } else {
+        setState(() {
+          final index = _messages.indexWhere((m) => m.id == tempId);
+          if (index != -1) _messages[index].status = MessageStatus.error;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Message failed. You may have been removed.")));
       }
     } catch (e) {
       setState(() {
@@ -527,11 +570,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // --- ATTACHMENT MENU ---
   void _showAttachmentMenu() {
     showModalBottomSheet(
       context: context, 
-      backgroundColor: Colors.transparent, // ✅ Cleaner Look
+      backgroundColor: Colors.transparent, 
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -544,15 +586,12 @@ class _ChatScreenState extends State<ChatScreen> {
             _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), 
             _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), 
             _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
-            
-            // ✅ UPDATED POLL BUTTON
             if (widget.isGroup)
               _attachOption(Icons.bar_chart_rounded, Colors.orange, "Poll", () {
-                 Navigator.pop(context); // Close attachment menu
-                 // Open the new Pro Sheet
+                 Navigator.pop(context); 
                  showModalBottomSheet(
                    context: context,
-                   isScrollControlled: true, // ✅ Allows full height
+                   isScrollControlled: true, 
                    backgroundColor: Colors.transparent,
                    builder: (c) => PollCreationSheet(groupId: widget.groupId!),
                  );
@@ -567,7 +606,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
   }
 
-  // --- SELECTION & DELETE ---
   void _toggleSelection(String messageId) {
     setState(() {
       if (_selectedMessageIds.contains(messageId)) {
@@ -654,8 +692,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         body: Column(
           children: [
-            
-            // ✅ INSERT ACTIVE POLL CARD HERE
             if (widget.isGroup && widget.groupId != null)
                ActivePollCard(groupId: widget.groupId),
 
@@ -727,10 +763,27 @@ class _ChatScreenState extends State<ChatScreen> {
               onSendMessage: () => _sendMessage(text: _textController.text),
               onAttachmentMenu: _showAttachmentMenu,
               onTyping: (val) {
+                // ✅ FIX: Force UI update to enable send button instantly
+                setState(() {});
+
                 if (val.isNotEmpty) {
-                   if (!_isTyping) { _isTyping = true; SocketService().socket?.emit('typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); }
+                   if (!_isTyping) { 
+                     _isTyping = true; 
+                     SocketService().socket?.emit('typing', {
+                       'receiverId': widget.receiverId, 
+                       'conversationId': _activeConversationId,
+                       'groupId': widget.isGroup ? widget.groupId : null
+                     }); 
+                   }
                    _typingDebounce?.cancel();
-                   _typingDebounce = Timer(const Duration(seconds: 2), () { _isTyping = false; SocketService().socket?.emit('stop_typing', {'receiverId': widget.receiverId, 'conversationId': _activeConversationId}); });
+                   _typingDebounce = Timer(const Duration(seconds: 2), () { 
+                     _isTyping = false; 
+                     SocketService().socket?.emit('stop_typing', {
+                       'receiverId': widget.receiverId, 
+                       'conversationId': _activeConversationId,
+                       'groupId': widget.isGroup ? widget.groupId : null
+                     }); 
+                   });
                 }
               },
             ),

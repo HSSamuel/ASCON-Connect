@@ -1,6 +1,8 @@
+// backend/routes/groups.js
 const router = require("express").Router();
 const Group = require("../models/Group");
 const UserProfile = require("../models/UserProfile");
+const Conversation = require("../models/Conversation"); // ✅ Added Missing Import
 const verifyToken = require("./verifyToken");
 
 // Cloudinary & Multer Config for Group Icons
@@ -152,7 +154,7 @@ router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 5. REMOVE MEMBER
+// 5. REMOVE MEMBER (With Socket Eviction)
 // ==========================================
 router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
   try {
@@ -163,17 +165,29 @@ router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
     if (!group.admins) group.admins = [];
 
     if (!group.admins.includes(req.user._id)) {
-      return res
-        .status(403)
-        .json({ message: "Only Group Admins can remove members." });
+      return res.status(403).json({ message: "Only Group Admins can remove members." });
     }
 
-    group.members = group.members.filter(
-      (id) => id.toString() !== targetUserId,
-    );
+    // 1. Remove from Group Model
+    group.members = group.members.filter((id) => id.toString() !== targetUserId);
     group.admins = group.admins.filter((id) => id.toString() !== targetUserId);
-
     await group.save();
+
+    // 2. Remove from Chat Conversation (Database Level)
+    await Conversation.updateOne(
+      { groupId: req.params.groupId },
+      { $pull: { participants: targetUserId } }
+    );
+
+    // 3. ✅ REAL-TIME EVICTION: Tell the specific user they are removed
+    // This requires the client to listen for 'removed_from_group' and refresh/navigate away
+    if (req.io) {
+        req.io.to(targetUserId).emit("removed_from_group", { 
+            groupId: req.params.groupId,
+            groupName: group.name 
+        });
+    }
+
     res.json({ success: true, message: "User removed from group." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -246,12 +260,14 @@ router.delete("/:groupId/icon", verifyToken, async (req, res) => {
 
     // Check Admin Privileges
     if (!group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Only Admins can remove the icon." });
+      return res
+        .status(403)
+        .json({ message: "Only Admins can remove the icon." });
     }
 
     group.icon = ""; // Clear the icon string
     await group.save();
-    
+
     res.json({ success: true, message: "Group icon removed." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -271,11 +287,14 @@ router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
     if (!notice) return res.status(404).json({ message: "Notice not found" });
 
     // Allow Group Admins OR the Original Poster to delete
-    const isPoster = notice.postedBy && notice.postedBy.toString() === req.user._id;
+    const isPoster =
+      notice.postedBy && notice.postedBy.toString() === req.user._id;
     const isAdmin = group.admins.includes(req.user._id);
 
     if (!isPoster && !isAdmin) {
-      return res.status(403).json({ message: "Unauthorized to delete this notice." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to delete this notice." });
     }
 
     // Use pull to remove subdocument
@@ -301,16 +320,19 @@ router.put("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
     if (!notice) return res.status(404).json({ message: "Notice not found" });
 
     // Allow Group Admins OR the Original Poster to edit
-    const isPoster = notice.postedBy && notice.postedBy.toString() === req.user._id;
+    const isPoster =
+      notice.postedBy && notice.postedBy.toString() === req.user._id;
     const isAdmin = group.admins.includes(req.user._id);
 
     if (!isPoster && !isAdmin) {
-      return res.status(403).json({ message: "Unauthorized to edit this notice." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to edit this notice." });
     }
 
     if (title) notice.title = title;
     if (content) notice.content = content;
-    
+
     await group.save();
 
     res.json({ success: true, message: "Notice updated." });

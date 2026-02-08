@@ -30,11 +30,8 @@ class SocketService with WidgetsBindingObserver {
   }
 
   // Getter for the Socket instance
-  IO.Socket getSocket() {
-    if (socket == null) {
-      initSocket();
-    }
-    return socket!;
+  IO.Socket? getSocket() {
+    return socket;
   }
 
   Future<void> initSocket({String? userIdOverride}) async {
@@ -72,7 +69,7 @@ class SocketService with WidgetsBindingObserver {
         'timeout': 20000,
         'reconnection': true,
         'reconnectionDelay': 1000,
-        // ✅ CRITICAL FIX: Send User ID in the handshake query
+        // ✅ Send User ID in the handshake query
         'query': {'userId': _currentUserId},
       });
 
@@ -88,7 +85,6 @@ class SocketService with WidgetsBindingObserver {
 
     socket!.onConnect((_) {
       debugPrint('✅ Socket Connected');
-      // Redundant emit for safety, but handshake handles the primary auth now
       if (_currentUserId != null) {
         socket!.emit("user_connected", _currentUserId);
       }

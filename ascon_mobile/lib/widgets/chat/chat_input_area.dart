@@ -48,7 +48,7 @@ class ChatInputArea extends StatelessWidget {
     required this.onTyping,
   });
 
-  // ✅ Helper to insert markdown tags safely
+  // ✅ SAFE FORMATTING: Prevents keyboard from closing
   void _applyFormat(String tag) {
     final text = controller.text;
     final selection = controller.selection;
@@ -56,19 +56,12 @@ class ChatInputArea extends StatelessWidget {
     String newText;
     int newCursorPos;
 
-    // Handle invalid selection (append to end)
     if (!selection.isValid || selection.start == -1) {
       newText = text + "$tag$tag";
       newCursorPos = newText.length - tag.length; 
-    } 
-    // Handle valid selection (wrap text)
-    else {
+    } else {
       final selectedText = text.substring(selection.start, selection.end);
-      newText = text.replaceRange(
-        selection.start, 
-        selection.end, 
-        "$tag$selectedText$tag"
-      );
+      newText = text.replaceRange(selection.start, selection.end, "$tag$selectedText$tag");
       newCursorPos = selection.end + (tag.length * 2);
     }
 
@@ -76,22 +69,25 @@ class ChatInputArea extends StatelessWidget {
       text: newText,
       selection: TextSelection.collapsed(offset: newCursorPos),
     );
-
-    // ✅ CRITICAL FIX: Re-request focus to keep keyboard open and inputs active
-    // This prevents the "flash" where the keyboard closes and formatting seems ignored.
-    if (!focusNode.hasFocus) {
-      focusNode.requestFocus();
-    }
+    
+    // Call onTyping to update state/send button
+    onTyping(newText);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Determine if we should show Send or Mic
+    // On Web, always show Send (Mic not supported yet)
+    final bool hasText = controller.text.trim().isNotEmpty;
+    final bool showSend = hasText || isRecording || kIsWeb;
+
     return Column(
+      mainAxisSize: MainAxisSize.min, // Compact
       children: [
-        // 1. Formatting Toolbar (Visible when input focused)
+        // 1. Formatting Toolbar
         if (showFormatting && !isRecording)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             color: isDark ? Colors.grey[850] : Colors.grey[100],
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -144,14 +140,23 @@ class ChatInputArea extends StatelessWidget {
             child: Row(
               children: [
                 // Attach Button
-                if (!isRecording || kIsWeb) 
-                  IconButton(icon: Icon(Icons.add, color: primaryColor), onPressed: onAttachmentMenu),
-                
+                if (!isRecording) 
+                  IconButton(
+                    icon: Icon(Icons.add, color: primaryColor), 
+                    onPressed: onAttachmentMenu,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                const SizedBox(width: 8),
+
                 // Text Field or Recording Indicator
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(color: isDark ? Colors.grey[900] : const Color(0xFFF2F4F5), borderRadius: BorderRadius.circular(24)),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey[900] : const Color(0xFFF2F4F5), 
+                      borderRadius: BorderRadius.circular(24)
+                    ),
                     child: isRecording 
                       ? Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween, 
@@ -166,9 +171,7 @@ class ChatInputArea extends StatelessWidget {
                           focusNode: focusNode,
                           maxLines: 4, minLines: 1,
                           onChanged: onTyping,
-                          // ✅ FIXED: Explicitly set cursor color so it is NEVER invisible
                           cursorColor: isDark ? const Color(0xFFD4AF37) : primaryColor,
-                          // ✅ FIXED: Explicitly set text color for contrast
                           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                           decoration: InputDecoration(
                             hintText: "Message...", 
@@ -177,21 +180,32 @@ class ChatInputArea extends StatelessWidget {
                             contentPadding: const EdgeInsets.symmetric(vertical: 10)
                           ),
                           textCapitalization: TextCapitalization.sentences,
+                          keyboardType: TextInputType.multiline,
                         ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 
                 // Send / Mic Button
-                CircleAvatar(
-                  backgroundColor: primaryColor,
-                  child: IconButton(
-                    icon: Icon((controller.text.trim().isNotEmpty || isRecording || kIsWeb) ? Icons.send : Icons.mic, color: Colors.white, size: 20),
-                    onPressed: () {
-                      if (isRecording) { onStopRecording(); }
-                      else if (controller.text.trim().isNotEmpty) { onSendMessage(); }
-                      else if (!kIsWeb) { onStartRecording(); }
-                    },
+                GestureDetector(
+                  onTap: () {
+                    // One-click response logic
+                    if (isRecording) { 
+                      onStopRecording(); 
+                    } else if (hasText) { 
+                      onSendMessage(); 
+                    } else if (!kIsWeb) { 
+                      onStartRecording(); 
+                    }
+                  },
+                  child: CircleAvatar(
+                    backgroundColor: primaryColor,
+                    radius: 22,
+                    child: Icon(
+                      showSend ? Icons.send : Icons.mic, 
+                      color: Colors.white, 
+                      size: 20
+                    ),
                   ),
                 ),
               ],
@@ -202,13 +216,14 @@ class ChatInputArea extends StatelessWidget {
     );
   }
 
+  // ✅ Button that preserves focus
   Widget _buildFormatBtn(IconData icon, String tag, String tooltip) {
-    return IconButton(
-      icon: Icon(icon, color: isDark ? Colors.white : Colors.black87),
-      tooltip: tooltip,
-      onPressed: () => _applyFormat(tag),
-      padding: const EdgeInsets.all(8),
-      constraints: const BoxConstraints(),
+    return InkWell(
+      onTap: () => _applyFormat(tag),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Icon(icon, color: isDark ? Colors.white : Colors.grey[700], size: 20),
+      ),
     );
   }
 }

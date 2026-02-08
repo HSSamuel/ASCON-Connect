@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
+import 'package:flutter/foundation.dart'; 
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:convert';
@@ -20,16 +20,13 @@ class DigitalIDCard extends StatelessWidget {
     required this.imageUrl,
   });
 
-  // ✅ ROBUST IMAGE BUILDER
   Widget _buildAvatarImage(String url, double size) {
-    // 1. Filter Garbage URLs
     if (url.isEmpty || 
         url.contains('profile/picture/1') || 
         url.contains('googleusercontent.com/profile/picture')) {
       return Icon(Icons.person, color: Colors.grey, size: size * 0.5);
     }
 
-    // 2. Handle Base64
     if (url.startsWith('data:')) {
       try {
         return Image.memory(
@@ -44,7 +41,6 @@ class DigitalIDCard extends StatelessWidget {
       }
     }
 
-    // 3. Web: Use Image.network (Bypasses CORS strictness of CachedImage)
     if (kIsWeb) {
       return Image.network(
         url,
@@ -57,7 +53,6 @@ class DigitalIDCard extends StatelessWidget {
       );
     }
 
-    // 4. Mobile: Use CachedNetworkImage (Better performance)
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
@@ -71,6 +66,7 @@ class DigitalIDCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const Color cardGreen = Color(0xFF1B5E3A);
+    // ✅ URL FIXED
     final String verificationLink = "https://asconalumni.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
 
     return LayoutBuilder(
@@ -96,7 +92,6 @@ class DigitalIDCard extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                // Watermark
                 Positioned(
                   bottom: -20,
                   right: -20,
@@ -112,7 +107,6 @@ class DigitalIDCard extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // --- HEADER ---
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -145,11 +139,9 @@ class DigitalIDCard extends StatelessWidget {
                       
                       Divider(color: Colors.white24, height: isDesktop ? 30 : 20),
                       
-                      // --- BODY ---
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          // LEFT: Avatar + QR
                           Column(
                             children: [
                               Container(
@@ -161,7 +153,6 @@ class DigitalIDCard extends StatelessWidget {
                                   border: Border.all(color: Colors.white, width: 2),
                                 ),
                                 child: ClipOval(
-                                  // ✅ USE ROBUST BUILDER HERE
                                   child: _buildAvatarImage(imageUrl, avatarSize),
                                 ),
                               ),
@@ -186,7 +177,6 @@ class DigitalIDCard extends StatelessWidget {
                           
                           SizedBox(width: isDesktop ? 24 : 16),
                           
-                          // RIGHT: Details
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
