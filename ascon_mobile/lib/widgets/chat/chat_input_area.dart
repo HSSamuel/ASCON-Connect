@@ -48,7 +48,7 @@ class ChatInputArea extends StatelessWidget {
     required this.onTyping,
   });
 
-  // ✅ NEW: Helper to insert text formatting and maintain focus
+  // ✅ Helper to insert markdown tags safely
   void _applyFormat(String tag) {
     final text = controller.text;
     final selection = controller.selection;
@@ -56,12 +56,12 @@ class ChatInputArea extends StatelessWidget {
     String newText;
     int newCursorPos;
 
-    // 1. If invalid selection (lost focus), insert at end
+    // Handle invalid selection (append to end)
     if (!selection.isValid || selection.start == -1) {
       newText = text + "$tag$tag";
-      newCursorPos = newText.length - tag.length; // Place cursor inside tags
+      newCursorPos = newText.length - tag.length; 
     } 
-    // 2. If valid selection range (text highlighted)
+    // Handle valid selection (wrap text)
     else {
       final selectedText = text.substring(selection.start, selection.end);
       newText = text.replaceRange(
@@ -69,16 +69,16 @@ class ChatInputArea extends StatelessWidget {
         selection.end, 
         "$tag$selectedText$tag"
       );
-      newCursorPos = selection.end + (tag.length * 2); // Cursor after closing tag
+      newCursorPos = selection.end + (tag.length * 2);
     }
 
-    // 3. Update Controller
     controller.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: newCursorPos),
     );
 
-    // 4. ✅ CRITICAL FIX: Re-request focus to keep keyboard open
+    // ✅ CRITICAL FIX: Re-request focus to keep keyboard open and inputs active
+    // This prevents the "flash" where the keyboard closes and formatting seems ignored.
     if (!focusNode.hasFocus) {
       focusNode.requestFocus();
     }
@@ -88,7 +88,7 @@ class ChatInputArea extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 1. Formatting Toolbar
+        // 1. Formatting Toolbar (Visible when input focused)
         if (showFormatting && !isRecording)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -98,7 +98,7 @@ class ChatInputArea extends StatelessWidget {
               children: [
                 _buildFormatBtn(Icons.format_bold, "**", "Bold"),
                 _buildFormatBtn(Icons.format_italic, "_", "Italic"),
-                _buildFormatBtn(Icons.code, "`", "Code"),
+                _buildFormatBtn(Icons.code, "`", "Monospace"),
               ],
             ),
           ),
@@ -166,7 +166,16 @@ class ChatInputArea extends StatelessWidget {
                           focusNode: focusNode,
                           maxLines: 4, minLines: 1,
                           onChanged: onTyping,
-                          decoration: const InputDecoration(hintText: "Message...", border: InputBorder.none),
+                          // ✅ FIXED: Explicitly set cursor color so it is NEVER invisible
+                          cursorColor: isDark ? const Color(0xFFD4AF37) : primaryColor,
+                          // ✅ FIXED: Explicitly set text color for contrast
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            hintText: "Message...", 
+                            border: InputBorder.none,
+                            hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10)
+                          ),
                           textCapitalization: TextCapitalization.sentences,
                         ),
                   ),
@@ -193,7 +202,6 @@ class ChatInputArea extends StatelessWidget {
     );
   }
 
-  // ✅ NEW: Uses IconButton instead of GestureDetector for better click feedback
   Widget _buildFormatBtn(IconData icon, String tag, String tooltip) {
     return IconButton(
       icon: Icon(icon, color: isDark ? Colors.white : Colors.black87),

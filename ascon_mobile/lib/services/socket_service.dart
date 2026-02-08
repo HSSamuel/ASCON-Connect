@@ -9,7 +9,7 @@ class SocketService with WidgetsBindingObserver {
   final _storage = StorageConfig.storage;
   String? _currentUserId;
 
-  // 1️⃣ Stream Controller to broadcast updates to UI
+  // Stream Controller to broadcast updates to UI
   final _userStatusController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get userStatusStream => _userStatusController.stream;
 
@@ -23,99 +23,111 @@ class SocketService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Re-check connection when coming back
       if (socket == null || !socket!.connected) {
         initSocket();
       }
     }
   }
 
-  // ✅ NEW: Getter for the Socket instance (Required by PollsScreen)
+  // Getter for the Socket instance
   IO.Socket getSocket() {
     if (socket == null) {
-      // Initialize immediately if accessed before init
       initSocket();
     }
-    // We assume initSocket creates the object synchronously (see below)
     return socket!;
   }
 
-  void initSocket({String? userIdOverride}) {
-    // 1. Prepare URL
+  Future<void> initSocket({String? userIdOverride}) async {
+    // 1. Resolve User ID
+    if (userIdOverride != null) {
+      _currentUserId = userIdOverride;
+    } else {
+      _currentUserId = await _storage.read(key: "userId");
+    }
+
+    if (_currentUserId == null) {
+      debugPrint("⚠️ Socket Init Skipped: No User ID found.");
+      return;
+    }
+
+    // 2. Prepare URL
     String socketUrl = AppConfig.baseUrl;
     if (socketUrl.endsWith('/')) socketUrl = socketUrl.substring(0, socketUrl.length - 1);
     if (socketUrl.endsWith('/api')) socketUrl = socketUrl.replaceAll('/api', '');
 
-    // 2. Create Socket Object Synchronously (so getSocket() never fails)
-    if (socket == null) {
-      debugPrint("🔌 Socket Connecting to: $socketUrl");
+    // 3. Create Socket Connection
+    // Check if socket exists and if the user ID has changed or it's disconnected
+    if (socket == null || socket!.io.options?['query']?['userId'] != _currentUserId) {
+      // If recreating, disconnect old one first
+      if (socket != null) {
+        socket!.disconnect();
+        socket!.dispose();
+      }
+
+      debugPrint("🔌 Socket Connecting to: $socketUrl as User: $_currentUserId");
 
       socket = IO.io(socketUrl, <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
-        'timeout': 20000, 
+        'timeout': 20000,
         'reconnection': true,
         'reconnectionDelay': 1000,
+        // ✅ CRITICAL FIX: Send User ID in the handshake query
+        'query': {'userId': _currentUserId},
       });
 
-      // 3. Setup Listeners
-      socket!.onConnect((_) {
-        debugPrint('✅ Socket Connected');
-        _emitUserConnected();
-      });
-
-      socket!.onReconnect((_) {
-        debugPrint('🔄 Socket Reconnected');
-        _emitUserConnected();
-      });
-
-      socket!.on('user_status_update', (data) {
-        if (data != null) {
-          _userStatusController.add(Map<String, dynamic>.from(data));
-        }
-      });
-
-      socket!.on('user_status_result', (data) {
-         if (data != null) {
-          _userStatusController.add(Map<String, dynamic>.from(data));
-        }
-      });
-
-      socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
-    }
-
-    // 4. Handle Auth & Connection (Async part)
-    _finalizeConnection(userIdOverride);
-  }
-
-  Future<void> _finalizeConnection(String? userIdOverride) async {
-    if (userIdOverride != null) _currentUserId = userIdOverride;
-    if (_currentUserId == null) _currentUserId = await _storage.read(key: "userId");
-
-    if (socket != null && !socket!.connected) {
+      _setupListeners();
       socket!.connect();
-    } else {
-      _emitUserConnected();
+    } else if (!socket!.connected) {
+      socket!.connect();
     }
   }
 
-  void _emitUserConnected() {
-    if (_currentUserId != null && socket != null) {
-      socket!.emit("user_connected", _currentUserId);
-    }
+  void _setupListeners() {
+    if (socket == null) return;
+
+    socket!.onConnect((_) {
+      debugPrint('✅ Socket Connected');
+      // Redundant emit for safety, but handshake handles the primary auth now
+      if (_currentUserId != null) {
+        socket!.emit("user_connected", _currentUserId);
+      }
+    });
+
+    socket!.onReconnect((_) {
+      debugPrint('🔄 Socket Reconnected');
+      if (_currentUserId != null) {
+        socket!.emit("user_connected", _currentUserId);
+      }
+    });
+
+    socket!.on('user_status_update', (data) {
+      if (data != null) {
+        _userStatusController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    socket!.on('user_status_result', (data) {
+      if (data != null) {
+        _userStatusController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
+    
+    socket!.onError((data) => debugPrint('⚠️ Socket Error: $data'));
   }
 
   void checkUserStatus(String targetUserId) {
-    if (socket != null && socket!.connected && _currentUserId != null) {
+    if (socket != null && socket!.connected) {
       socket!.emit("check_user_status", {'userId': targetUserId});
     }
   }
 
   void connectUser(String userId) {
-    _currentUserId = userId;
-    if (socket != null && socket!.connected) {
-      _emitUserConnected();
-    } else {
+    if (_currentUserId != userId) {
+      _currentUserId = userId;
+      // Re-init to update the handshake query
       initSocket(userIdOverride: userId);
     }
   }
@@ -136,7 +148,7 @@ class SocketService with WidgetsBindingObserver {
   void disconnect() {
     if (socket != null) {
       socket!.disconnect();
-      socket = null; 
+      socket = null;
     }
   }
 }

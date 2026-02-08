@@ -1,3 +1,4 @@
+// backend/models/Message.js
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -11,40 +12,41 @@ const messageSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["text", "image", "audio", "file"],
+      // ✅ Added 'poll' to allowed types
+      enum: ["text", "image", "audio", "file", "poll"],
       default: "text",
     },
 
     text: { type: String, default: "" },
     fileUrl: { type: String, default: "" },
-
-    // ✅ Stores the original filename (e.g. "MyCV.pdf")
     fileName: { type: String, default: "" },
 
-    // ✅ NEW: Reply Functionality
+    // ✅ Reference to Poll if type === 'poll'
+    pollId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Poll",
+      default: null,
+    },
+
     replyTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
       default: null,
     },
 
-    isDeleted: { type: Boolean, default: false },
+    isRead: { type: Boolean, default: false },
     isEdited: { type: Boolean, default: false },
 
-    isRead: { type: Boolean, default: false },
-
-    // ✅ NEW: Soft Delete (Delete for Everyone)
+    // Soft Delete (Delete for Everyone)
     isDeleted: { type: Boolean, default: false },
 
-    // ✅ NEW: Hidden For Specific Users (Delete for Me)
+    // Hidden For Specific Users (Delete for Me)
     deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
   },
   { timestamps: true },
 );
 
-// ✅ CRITICAL PERFORMANCE FIX:
-// Create a compound index so MongoDB can instantly find
-// messages for a conversation and sort them by time.
+// Compound index for performance
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Message", messageSchema);

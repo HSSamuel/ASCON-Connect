@@ -1,3 +1,4 @@
+// backend/routes/polls.js
 const router = require("express").Router();
 const Poll = require("../models/Poll");
 const Group = require("../models/Group");
@@ -55,26 +56,29 @@ router.post("/", verifyToken, async (req, res) => {
     const { question, options, expiresAt, groupId } = req.body;
 
     // 1. Permissions Check
-    if (!req.user.isAdmin && !req.user.canCreatePolls) {
-      // If creating a group poll, check if they are an admin of THAT group
-      if (groupId) {
-        const group = await Group.findById(groupId);
-        if (!group)
-          return res.status(404).json({ message: "Group not found." });
+    if (groupId) {
+      const group = await Group.findById(groupId);
+      if (!group) return res.status(404).json({ message: "Group not found." });
 
-        // Allow if user is a Group Admin
-        if (!group.admins.includes(req.user._id)) {
-          return res
-            .status(403)
-            .json({ message: "Only Group Admins can create polls." });
-        }
-      } else {
-        // Only Super Admins can create Global Polls (no groupId)
-        if (!req.user.isAdmin) {
-          return res
-            .status(403)
-            .json({ message: "Unauthorized to create global polls." });
-        }
+      // ✅ FIXED: Safely check if user is member OR admin
+      // We use .toString() to ensure ObjectId comparison works
+      const isMember = group.members.some(
+        (id) => id.toString() === req.user._id,
+      );
+      const isAdmin = group.admins.some((id) => id.toString() === req.user._id);
+
+      // Allow if: Member OR Group Admin OR System Admin
+      if (!isMember && !isAdmin && !req.user.isAdmin) {
+        return res
+          .status(403)
+          .json({ message: "You must be a group member to create a poll." });
+      }
+    } else {
+      // Only Super Admins can create Global Polls (no groupId)
+      if (!req.user.isAdmin && !req.user.canCreatePolls) {
+        return res
+          .status(403)
+          .json({ message: "Unauthorized to create global polls." });
       }
     }
 
@@ -93,6 +97,11 @@ router.post("/", verifyToken, async (req, res) => {
     });
     await poll.save();
 
+    // Broadcast Real-time event
+    if (req.io) {
+      req.io.emit("poll_created", { poll });
+    }
+
     // Notify users
     if (groupId) {
       await sendBroadcastNotification("New Group Poll! 🗳️", question, {
@@ -107,6 +116,7 @@ router.post("/", verifyToken, async (req, res) => {
 
     res.status(201).json({ success: true, data: poll });
   } catch (err) {
+    console.error("Poll Create Error:", err);
     res.status(400).json({ message: err.message });
   }
 });
@@ -153,11 +163,13 @@ router.delete("/:id", verifyToken, async (req, res) => {
 
     // Check ownership or admin
     if (poll.createdBy.toString() !== req.user._id && !req.user.isAdmin) {
-      return res.status(403).json({ message: "Unauthorized to delete this poll." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to delete this poll." });
     }
 
     await Poll.findByIdAndDelete(req.params.id);
-    
+
     // Notify clients to remove it locally
     if (req.io) req.io.emit("poll_deleted", { pollId: req.params.id });
 
@@ -178,13 +190,16 @@ router.put("/:id", verifyToken, async (req, res) => {
 
     // Check ownership or admin
     if (poll.createdBy.toString() !== req.user._id && !req.user.isAdmin) {
-      return res.status(403).json({ message: "Unauthorized to edit this poll." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to edit this poll." });
     }
 
     poll.question = question || poll.question;
     await poll.save();
 
-    if (req.io) req.io.emit("poll_updated", { pollId: poll._id, updatedPoll: poll });
+    if (req.io)
+      req.io.emit("poll_updated", { pollId: poll._id, updatedPoll: poll });
 
     res.json({ success: true, message: "Poll updated", data: poll });
   } catch (err) {

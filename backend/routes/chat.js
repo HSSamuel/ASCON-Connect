@@ -1,3 +1,4 @@
+// backend/routes/chat.js
 const router = require("express").Router();
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
@@ -20,8 +21,6 @@ const { sendPersonalNotification } = require("../utils/notificationHandler");
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
-    console.log(`📤 Uploading: ${file.originalname} (${file.mimetype})`);
-
     let resourceType = "raw";
 
     if (file.mimetype.startsWith("image/")) {
@@ -83,7 +82,7 @@ router.get("/unread-status", verify, async (req, res) => {
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
-    // 1. Fetch Conversations (Raw, no populate)
+    // 1. Fetch Conversations where user is a participant
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
     })
@@ -101,19 +100,18 @@ router.get("/", verify, async (req, res) => {
       userId: { $in: Array.from(allParticipantIds) },
     }).lean();
 
-    // 4. Create a Lookup Map (Auth ID -> Profile Data)
+    // 4. Create a Lookup Map
     const profileMap = {};
     profiles.forEach((p) => {
       profileMap[p.userId.toString()] = p;
     });
 
-    // 5. Enrich Chats with Profile Data
+    // 5. Enrich Chats
     const enrichedChats = chats.map((chat) => {
       const enrichedParticipants = chat.participants.map((pId) => {
         const idStr = pId.toString();
         const profile = profileMap[idStr];
 
-        // Return structure matching what frontend expects
         return {
           _id: idStr,
           fullName: profile ? profile.fullName : "Alumni Member",
@@ -136,29 +134,22 @@ router.get("/", verify, async (req, res) => {
 // 1. START OR GET CONVERSATION (Updated for Groups)
 // =========================================================
 router.post("/start", verify, async (req, res) => {
-  const { receiverId, groupId } = req.body; // ✅ Accept groupId
+  const { receiverId, groupId } = req.body;
 
   try {
     let chat;
 
     // A. HANDLE GROUP CHAT
     if (groupId) {
-      // 1. Find existing chat for this group
       chat = await Conversation.findOne({ groupId: groupId });
 
       if (!chat) {
-        // 2. Create if not exists
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
 
-        // ✅ CRITICAL FIX: Add ALL group members to participants list immediately
+        // Include ALL group members + current user
         let initialParticipants = group.members || [];
-
-        // Ensure current user is also in the list if not already
-        const isUserInGroup = initialParticipants.some(
-          (id) => id.toString() === req.user._id,
-        );
-        if (!isUserInGroup) {
+        if (!initialParticipants.some((id) => id.toString() === req.user._id)) {
           initialParticipants.push(req.user._id);
         }
 
@@ -166,7 +157,7 @@ router.post("/start", verify, async (req, res) => {
           isGroup: true,
           groupId: groupId,
           groupName: group.name,
-          participants: initialParticipants, // ✅ Correctly includes everyone
+          participants: initialParticipants,
           groupAdmin:
             group.admins && group.admins.length > 0
               ? group.admins[0]
@@ -174,7 +165,7 @@ router.post("/start", verify, async (req, res) => {
         });
         await chat.save();
       } else {
-        // 3. Ensure current user is in participants locally
+        // Ensure current user is in participants
         if (!chat.participants.includes(req.user._id)) {
           chat.participants.push(req.user._id);
           await chat.save();
@@ -196,7 +187,7 @@ router.post("/start", verify, async (req, res) => {
       }
     }
 
-    // ✅ Populate Profiles
+    // Populate Response
     const participantIds = chat.participants;
     const profiles = await UserProfile.find({
       userId: { $in: participantIds },
@@ -226,13 +217,11 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // =========================================================
-// 2. BULK DELETE MESSAGES (Updated for Admin Rights)
+// 2. BULK DELETE MESSAGES
 // =========================================================
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
     const { messageIds, deleteForEveryone } = req.body;
-
-    // Find the conversation of the first message to check permissions
     const firstMsg = await Message.findById(messageIds[0]);
     if (!firstMsg)
       return res.status(404).json({ message: "Message not found" });
@@ -240,7 +229,6 @@ router.post("/delete-multiple", verify, async (req, res) => {
     const conversation = await Conversation.findById(firstMsg.conversationId);
     let isAdmin = false;
 
-    // Check if User is Group Admin
     if (conversation && conversation.groupId) {
       const group = await Group.findById(conversation.groupId);
       if (group && group.admins.includes(req.user._id)) {
@@ -249,11 +237,8 @@ router.post("/delete-multiple", verify, async (req, res) => {
     }
 
     if (deleteForEveryone) {
-      // ✅ Allow if Sender OR Admin
       const query = { _id: { $in: messageIds } };
-      if (!isAdmin) {
-        query.sender = req.user._id; // Restrict to sender if not admin
-      }
+      if (!isAdmin) query.sender = req.user._id;
 
       await Message.updateMany(query, {
         $set: {
@@ -264,14 +249,25 @@ router.post("/delete-multiple", verify, async (req, res) => {
         },
       });
 
-      _emitDeleteEvent(req, firstMsg.conversationId, messageIds, true);
+      _emitDeleteEvent(
+        req,
+        firstMsg.conversationId,
+        messageIds,
+        true,
+        conversation,
+      );
     } else {
-      // Delete for Me
       await Message.updateMany(
         { _id: { $in: messageIds } },
         { $addToSet: { deletedFor: req.user._id } },
       );
-      _emitDeleteEvent(req, firstMsg.conversationId, messageIds, false);
+      _emitDeleteEvent(
+        req,
+        firstMsg.conversationId,
+        messageIds,
+        false,
+        conversation,
+      );
     }
 
     res.status(200).json({ success: true });
@@ -280,12 +276,25 @@ router.post("/delete-multiple", verify, async (req, res) => {
   }
 });
 
-// Update helper to send "mode"
-async function _emitDeleteEvent(req, conversationId, messageIds, isHardDelete) {
-  const conversation = await Conversation.findById(conversationId);
-  if (conversation) {
+async function _emitDeleteEvent(
+  req,
+  conversationId,
+  messageIds,
+  isHardDelete,
+  conversation,
+) {
+  if (!conversation) return;
+
+  if (conversation.isGroup && conversation.groupId) {
+    // ✅ Emit to Group Room
+    req.io.to(conversation.groupId.toString()).emit("messages_deleted_bulk", {
+      conversationId,
+      messageIds,
+      isHardDelete,
+    });
+  } else {
+    // Emit to participants
     conversation.participants.forEach((userId) => {
-      // Only emit hard deletes to everyone. Soft deletes only to self (handled by UI mostly)
       if (isHardDelete || userId.toString() === req.user._id) {
         req.io.to(userId.toString()).emit("messages_deleted_bulk", {
           conversationId,
@@ -302,7 +311,7 @@ async function _emitDeleteEvent(req, conversationId, messageIds, isHardDelete) {
 // =========================================================
 
 // ---------------------------------------------------------
-// 5. GET MESSAGES (Wildcard route)
+// 5. GET MESSAGES
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
@@ -316,7 +325,7 @@ router.get("/:conversationId", verify, async (req, res) => {
     if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
-      .populate("sender", "fullName profilePicture") // ✅ ADDED: Populate Sender
+      .populate("sender", "fullName profilePicture")
       .populate("replyTo", "text sender type fileUrl")
       .populate("replyTo.sender", "fullName")
       .sort({ createdAt: -1 })
@@ -337,7 +346,7 @@ router.post(
   upload.single("file"),
   async (req, res) => {
     try {
-      const { text, type, replyToId } = req.body;
+      const { text, type, replyToId, pollId } = req.body;
       let fileUrl = "";
       let fileName = "";
 
@@ -354,12 +363,12 @@ router.post(
         fileUrl: fileUrl,
         fileName: fileName,
         replyTo: replyToId || null,
+        pollId: pollId || null, // ✅ Store Poll ID
         isRead: false,
       });
 
       const savedMessage = await newMessage.save();
 
-      // ✅ POPULATE SENDER DETAILS
       await savedMessage.populate("sender", "fullName profilePicture");
       await savedMessage.populate({
         path: "replyTo",
@@ -367,10 +376,12 @@ router.post(
         populate: { path: "sender", select: "fullName" },
       });
 
+      // Determine Preview Text
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
       if (type === "audio") lastMessagePreview = "🎤 Sent a voice note";
       if (type === "file") lastMessagePreview = "📎 Sent a document";
+      if (type === "poll") lastMessagePreview = "📊 Created a poll";
 
       // 1. Update Conversation Stats
       const conversation = await Conversation.findByIdAndUpdate(
@@ -383,54 +394,74 @@ router.post(
         { new: true },
       );
 
-      // ✅ 2. CRITICAL FIX FOR GROUPS: Sync Participants
-      // If this is a group chat, FORCE sync with Group model to ensure everyone gets the message.
-      if (conversation.isGroup && conversation.groupId) {
-        const group = await Group.findById(conversation.groupId);
-        if (group && group.members) {
-          // Force update participants list from Group model
-          conversation.participants = group.members;
-          await conversation.save();
-        }
-      }
-
-      // 3. Broadcast to ALL participants (except sender)
+      // 2. Broadcast
       const senderProfile = await UserProfile.findOne({ userId: req.user._id });
 
-      // Use the potentially updated participant list
-      conversation.participants.forEach(async (participantId) => {
-        // Skip the sender
-        if (participantId.toString() === req.user._id) return;
-
-        // A. Socket Emit (Real-time)
-        req.io.to(participantId.toString()).emit("new_message", {
+      // ✅ OPTIMIZED GROUP BROADCASTING
+      if (conversation.isGroup && conversation.groupId) {
+        // A. Socket Emit to Room (One shot)
+        // This ensures EVERYONE in the group (who is online) gets it.
+        req.io.to(conversation.groupId.toString()).emit("new_message", {
           message: savedMessage,
           conversationId: conversation._id,
         });
 
-        // B. Push Notification
-        if (senderProfile) {
-          try {
-            await sendPersonalNotification(
-              participantId.toString(),
-              conversation.isGroup
-                ? `${conversation.groupName} (${senderProfile.fullName})` // Group Format
-                : `Message from ${senderProfile.fullName}`, // DM Format
-              lastMessagePreview,
-              {
-                type: "chat_message",
-                conversationId: conversation._id.toString(),
-                senderId: req.user._id.toString(),
-                senderName: senderProfile.fullName,
-                senderProfilePic: senderProfile.profilePicture || "",
-                isGroup: conversation.isGroup ? "true" : "false",
-              },
-            );
-          } catch (notifyErr) {
-            console.error(`Failed to notify ${participantId}:`, notifyErr);
+        // B. Push Notifications
+        const group = await Group.findById(conversation.groupId);
+        if (group) {
+          // Sync Participants if needed
+          if (group.members.length !== conversation.participants.length) {
+            conversation.participants = group.members;
+            await conversation.save();
           }
         }
-      });
+
+        conversation.participants.forEach(async (participantId) => {
+          if (participantId.toString() === req.user._id) return;
+          // Send Push Notification
+          if (senderProfile) {
+            try {
+              await sendPersonalNotification(
+                participantId.toString(),
+                `${conversation.groupName} (${senderProfile.fullName})`,
+                lastMessagePreview,
+                {
+                  type: "chat_message",
+                  conversationId: conversation._id.toString(),
+                  senderId: req.user._id.toString(),
+                  isGroup: "true",
+                },
+              );
+            } catch (e) {}
+          }
+        });
+      } else {
+        // Direct Message Handling
+        conversation.participants.forEach(async (participantId) => {
+          if (participantId.toString() === req.user._id) return;
+
+          req.io.to(participantId.toString()).emit("new_message", {
+            message: savedMessage,
+            conversationId: conversation._id,
+          });
+
+          if (senderProfile) {
+            try {
+              await sendPersonalNotification(
+                participantId.toString(),
+                `Message from ${senderProfile.fullName}`,
+                lastMessagePreview,
+                {
+                  type: "chat_message",
+                  conversationId: conversation._id.toString(),
+                  senderId: req.user._id.toString(),
+                  isGroup: "false",
+                },
+              );
+            } catch (e) {}
+          }
+        });
+      }
 
       res.status(200).json(savedMessage);
     } catch (err) {
@@ -456,15 +487,22 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 
     const conversation = await Conversation.findById(req.params.conversationId);
 
-    // Notify all other participants that I read it
-    conversation.participants.forEach((participantId) => {
-      if (participantId.toString() !== req.user._id) {
-        req.io.to(participantId.toString()).emit("messages_read", {
-          conversationId: req.params.conversationId,
-          readerId: req.user._id,
-        });
-      }
-    });
+    // Broadcast Read Receipt
+    if (conversation.isGroup && conversation.groupId) {
+      req.io.to(conversation.groupId.toString()).emit("messages_read", {
+        conversationId: req.params.conversationId,
+        readerId: req.user._id,
+      });
+    } else {
+      conversation.participants.forEach((participantId) => {
+        if (participantId.toString() !== req.user._id) {
+          req.io.to(participantId.toString()).emit("messages_read", {
+            conversationId: req.params.conversationId,
+            readerId: req.user._id,
+          });
+        }
+      });
+    }
 
     res.status(200).json({ success: true });
   } catch (err) {
@@ -480,11 +518,9 @@ router.delete("/:conversationId", verify, async (req, res) => {
     const conversation = await Conversation.findByIdAndDelete(
       req.params.conversationId,
     );
-
     if (conversation) {
       await Message.deleteMany({ conversationId: req.params.conversationId });
     }
-
     res
       .status(200)
       .json({ message: "Conversation and messages permanently deleted." });
@@ -500,9 +536,9 @@ router.put("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json("Not found");
-    if (msg.sender.toString() !== req.user._id) {
+    if (msg.sender.toString() !== req.user._id)
       return res.status(403).json("Unauthorized");
-    }
+
     msg.text = req.body.text;
     msg.isEdited = true;
     await msg.save();
@@ -521,7 +557,10 @@ router.delete("/message/:id", verify, async (req, res) => {
     if (!msg) return res.status(404).json("Not found");
 
     await Message.findByIdAndDelete(req.params.id);
-    _emitDeleteEvent(req, msg.conversationId, [msg._id]);
+
+    // Get conversation for context to know if we emit to group room
+    const conversation = await Conversation.findById(msg.conversationId);
+    _emitDeleteEvent(req, msg.conversationId, [msg._id], true, conversation);
 
     res.status(200).json({ message: "Deleted" });
   } catch (err) {

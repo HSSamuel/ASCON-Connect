@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart'; // ✅ 1. Import this
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Brand Colors
   static const Color primaryGreen = Color(0xFF1B5E3A);
-  static const Color asconGreen = primaryGreen; 
   static const Color accentGold = Color(0xFFD4AF37);
 
   // 🌞 LIGHT THEME
@@ -15,6 +14,13 @@ class AppTheme {
     cardColor: Colors.white,
     dividerColor: Colors.grey[200],
     
+    // ✅ NEW: Fix Invisible Cursor & Text Selection
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: primaryGreen,
+      selectionColor: primaryGreen.withOpacity(0.3),
+      selectionHandleColor: primaryGreen,
+    ),
+
     appBarTheme: const AppBarTheme(
       backgroundColor: primaryGreen,
       foregroundColor: Colors.white,
@@ -31,7 +37,6 @@ class AppTheme {
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryGreen, width: 1.5)),
     ),
 
-    // ✅ 2. APPLY FONT GLOBALLY HERE
     textTheme: GoogleFonts.latoTextTheme(
       const TextTheme(
         bodyLarge: TextStyle(color: Colors.black87), 
@@ -51,6 +56,13 @@ class AppTheme {
     cardColor: const Color(0xFF1E1E1E),
     dividerColor: Colors.grey[800],
 
+    // ✅ NEW: Fix Invisible Cursor in Dark Mode
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: accentGold,
+      selectionColor: accentGold.withOpacity(0.3),
+      selectionHandleColor: accentGold,
+    ),
+
     appBarTheme: const AppBarTheme(
       backgroundColor: Color(0xFF14452B), 
       foregroundColor: Colors.white,
@@ -67,7 +79,6 @@ class AppTheme {
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryGreen, width: 1.5)),
     ),
 
-    // ✅ 3. APPLY FONT GLOBALLY FOR DARK MODE
     textTheme: GoogleFonts.latoTextTheme(
       const TextTheme(
         bodyLarge: TextStyle(color: Colors.white), 
