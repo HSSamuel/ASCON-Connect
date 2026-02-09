@@ -2,7 +2,7 @@
 const router = require("express").Router();
 const Group = require("../models/Group");
 const UserProfile = require("../models/UserProfile");
-const Conversation = require("../models/Conversation"); // ✅ Added Missing Import
+const Conversation = require("../models/Conversation");
 const verifyToken = require("./verifyToken");
 
 // Cloudinary & Multer Config for Group Icons
@@ -18,6 +18,14 @@ const storage = new CloudinaryStorage({
   },
 });
 const upload = multer({ storage: storage });
+
+// Helper to safely check if a user is an admin
+const isUserAdmin = (group, userId) => {
+  if (!group || !group.admins) return false;
+  return group.admins.some(
+    (adminId) => adminId.toString() === userId.toString(),
+  );
+};
 
 // ==========================================
 // 1. GET GROUP INFO (Members & Admins)
@@ -40,9 +48,7 @@ router.get("/:groupId/info", verifyToken, async (req, res) => {
       profilePicture: p.profilePicture,
       jobTitle: p.jobTitle,
       alumniId: p.alumniId,
-      isAdmin: (group.admins || [])
-        .map((id) => id.toString())
-        .includes(p.userId.toString()),
+      isAdmin: isUserAdmin(group, p.userId),
     }));
 
     res.json({
@@ -50,11 +56,8 @@ router.get("/:groupId/info", verifyToken, async (req, res) => {
       data: {
         ...group,
         members: enrichedMembers,
-        // Return raw admin IDs for easy checking on frontend
         admins: group.admins || [],
-        isCurrentUserAdmin: (group.admins || [])
-          .map((id) => id.toString())
-          .includes(req.user._id),
+        isCurrentUserAdmin: isUserAdmin(group, req.user._id),
       },
     });
   } catch (err) {
@@ -74,8 +77,8 @@ router.put(
       const group = await Group.findById(req.params.groupId);
       if (!group) return res.status(404).json({ message: "Group not found" });
 
-      // Check Admin Privileges
-      if (!group.admins.includes(req.user._id)) {
+      // ✅ FIX: Safe Admin Check
+      if (!isUserAdmin(group, req.user._id)) {
         return res
           .status(403)
           .json({ message: "Only Admins can change the icon." });
@@ -132,18 +135,27 @@ router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
     if (!group) return res.status(404).json({ message: "Group not found" });
     if (!group.admins) group.admins = [];
 
-    const amIAdmin = group.admins.includes(req.user._id);
+    // ✅ FIX: Safe Admin Check
+    const amIAdmin = isUserAdmin(group, req.user._id);
+    // Allow if I am admin, OR if there are NO admins yet (first setup)
     if (!amIAdmin && group.admins.length > 0) {
       return res
         .status(403)
         .json({ message: "Only Group Admins can do this." });
     }
 
-    const index = group.admins.indexOf(targetUserId);
+    // Toggle logic using strings
+    const strAdmins = group.admins.map((id) => id.toString());
+    const index = strAdmins.indexOf(targetUserId);
+
     if (index === -1) {
       group.admins.push(targetUserId);
     } else {
-      group.admins.splice(index, 1);
+      // Find the actual ObjectId index to splice correctly
+      const actualIndex = group.admins.findIndex(
+        (id) => id.toString() === targetUserId,
+      );
+      if (actualIndex !== -1) group.admins.splice(actualIndex, 1);
     }
 
     await group.save();
@@ -164,28 +176,32 @@ router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
     if (!group) return res.status(404).json({ message: "Group not found" });
     if (!group.admins) group.admins = [];
 
-    if (!group.admins.includes(req.user._id)) {
-      return res.status(403).json({ message: "Only Group Admins can remove members." });
+    // ✅ FIX: Safe Admin Check
+    if (!isUserAdmin(group, req.user._id)) {
+      return res
+        .status(403)
+        .json({ message: "Only Group Admins can remove members." });
     }
 
     // 1. Remove from Group Model
-    group.members = group.members.filter((id) => id.toString() !== targetUserId);
+    group.members = group.members.filter(
+      (id) => id.toString() !== targetUserId,
+    );
     group.admins = group.admins.filter((id) => id.toString() !== targetUserId);
     await group.save();
 
     // 2. Remove from Chat Conversation (Database Level)
     await Conversation.updateOne(
       { groupId: req.params.groupId },
-      { $pull: { participants: targetUserId } }
+      { $pull: { participants: targetUserId } },
     );
 
     // 3. ✅ REAL-TIME EVICTION: Tell the specific user they are removed
-    // This requires the client to listen for 'removed_from_group' and refresh/navigate away
     if (req.io) {
-        req.io.to(targetUserId).emit("removed_from_group", { 
-            groupId: req.params.groupId,
-            groupName: group.name 
-        });
+      req.io.to(targetUserId).emit("removed_from_group", {
+        groupId: req.params.groupId,
+        groupName: group.name,
+      });
     }
 
     res.json({ success: true, message: "User removed from group." });
@@ -199,15 +215,12 @@ router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
 // ==========================================
 router.get("/:groupId/notices", verifyToken, async (req, res) => {
   try {
-    // Only fetch the notices array to be lightweight
     const group = await Group.findById(req.params.groupId)
       .select("notices")
-      // Optional: Populate who posted it if you want names
       .populate("notices.postedBy", "email");
 
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // Sort notices: Newest first
     const sortedNotices = group.notices.sort(
       (a, b) => b.createdAt - a.createdAt,
     );
@@ -228,14 +241,13 @@ router.post("/:groupId/notices", verifyToken, async (req, res) => {
 
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // ✅ STRICT ADMIN CHECK
-    if (!group.admins.includes(req.user._id)) {
+    // ✅ FIX: Safe Admin Check
+    if (!isUserAdmin(group, req.user._id)) {
       return res
         .status(403)
         .json({ message: "Only Group Admins can post notices." });
     }
 
-    // Add to array
     group.notices.push({
       title,
       content,
@@ -258,8 +270,8 @@ router.delete("/:groupId/icon", verifyToken, async (req, res) => {
     const group = await Group.findById(req.params.groupId);
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // Check Admin Privileges
-    if (!group.admins.includes(req.user._id)) {
+    // ✅ FIX: Safe Admin Check
+    if (!isUserAdmin(group, req.user._id)) {
       return res
         .status(403)
         .json({ message: "Only Admins can remove the icon." });
@@ -282,14 +294,13 @@ router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
     const group = await Group.findById(req.params.groupId);
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // Find the notice
     const notice = group.notices.id(req.params.noticeId);
     if (!notice) return res.status(404).json({ message: "Notice not found" });
 
-    // Allow Group Admins OR the Original Poster to delete
     const isPoster =
       notice.postedBy && notice.postedBy.toString() === req.user._id;
-    const isAdmin = group.admins.includes(req.user._id);
+    // ✅ FIX: Safe Admin Check
+    const isAdmin = isUserAdmin(group, req.user._id);
 
     if (!isPoster && !isAdmin) {
       return res
@@ -297,7 +308,6 @@ router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
         .json({ message: "Unauthorized to delete this notice." });
     }
 
-    // Use pull to remove subdocument
     group.notices.pull(req.params.noticeId);
     await group.save();
 
@@ -319,10 +329,10 @@ router.put("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
     const notice = group.notices.id(req.params.noticeId);
     if (!notice) return res.status(404).json({ message: "Notice not found" });
 
-    // Allow Group Admins OR the Original Poster to edit
     const isPoster =
       notice.postedBy && notice.postedBy.toString() === req.user._id;
-    const isAdmin = group.admins.includes(req.user._id);
+    // ✅ FIX: Safe Admin Check
+    const isAdmin = isUserAdmin(group, req.user._id);
 
     if (!isPoster && !isAdmin) {
       return res

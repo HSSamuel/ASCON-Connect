@@ -117,6 +117,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  // ✅ FIXED: Robust Back Navigation Logic
+  Future<void> _handleBackPress() async {
+    // 1. If Keyboard is open, let the system handle closing it (return early)
+    if (MediaQuery.of(context).viewInsets.bottom > 0) {
+      SystemChannels.textInput.invokeMethod('TextInput.hide');
+      return;
+    }
+
+    final int currentIndex = widget.navigationShell.currentIndex;
+
+    // 2. If NOT on Dashboard (Tab 0), go to Dashboard
+    if (currentIndex != 0) {
+      _goBranch(0);
+      return; 
+    }
+
+    // 3. If on Dashboard, check double-tap to exit
+    final now = DateTime.now();
+    if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
+      _lastPressedAt = now;
+      ScaffoldMessenger.of(context).clearSnackBars(); // Clear old snackbars
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Press back again to exit"),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return; // Do NOT exit yet
+    }
+
+    // 4. Exit App
+    SystemNavigator.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
@@ -129,31 +164,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final showAppBar = uiIndex == 0;
 
     return PopScope(
+      // ✅ STRICTLY block system pop to ensure our logic runs
       canPop: false, 
       onPopInvoked: (didPop) async {
         if (didPop) return;
-
-        final int liveIndex = widget.navigationShell.currentIndex;
-
-        if (liveIndex != 0) {
-          _goBranch(0);
-          return;
-        }
-
-        final now = DateTime.now();
-        if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
-          _lastPressedAt = now;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Press back again to exit"),
-              duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-
-        SystemNavigator.pop();
+        await _handleBackPress();
       },
       child: Scaffold(
         appBar: showAppBar 
@@ -543,14 +558,14 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // ✅ COMPACT PROFILE ALERT
+  // ✅ COMPACT PROFILE ALERT (FIXED VISIBILITY)
   Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final percent = _viewModel.profileCompletionPercent;
     
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 5, 16, 10), // Reduced Margin
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // Reduced Padding
+      margin: const EdgeInsets.fromLTRB(16, 5, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF424242) : const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(12),
@@ -558,11 +573,25 @@ class _DashboardViewState extends State<DashboardView> {
       ),
       child: Row(
         children: [
-          CircularProgressIndicator(
-            value: percent,
-            backgroundColor: Colors.amber.withOpacity(0.2),
-            color: Colors.amber[800],
-            strokeWidth: 3, 
+          // ✅ VISIBLE PERCENTAGE INDICATOR
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: percent,
+                backgroundColor: Colors.amber.withOpacity(0.2),
+                color: Colors.amber[800],
+                strokeWidth: 3, 
+              ),
+              Text(
+                "${(percent * 100).toInt()}%", 
+                style: TextStyle(
+                  fontSize: 10, 
+                  fontWeight: FontWeight.bold, 
+                  color: isDark ? Colors.white : Colors.brown[800]
+                )
+              ),
+            ],
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -582,7 +611,6 @@ class _DashboardViewState extends State<DashboardView> {
           ),
           ElevatedButton(
             onPressed: () async {
-              // ✅ AUTO-REFRESH ON RETURN
               await context.push('/profile');
               _viewModel.loadData(); 
             },

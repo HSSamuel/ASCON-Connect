@@ -5,10 +5,11 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:vibration/vibration.dart';
-import 'package:flutter_markdown/flutter_markdown.dart'; // ✅ NEW: Markdown Support
+import 'package:flutter_markdown/flutter_markdown.dart'; 
 
 import '../../models/chat_objects.dart';
 import '../../widgets/full_screen_image.dart';
+import '../../screens/alumni_detail_screen.dart'; 
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage msg;
@@ -17,7 +18,6 @@ class MessageBubble extends StatelessWidget {
   final bool isDark;
   final Color primaryColor;
   
-  // State from Parent
   final bool isSelectionMode;
   final bool isSelected;
   final String? playingMessageId;
@@ -26,16 +26,16 @@ class MessageBubble extends StatelessWidget {
   final String? downloadingFileId;
   final bool isAdmin; 
 
-  // Callbacks
   final Function(String) onSwipeReply;
   final Function(String) onToggleSelection;
-  final Function(String, bool) onReply; // msgId, isLongPress
+  final Function(String, bool) onReply; 
   final Function(String) onEdit;
   final Function(String) onDelete;
   final Function(String) onPlayAudio;
   final Function(String, String) onPauseAudio;
   final Function(Duration) onSeekAudio;
-  final Function(String, String) onDownloadFile; // url, fileName
+  // ✅ Callback is passed directly
+  final Function(String, String) onDownloadFile; 
 
   const MessageBubble({
     super.key,
@@ -64,7 +64,6 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Hide completely deleted messages
     if (msg.isDeleted && msg.text.contains("🚫")) {
        return Padding(
          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
@@ -94,7 +93,6 @@ class MessageBubble extends StatelessWidget {
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: GestureDetector(
           onLongPress: () {
-            // ✅ Allow Admin to Long Press ANY message
             if (!isMe && !isAdmin && !isSelectionMode) return; 
             _showOptionsSheet(context);
           },
@@ -117,20 +115,35 @@ class MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ ADMIN / SENDER VISUALS
                 if (!isMe)
                   Padding(
                     padding: const EdgeInsets.only(left: 10, right: 10, top: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          msg.senderName ?? "Member",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            // Gold Color for Admins
-                            color: isAdmin ? Colors.amber[800] : (isDark ? Colors.tealAccent : primaryColor),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context, rootNavigator: true).push(
+                              MaterialPageRoute(
+                                builder: (_) => AlumniDetailScreen(
+                                  alumniData: {
+                                    'userId': msg.senderId,
+                                    'fullName': msg.senderName,
+                                    'profilePicture': msg.senderProfilePic, 
+                                  }
+                                )
+                              )
+                            );
+                          },
+                          child: Text(
+                            (msg.senderName != null && msg.senderName!.isNotEmpty) 
+                                ? msg.senderName! 
+                                : "Unknown User",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: isAdmin ? Colors.amber[800] : (isDark ? Colors.tealAccent : primaryColor),
+                            ),
                           ),
                         ),
                         if (isAdmin)
@@ -142,10 +155,8 @@ class MessageBubble extends StatelessWidget {
                     ),
                   ),
 
-                // Reply Preview
                 if (msg.replyToId != null) _buildReplyPreview(),
 
-                // Content
                 Padding(
                   padding: const EdgeInsets.all(10),
                   child: Column(
@@ -176,12 +187,8 @@ class MessageBubble extends StatelessWidget {
     showModalBottomSheet(context: context, builder: (c) => Wrap(
       children: [
         ListTile(leading: const Icon(Icons.reply), title: const Text("Reply"), onTap: () { Navigator.pop(c); onReply(msg.id, false); }),
-        
-        // Only sender can edit
         if (isMe && msg.type == 'text') 
           ListTile(leading: const Icon(Icons.edit), title: const Text("Edit"), onTap: () { Navigator.pop(c); onEdit(msg.id); }),
-        
-        // ✅ ADMIN DELETE: Shows for Sender OR Group Admin
         if (isMe || isAdmin)
           ListTile(
             leading: const Icon(Icons.delete, color: Colors.red), 
@@ -240,49 +247,70 @@ class MessageBubble extends StatelessWidget {
       ]));
     }
 
+    // ✅ FILE / DOCUMENT BUBBLE
     if (msg.type == 'file') {
+      // Check if this specific message is downloading
       bool isDownloading = downloadingFileId == msg.id;
+      
       return Container(
         padding: const EdgeInsets.all(10), 
         decoration: BoxDecoration(color: isMe ? Colors.white.withOpacity(0.2) : Colors.grey[200], borderRadius: BorderRadius.circular(8)), 
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          GestureDetector(onTap: () => onDownloadFile(msg.fileUrl!, msg.fileName ?? "Doc"), child: Icon(Icons.description, color: isMe ? Colors.white : primaryColor, size: 30)), 
+          GestureDetector(
+            onTap: () => onDownloadFile(msg.fileUrl!, msg.fileName ?? "Doc"), 
+            child: Icon(Icons.description, color: isMe ? Colors.white : primaryColor, size: 30)
+          ), 
           const SizedBox(width: 8), 
           Flexible(child: GestureDetector(
             onTap: () => onDownloadFile(msg.fileUrl!, msg.fileName ?? "Doc"), 
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(msg.fileName ?? "Document", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, color: isMe ? Colors.white : Colors.black87, decoration: TextDecoration.underline)), 
               const SizedBox(height: 2), 
-              Text(isDownloading ? "Downloading..." : "Tap to open", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey))
+              Text(
+                isDownloading ? "Downloading..." : "Tap to open", 
+                style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)
+              )
             ])
           )), 
-          if (isDownloading) const Padding(padding: EdgeInsets.only(left: 8.0), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
+          // ✅ SPINNER
+          if (isDownloading) 
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0), 
+              child: SizedBox(
+                width: 16, height: 16, 
+                child: CircularProgressIndicator(strokeWidth: 2, color: isMe ? Colors.white : primaryColor)
+              )
+            )
         ])
       );
     }
 
-    // ✅ NEW: FLUTTER MARKDOWN RENDERING
+    if (msg.type == 'poll') {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+             Icon(Icons.bar_chart, color: Colors.orange, size: 20),
+             const SizedBox(width: 8),
+             Text("Poll created. View at top.", style: TextStyle(color: isMe ? Colors.white : Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      );
+    }
+
     return MarkdownBody(
       data: msg.text,
       styleSheet: MarkdownStyleSheet(
-        p: TextStyle(
-          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-          fontSize: 15,
-        ),
-        strong: TextStyle( // Bold
-          fontWeight: FontWeight.bold,
-          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black),
-        ),
-        em: TextStyle( // Italic
-          fontStyle: FontStyle.italic,
-          color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black),
-        ),
-        code: TextStyle( // Code (used for Monospace)
-          backgroundColor: isMe ? Colors.black26 : Colors.grey[200],
-          color: isMe ? Colors.white : Colors.black,
-          fontFamily: 'monospace',
-          fontSize: 13,
-        ),
+        p: TextStyle(color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87), fontSize: 15),
+        strong: TextStyle(fontWeight: FontWeight.bold, color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black)),
+        em: TextStyle(fontStyle: FontStyle.italic, color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black)),
+        code: TextStyle(backgroundColor: isMe ? Colors.black26 : Colors.grey[200], color: isMe ? Colors.white : Colors.black, fontFamily: 'monospace', fontSize: 13),
       ),
     );
   }

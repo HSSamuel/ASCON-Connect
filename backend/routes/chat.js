@@ -7,10 +7,8 @@ const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const verify = require("./verifyToken");
 
-// Cloudinary Config
 const cloudinaryConfig = require("../config/cloudinary");
 const cloudinary = cloudinaryConfig.cloudinary;
-
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
@@ -22,28 +20,36 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
     let resourceType = "raw";
+    // Check if it's an image
     if (file.mimetype.startsWith("image/")) resourceType = "image";
-    if (
-      file.originalname.match(
-        /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt)$/i,
-      )
-    )
+    
+    // Explicitly check for document types to treat as 'raw'
+    if (file.originalname.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|csv)$/i)) {
       resourceType = "raw";
+    }
+
+    // ✅ FIX: Clean filename but PRESERVE EXTENSION for documents
+    // This ensures the download URL ends in .pdf, .docx, etc.
+    const nameWithoutExt = file.originalname.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
+    const extension = file.originalname.split('.').pop();
+    
+    let publicId = `${nameWithoutExt}-${Date.now()}`;
+    
+    // For raw files, manually append extension to public_id
+    if (resourceType === "raw" && extension) {
+      publicId += `.${extension}`;
+    }
 
     return {
       folder: "ascon_chat_files",
       resource_type: resourceType,
-      public_id:
-        file.originalname
-          .replace(/\.[^/.]+$/, "")
-          .replace(/[^a-zA-Z0-9]/g, "_") +
-        "-" +
-        Date.now(),
+      public_id: publicId,
+      // 'format' is only used for images/video conversions. 
+      // For raw files, the extension in public_id is what matters.
       format: resourceType === "raw" ? undefined : file.mimetype.split("/")[1],
     };
   },
 });
-
 const upload = multer({ storage: storage });
 
 // ---------------------------------------------------------
@@ -74,6 +80,7 @@ router.get("/", verify, async (req, res) => {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
     })
+      .populate("groupId", "name icon")
       .sort({ lastMessageAt: -1 })
       .lean();
 
@@ -85,21 +92,61 @@ router.get("/", verify, async (req, res) => {
     const profiles = await UserProfile.find({
       userId: { $in: Array.from(allParticipantIds) },
     }).lean();
-    const profileMap = {};
-    profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
 
-    const enrichedChats = chats.map((chat) => {
-      const enrichedParticipants = chat.participants.map((pId) => {
-        const profile = profileMap[pId.toString()];
-        return {
-          _id: pId.toString(),
-          fullName: profile ? profile.fullName : "Alumni Member",
-          profilePicture: profile ? profile.profilePicture : "",
-          jobTitle: profile ? profile.jobTitle : "",
-        };
-      });
-      return { ...chat, participants: enrichedParticipants };
-    });
+    // Fetch Auth (Emails) for fallback
+    const auths = await UserAuth.find({
+      _id: { $in: Array.from(allParticipantIds) },
+    })
+      .select("email")
+      .lean();
+
+    const profileMap = {};
+    const authMap = {};
+
+    profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
+    auths.forEach((a) => (authMap[a._id.toString()] = a));
+
+    const enrichedChats = chats
+      .map((chat) => {
+        // Group Logic
+        if (chat.isGroup && chat.groupId) {
+          return {
+            ...chat,
+            groupName: chat.groupId.name,
+            groupIcon: chat.groupId.icon,
+          };
+        }
+
+        // Direct Message Logic
+        const enrichedParticipants = chat.participants.map((pId) => {
+          const idStr = pId.toString();
+          const profile = profileMap[idStr];
+          const auth = authMap[idStr];
+
+          let displayName = "Unknown User";
+          if (profile && profile.fullName) displayName = profile.fullName;
+          else if (auth && auth.email) displayName = auth.email.split("@")[0];
+
+          return {
+            _id: idStr,
+            fullName: displayName,
+            profilePicture: profile ? profile.profilePicture : "",
+            jobTitle: profile ? profile.jobTitle : "",
+            exists: !!auth,
+          };
+        });
+
+        // Filter Ghost Chats
+        const otherUser = enrichedParticipants.find(
+          (p) => p._id !== req.user._id,
+        );
+        if (!chat.isGroup && otherUser && !otherUser.exists) {
+          return null;
+        }
+
+        return { ...chat, participants: enrichedParticipants };
+      })
+      .filter((chat) => chat !== null);
 
     res.json(enrichedChats);
   } catch (err) {
@@ -107,32 +154,21 @@ router.get("/", verify, async (req, res) => {
   }
 });
 
-// =========================================================
-// 3. START OR GET CONVERSATION (SECURITY FIX APPLIED)
-// =========================================================
+// ---------------------------------------------------------
+// 3. START OR GET CONVERSATION
+// ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId, groupId } = req.body;
-
   try {
     let chat;
-
-    // A. HANDLE GROUP CHAT
     if (groupId) {
       chat = await Conversation.findOne({ groupId: groupId });
-
       if (!chat) {
-        // ... (Creation logic remains mostly same, but relies on group members)
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
-
-        // Check if I am actually a member? (Optional, usually creating opens it)
         let initialParticipants = group.members || [];
-        if (!initialParticipants.some((id) => id.toString() === req.user._id)) {
-          // If I'm NOT in the group, I shouldn't be able to start the chat unless I'm admin?
-          // For now, allow creation if it doesn't exist, but sync members.
+        if (!initialParticipants.some((id) => id.toString() === req.user._id))
           initialParticipants.push(req.user._id);
-        }
-
         chat = new Conversation({
           isGroup: true,
           groupId: groupId,
@@ -145,11 +181,8 @@ router.post("/start", verify, async (req, res) => {
         });
         await chat.save();
       } else {
-        // ✅ SECURITY FIX: "Zombie Re-entry" Prevention
-        // Only add user to participants IF they are actually in the Group Member list
         if (!chat.participants.includes(req.user._id)) {
           const group = await Group.findById(groupId).select("members");
-
           if (
             group &&
             group.members.some((m) => m.toString() === req.user._id)
@@ -157,58 +190,31 @@ router.post("/start", verify, async (req, res) => {
             chat.participants.push(req.user._id);
             await chat.save();
           } else {
-            // User is NOT in the group anymore. Do NOT add them.
-            // We can return the chat, but they won't be able to send/receive updates
-            // effectively creating a "View Only" or "Access Denied" state depending on frontend checks.
             return res
               .status(403)
               .json({ message: "You are no longer a member of this group." });
           }
         }
       }
-    }
-    // B. HANDLE 1-ON-1 CHAT
-    else {
+    } else {
       chat = await Conversation.findOne({
         isGroup: false,
         participants: { $all: [req.user._id, receiverId] },
       });
-
       if (!chat) {
         chat = new Conversation({ participants: [req.user._id, receiverId] });
         await chat.save();
       }
     }
-
-    // Populate Response
-    const participantIds = chat.participants;
-    const profiles = await UserProfile.find({
-      userId: { $in: participantIds },
-    }).lean();
-    const profileMap = {};
-    profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
-
-    const enrichedParticipants = chat.participants.map((pId) => {
-      const profile = profileMap[pId.toString()];
-      return {
-        _id: pId.toString(),
-        fullName: profile ? profile.fullName : "Alumni Member",
-        profilePicture: profile ? profile.profilePicture : "",
-      };
-    });
-
-    const responseObj = chat.toObject ? chat.toObject() : chat;
-    responseObj.participants = enrichedParticipants;
-
-    res.status(200).json(responseObj);
+    res.status(200).json(chat);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// =========================================================
+// ---------------------------------------------------------
 // 4. BULK DELETE MESSAGES
-// =========================================================
+// ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
     const { messageIds, deleteForEveryone } = req.body;
@@ -273,44 +279,37 @@ async function _emitDeleteEvent(
 ) {
   if (!conversation) return;
   if (conversation.isGroup && conversation.groupId) {
-    req.io
-      .to(conversation.groupId.toString())
-      .emit("messages_deleted_bulk", {
-        conversationId,
-        messageIds,
-        isHardDelete,
-      });
+    req.io.to(conversation.groupId.toString()).emit("messages_deleted_bulk", {
+      conversationId,
+      messageIds,
+      isHardDelete,
+    });
   } else {
     conversation.participants.forEach((userId) => {
       if (isHardDelete || userId.toString() === req.user._id) {
-        req.io
-          .to(userId.toString())
-          .emit("messages_deleted_bulk", {
-            conversationId,
-            messageIds,
-            isHardDelete,
-          });
+        req.io.to(userId.toString()).emit("messages_deleted_bulk", {
+          conversationId,
+          messageIds,
+          isHardDelete,
+        });
       }
     });
   }
 }
 
 // ---------------------------------------------------------
-// 5. GET MESSAGES (Updated with Privacy Check)
+// 5. GET MESSAGES (With Profile Names)
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
-    // 1. First verify the user is a participant of this conversation
     const conversation = await Conversation.findOne({
       _id: req.params.conversationId,
-      participants: req.user._id // ✅ This clause effectively blocks removed users
+      participants: req.user._id,
     });
-
-    if (!conversation) {
-      // Return 403 Forbidden instead of 404 to be specific, or 404 to be obscure.
-      // 403 tells the frontend to handle "Access Revoked"
-      return res.status(403).json({ message: "Access denied or conversation not found." });
-    }
+    if (!conversation)
+      return res
+        .status(403)
+        .json({ message: "Access denied or conversation not found." });
 
     const { beforeId } = req.query;
     const limit = 20;
@@ -318,24 +317,60 @@ router.get("/:conversationId", verify, async (req, res) => {
       conversationId: req.params.conversationId,
       deletedFor: { $ne: req.user._id },
     };
-
     if (beforeId) query._id = { $lt: beforeId };
 
     const messages = await Message.find(query)
-      .populate("sender", "fullName profilePicture")
       .populate("replyTo", "text sender type fileUrl")
-      .populate("replyTo.sender", "fullName")
+      .populate("replyTo.sender", "email")
       .sort({ createdAt: -1 })
-      .limit(limit);
+      .limit(limit)
+      .lean();
 
-    res.status(200).json(messages.reverse());
+    const userIds = new Set();
+    messages.forEach((m) => {
+      userIds.add(m.sender.toString());
+      if (m.replyTo && m.replyTo.sender)
+        userIds.add(m.replyTo.sender._id.toString());
+    });
+
+    const profiles = await UserProfile.find({
+      userId: { $in: Array.from(userIds) },
+    }).lean();
+    const profileMap = {};
+    profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
+
+    const enrichedMessages = messages.map((msg) => {
+      const senderProfile = profileMap[msg.sender.toString()];
+      const senderName = senderProfile
+        ? senderProfile.fullName
+        : "Unknown User";
+      const senderPic = senderProfile ? senderProfile.profilePicture : "";
+
+      if (msg.replyTo && msg.replyTo.sender) {
+        const replyProfile = profileMap[msg.replyTo.sender._id.toString()];
+        msg.replyTo.sender.fullName = replyProfile
+          ? replyProfile.fullName
+          : "User";
+      }
+
+      return {
+        ...msg,
+        sender: {
+          _id: msg.sender,
+          fullName: senderName,
+          profilePicture: senderPic,
+        },
+      };
+    });
+
+    res.status(200).json(enrichedMessages.reverse());
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
 // ---------------------------------------------------------
-// 6. SEND MESSAGE (With Group Sync & Validation)
+// 6. SEND MESSAGE (✅ UPDATED: Enhanced Notifications)
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -351,27 +386,24 @@ router.post(
         fileName = req.file.originalname;
       }
 
-      // 1. Get Conversation to check permissions
       const conversation = await Conversation.findById(
         req.params.conversationId,
       );
       if (!conversation)
         return res.status(404).json({ message: "Conversation not found" });
 
-      // ✅ CHECK: Is User still in the group?
       if (conversation.isGroup && conversation.groupId) {
-        // We can optimize this by relying on 'participants' IF we trust our sync logic
-        // But for strict security:
         const group = await Group.findById(conversation.groupId);
-        if (group && !group.members.includes(req.user._id)) {
+        if (
+          group &&
+          !group.members.some((m) => m.toString() === req.user._id)
+        ) {
           return res
             .status(403)
             .json({
               message: "You are no longer a participant of this group.",
             });
         }
-
-        // Sync Participants lazy-load (Restore logic but safe)
         if (
           group &&
           group.members.length !== conversation.participants.length
@@ -394,12 +426,20 @@ router.post(
       });
 
       const savedMessage = await newMessage.save();
-      await savedMessage.populate("sender", "fullName profilePicture");
-      await savedMessage.populate({
-        path: "replyTo",
-        select: "text sender type",
-        populate: { path: "sender", select: "fullName" },
-      });
+
+      // ✅ 1. Manually fetch Sender Profile for the response object
+      const senderProfile = await UserProfile.findOne({ userId: req.user._id });
+      const senderName = senderProfile
+        ? senderProfile.fullName
+        : "Unknown User";
+      const senderPic = senderProfile ? senderProfile.profilePicture : "";
+
+      const messageObj = savedMessage.toObject();
+      messageObj.sender = {
+        _id: req.user._id,
+        fullName: senderName,
+        profilePicture: senderPic,
+      };
 
       let lastMessagePreview = text;
       if (type === "image") lastMessagePreview = "📷 Sent an image";
@@ -413,64 +453,66 @@ router.post(
         lastMessageAt: Date.now(),
       });
 
-      const senderProfile = await UserProfile.findOne({ userId: req.user._id });
-
+      // ✅ NOTIFICATION LOGIC
       if (conversation.isGroup && conversation.groupId) {
-        // ✅ Emit to Room
+        // 1. Emit Socket to Group Room
         req.io
           .to(conversation.groupId.toString())
           .emit("new_message", {
-            message: savedMessage,
+            message: messageObj,
             conversationId: conversation._id,
           });
 
-        // ✅ Push Notifications
+        // 2. Send Push Notification to All Participants (except sender)
         conversation.participants.forEach(async (participantId) => {
           if (participantId.toString() === req.user._id) return;
-          if (senderProfile) {
-            try {
-              await sendPersonalNotification(
-                participantId.toString(),
-                `${conversation.groupName} (${senderProfile.fullName})`,
-                lastMessagePreview,
-                {
-                  type: "chat_message",
-                  conversationId: conversation._id.toString(),
-                  senderId: req.user._id.toString(),
-                  isGroup: "true",
-                },
-              );
-            } catch (e) {}
-          }
+          try {
+            await sendPersonalNotification(
+              participantId.toString(),
+              conversation.groupName, // Title: Group Name (No prefix)
+              `${senderName}: ${lastMessagePreview}`, // Body: "Sender: Message"
+              {
+                type: "chat_message",
+                conversationId: conversation._id.toString(),
+                senderId: req.user._id.toString(),
+                isGroup: "true",
+                groupId: conversation.groupId.toString(), // ✅ Added Group ID for navigation
+                groupName: conversation.groupName, // ✅ Added Group Name
+                senderName: senderName, // ✅ Added Sender Name
+              },
+            );
+          } catch (e) {}
         });
       } else {
+        // 1. Emit Socket to User Room
         conversation.participants.forEach(async (participantId) => {
           if (participantId.toString() === req.user._id) return;
           req.io
             .to(participantId.toString())
             .emit("new_message", {
-              message: savedMessage,
+              message: messageObj,
               conversationId: conversation._id,
             });
-          if (senderProfile) {
-            try {
-              await sendPersonalNotification(
-                participantId.toString(),
-                `Message from ${senderProfile.fullName}`,
-                lastMessagePreview,
-                {
-                  type: "chat_message",
-                  conversationId: conversation._id.toString(),
-                  senderId: req.user._id.toString(),
-                  isGroup: "false",
-                },
-              );
-            } catch (e) {}
-          }
+          try {
+            // 2. Send Push Notification
+            await sendPersonalNotification(
+              participantId.toString(),
+              senderName, // Title: Sender Name (No prefix)
+              lastMessagePreview, // Body: Message
+              {
+                type: "chat_message",
+                conversationId: conversation._id.toString(),
+                senderId: req.user._id.toString(),
+                isGroup: "false",
+                senderName: senderName, // ✅ Added Sender Name
+                senderProfilePic: senderPic, // ✅ Added Profile Pic
+              },
+            );
+          } catch (e) {}
         });
       }
 
-      res.status(200).json(savedMessage);
+      res.status(200).json(messageObj);
     } catch (err) {
       res.status(500).json(err);
     }
@@ -492,21 +534,17 @@ router.put("/read/:conversationId", verify, async (req, res) => {
     );
     const conversation = await Conversation.findById(req.params.conversationId);
     if (conversation.isGroup && conversation.groupId) {
-      req.io
-        .to(conversation.groupId.toString())
-        .emit("messages_read", {
-          conversationId: req.params.conversationId,
-          readerId: req.user._id,
-        });
+      req.io.to(conversation.groupId.toString()).emit("messages_read", {
+        conversationId: req.params.conversationId,
+        readerId: req.user._id,
+      });
     } else {
       conversation.participants.forEach((pId) => {
         if (pId.toString() !== req.user._id)
-          req.io
-            .to(pId.toString())
-            .emit("messages_read", {
-              conversationId: req.params.conversationId,
-              readerId: req.user._id,
-            });
+          req.io.to(pId.toString()).emit("messages_read", {
+            conversationId: req.params.conversationId,
+            readerId: req.user._id,
+          });
       });
     }
     res.status(200).json({ success: true });

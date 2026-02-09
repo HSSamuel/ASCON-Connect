@@ -15,7 +15,12 @@ import 'screens/about_screen.dart';
 import 'screens/polls_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<NavigatorState> shellNavigatorKey = GlobalKey<NavigatorState>();
+// ✅ Keys for tabs to ensure separate stacks
+final GlobalKey<NavigatorState> homeNavKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> eventsNavKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> updatesNavKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> directoryNavKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> profileNavKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
@@ -39,6 +44,7 @@ final GoRouter appRouter = GoRouter(
       branches: [
         // Tab 0: Dashboard
         StatefulShellBranch(
+          navigatorKey: homeNavKey, // ✅ Added Key
           routes: [
             GoRoute(
               path: '/home',
@@ -49,6 +55,7 @@ final GoRouter appRouter = GoRouter(
         
         // Tab 1: Events
         StatefulShellBranch(
+          navigatorKey: eventsNavKey, // ✅ Added Key
           routes: [
             GoRoute(
               path: '/events',
@@ -59,6 +66,7 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 2: Updates
         StatefulShellBranch(
+          navigatorKey: updatesNavKey, // ✅ Added Key
           routes: [
             GoRoute(
               path: '/updates',
@@ -69,16 +77,18 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 3: Directory
         StatefulShellBranch(
+          navigatorKey: directoryNavKey, // ✅ Added Key
           routes: [
             GoRoute(
               path: '/directory',
-              builder: (context, state) => const DirectoryScreen(), // ✅ Now found
+              builder: (context, state) => const DirectoryScreen(),
             ),
           ],
         ),
 
         // Tab 4: Profile
         StatefulShellBranch(
+          navigatorKey: profileNavKey, // ✅ Added Key
           routes: [
             GoRoute(
               path: '/profile',
@@ -92,7 +102,7 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
 
-    // Standalone Screens
+    // Standalone Screens (Outside Shell)
     GoRoute(
       path: '/chat',
       parentNavigatorKey: rootNavigatorKey, 
@@ -104,7 +114,7 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) {
         final args = state.extra as Map<String, dynamic>;
-        return ChatScreen( // ✅ No longer ambiguous
+        return ChatScreen( 
           conversationId: args['conversationId'],
           receiverId: args['receiverId'],
           receiverName: args['receiverName'],

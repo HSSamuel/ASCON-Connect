@@ -1,8 +1,9 @@
+// backend/services/socketService.js
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 const UserAuth = require("../models/UserAuth");
-const Group = require("../models/Group"); // ✅ Required for Group Rooms
+const Group = require("../models/Group");
 const logger = require("../utils/logger");
 
 let io;
@@ -12,7 +13,7 @@ const disconnectTimers = new Map(); // userId -> TimeoutID
 const initializeSocket = async (server) => {
   const ioConfig = {
     cors: {
-      origin: "*", // Allow all origins for mobile/web compatibility
+      origin: "*",
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -49,15 +50,11 @@ const initializeSocket = async (server) => {
   }
 
   // 2. AUTHENTICATION MIDDLEWARE
-  // This verifies the user BEFORE the 'connection' event fires
   io.use(async (socket, next) => {
     try {
       const userId = socket.handshake.query.userId;
 
       if (!userId || userId === "null" || userId === "undefined") {
-        // Proceeding without ID allows basic connection but they won't get private messages
-        // For strict apps, you might return an error here.
-        // socket.userId = null;
         return next(new Error("User ID required in handshake query"));
       }
 
@@ -85,12 +82,22 @@ const initializeSocket = async (server) => {
         userGroups.forEach((group) => {
           const groupId = group._id.toString();
           socket.join(groupId);
-          // logger.info(`User ${userId} joined room: ${groupId}`);
         });
       }
     } catch (err) {
       logger.error(`Error joining group rooms for ${userId}: ${err.message}`);
     }
+
+    // C. DYNAMIC ROOM MANAGEMENT (✅ ADDED THIS)
+    socket.on("join_room", (room) => {
+      socket.join(room);
+      logger.info(`Socket ${socket.id} joined room ${room}`);
+    });
+
+    socket.on("leave_room", (room) => {
+      socket.leave(room);
+      logger.info(`Socket ${socket.id} left room ${room}`);
+    });
 
     handleConnection(socket, userId);
   });

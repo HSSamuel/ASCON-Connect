@@ -2,6 +2,8 @@
 const router = require("express").Router();
 const Poll = require("../models/Poll");
 const Group = require("../models/Group");
+const Message = require("../models/Message"); // ✅ Added
+const Conversation = require("../models/Conversation"); // ✅ Added
 const verifyToken = require("./verifyToken");
 const { sendBroadcastNotification } = require("../utils/notificationHandler");
 
@@ -44,7 +46,7 @@ router.get("/group/:groupId", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 3. CREATE POLL
+// 3. CREATE POLL (Now generates a Chat Message)
 // ==========================================
 router.post("/", verifyToken, async (req, res) => {
   try {
@@ -57,7 +59,10 @@ router.post("/", verifyToken, async (req, res) => {
       const isMember = group.members.some(
         (id) => id.toString() === req.user._id,
       );
-      const isAdmin = group.admins.some((id) => id.toString() === req.user._id);
+      // Safe Admin Check
+      const isAdmin =
+        group.admins &&
+        group.admins.some((id) => id.toString() === req.user._id);
 
       if (!isMember && !isAdmin && !req.user.isAdmin) {
         return res
@@ -87,17 +92,53 @@ router.post("/", verifyToken, async (req, res) => {
     });
     await poll.save();
 
-    // ✅ FIXED: Scope the socket event
+    // ---------------------------------------------------------
+    // ✅ NEW: Inject "Poll Created" Message into Chat
+    // ---------------------------------------------------------
+    if (groupId) {
+      const conversation = await Conversation.findOne({ groupId: groupId });
+
+      if (conversation) {
+        const pollMsg = new Message({
+          conversationId: conversation._id,
+          sender: req.user._id,
+          text: question, // Display question as preview text
+          type: "poll",
+          pollId: poll._id,
+          isRead: false,
+        });
+
+        await pollMsg.save();
+        await pollMsg.populate("sender", "fullName profilePicture");
+
+        // Update Conversation Last Message
+        await Conversation.findByIdAndUpdate(conversation._id, {
+          lastMessage: "📊 New Poll: " + question,
+          lastMessageSender: req.user._id,
+          lastMessageAt: Date.now(),
+        });
+
+        // Emit Message to Chat Socket (so it appears in the bubble stream)
+        if (req.io) {
+          req.io.to(groupId).emit("new_message", {
+            message: pollMsg,
+            conversationId: conversation._id,
+          });
+        }
+      }
+    }
+    // ---------------------------------------------------------
+
+    // Emit Poll Event (For the ActivePollCard)
     if (req.io) {
       if (groupId) {
-        // Only emit to this specific group room
         req.io.to(groupId).emit("poll_created", { poll });
       } else {
-        // Global poll (emit to everyone)
         req.io.emit("poll_created", { poll });
       }
     }
 
+    // Notifications
     if (groupId) {
       await sendBroadcastNotification("New Group Poll! 🗳️", question, {
         route: "group_chat",
@@ -126,7 +167,11 @@ router.put("/:id/vote", verifyToken, async (req, res) => {
     const poll = await Poll.findById(req.params.id);
     if (!poll) return res.status(404).json({ message: "Poll not found" });
 
-    if (poll.votedUsers && poll.votedUsers.includes(userId)) {
+    // Safe Check using Strings
+    if (
+      poll.votedUsers &&
+      poll.votedUsers.some((id) => id.toString() === userId)
+    ) {
       return res.status(400).json({ message: "You have already voted." });
     }
 
@@ -139,7 +184,7 @@ router.put("/:id/vote", verifyToken, async (req, res) => {
 
     await poll.save();
 
-    // ✅ FIXED: Scope the socket event
+    // Scope the socket event
     if (req.io) {
       if (poll.group) {
         req.io
@@ -172,7 +217,9 @@ router.delete("/:id", verifyToken, async (req, res) => {
 
     await Poll.findByIdAndDelete(req.params.id);
 
-    // ✅ FIXED: Scope the socket event
+    // Also remove the associated chat message? (Optional, but cleaner)
+    // await Message.findOneAndDelete({ pollId: req.params.id });
+
     if (req.io) {
       if (poll.group) {
         req.io
@@ -207,7 +254,6 @@ router.put("/:id", verifyToken, async (req, res) => {
     poll.question = question || poll.question;
     await poll.save();
 
-    // ✅ FIXED: Scope the socket event
     if (req.io) {
       if (poll.group) {
         req.io

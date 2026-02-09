@@ -66,7 +66,7 @@ class DigitalIDCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const Color cardGreen = Color(0xFF1B5E3A);
-    // ✅ URL FIXED
+    // ✅ URL FIXED: Redirects to alumni site
     final String verificationLink = "https://asconalumni.netlify.app/verify/${alumniID.replaceAll('/', '-')}";
 
     return LayoutBuilder(

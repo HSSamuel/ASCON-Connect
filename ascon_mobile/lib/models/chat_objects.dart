@@ -5,11 +5,12 @@ enum MessageStatus { sending, sent, delivered, read, error }
 class ChatMessage {
   final String id;
   final String senderId;
-  final String? senderName; // ✅ ADDED THIS FIELD
+  final String? senderName; 
+  final String? senderProfilePic; // ✅ ADDED: Capture Sender Image
   String text; 
   final DateTime createdAt;
   
-  final String type; // 'text', 'image', 'audio', 'file'
+  final String type; // 'text', 'image', 'audio', 'file', 'poll'
   final String? fileUrl;
   final String? fileName;
   
@@ -30,7 +31,8 @@ class ChatMessage {
   ChatMessage({
     required this.id,
     required this.senderId,
-    this.senderName, // ✅ ADDED TO CONSTRUCTOR
+    this.senderName, 
+    this.senderProfilePic, // ✅ ADDED
     required this.text,
     required this.createdAt,
     this.type = 'text',
@@ -68,9 +70,9 @@ class ChatMessage {
 
     return ChatMessage(
       id: json['_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      // ✅ Handle both String ID and Populated Object for Sender
       senderId: (json['sender'] is Map) ? json['sender']['_id'] : json['sender'] ?? '',
-      senderName: (json['sender'] is Map) ? json['sender']['fullName'] : null, // ✅ EXTRACT NAME
+      senderName: (json['sender'] is Map) ? json['sender']['fullName'] : null,
+      senderProfilePic: (json['sender'] is Map) ? json['sender']['profilePicture'] : null, // ✅ PARSE PIC
       text: json['text'] ?? '',
       createdAt: DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now(),
       type: json['type'] ?? 'text',
@@ -90,8 +92,8 @@ class ChatMessage {
   Map<String, dynamic> toJson() {
     return {
       '_id': id,
-      'sender': senderId, // When sending locally, we might only have ID
-      'senderName': senderName, // Optional cache
+      'sender': senderId, 
+      'senderName': senderName, 
       'text': text,
       'createdAt': createdAt.toIso8601String(),
       'type': type,
@@ -118,6 +120,10 @@ class ChatConversation {
   final String lastMessage;
   final DateTime lastMessageTime;
   
+  // Group Support
+  final bool isGroup;
+  final String? groupId; 
+
   bool isOnline;
   String? lastSeen;
 
@@ -128,38 +134,52 @@ class ChatConversation {
     this.otherUserId,
     required this.lastMessage,
     required this.lastMessageTime,
+    this.isGroup = false,
+    this.groupId,
     this.isOnline = false,
     this.lastSeen,
   });
 
   factory ChatConversation.fromJson(Map<String, dynamic> json, String myUserId) {
-    final participants = (json['participants'] as List?) ?? [];
+    final bool isGroupChat = json['isGroup'] ?? false;
     
-    var otherUser = participants.firstWhere(
-      (user) => user != null && user['_id'].toString() != myUserId, 
-      orElse: () => null,
-    );
+    String displayName;
+    String? displayImage;
+    String? targetId;
+    String? grpId;
 
-    if (otherUser == null && participants.isNotEmpty) {
-      otherUser = participants[0];
+    if (isGroupChat) {
+      displayName = json['groupName'] ?? 'Unknown Group';
+      displayImage = json['groupIcon']; 
+      grpId = (json['groupId'] is Map) ? json['groupId']['_id'] : json['groupId'];
+      targetId = grpId; 
+    } else {
+      final participants = (json['participants'] as List?) ?? [];
+      var otherUser = participants.firstWhere(
+        (user) => user != null && user['_id'].toString() != myUserId, 
+        orElse: () => null,
+      );
+
+      if (otherUser == null && participants.isNotEmpty) {
+        otherUser = participants[0];
+      }
+
+      displayName = otherUser?['fullName'] ?? 'Alumni Member';
+      displayImage = otherUser?['profilePicture'];
+      targetId = otherUser?['_id'];
     }
-
-    final String name = otherUser?['fullName'] ?? 'Alumni Member';
-    final String? image = otherUser?['profilePicture'];
-    final String? uid = otherUser?['_id'];
-    
-    final bool online = otherUser?['isOnline'] ?? false;
-    final String? seen = otherUser?['lastSeen']?.toString();
 
     return ChatConversation(
       id: json['_id'] ?? '',
-      otherUserName: name,
-      otherUserImage: image,
-      otherUserId: uid,
-      lastMessage: json['lastMessage'] ?? 'Start a conversation',
+      otherUserName: displayName,
+      otherUserImage: displayImage,
+      otherUserId: targetId,
+      lastMessage: json['lastMessage'] ?? (isGroupChat ? 'Group created' : 'Start a conversation'),
       lastMessageTime: DateTime.tryParse(json['lastMessageAt']?.toString() ?? '') ?? DateTime.now(),
-      isOnline: online,
-      lastSeen: seen,
+      isGroup: isGroupChat,
+      groupId: grpId,
+      isOnline: false, 
+      lastSeen: null,
     );
   }
 }

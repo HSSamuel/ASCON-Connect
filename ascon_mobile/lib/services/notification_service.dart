@@ -88,8 +88,6 @@ class NotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("🔔 Foreground Message: ${message.notification?.title}");
       if (message.notification != null) {
-        // On Web, the browser handles the visual notification automatically via Service Worker
-        // But on Mobile, we show the local notification manually
         if (!kIsWeb) {
           _showLocalNotification(message);
         }
@@ -113,12 +111,10 @@ class NotificationService {
       syncToken(); 
     });
 
-    // Try to sync (important for Web startup)
     await syncToken();
   }
 
   Future<void> requestPermission() async {
-    // ✅ WEB SUPPORT ENABLED
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true, badge: true, sound: true, provisional: false,
     );
@@ -163,7 +159,19 @@ class NotificationService {
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
-        final senderName = data['senderName'] ?? "Alumni Member";
+        
+        // ✅ FIXED: Determine Correct Name & ID
+        final isGroup = data['isGroup'].toString().toLowerCase() == 'true';
+        final groupId = data['groupId']; 
+        
+        String displayName;
+        if (isGroup) {
+          displayName = data['groupName'] ?? "Group Chat";
+        } else {
+          // Fix for "Alumni Member" issue - use senderName from backend
+          displayName = data['senderName'] ?? "Alumni Member";
+        }
+        
         final senderProfilePic = data['senderProfilePic'];
 
         if (conversationId != null && senderId != null) {
@@ -173,10 +181,13 @@ class NotificationService {
             MaterialPageRoute(
               builder: (_) => ChatScreen(
                 conversationId: conversationId,
+                // For 1-on-1, receiver is the sender of the msg. For Group, receiverId isn't strictly used for routing but we pass senderId.
                 receiverId: senderId, 
-                receiverName: senderName,
+                receiverName: displayName, // ✅ Shows correct name/group
                 receiverProfilePic: senderProfilePic,
                 isOnline: false, 
+                isGroup: isGroup, // ✅ Pass group flag
+                groupId: groupId, // ✅ Pass group ID for socket joining
               ),
             ),
           );
@@ -269,7 +280,6 @@ class NotificationService {
 
       String? fcmToken;
       if (kIsWeb) {
-        // ✅ WEB TOKEN SYNC with VAPID Key
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
         if (vapidKey != null && vapidKey.isNotEmpty) {
           fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
@@ -285,8 +295,6 @@ class NotificationService {
         debugPrint("❌ FCM Token is null. Sync aborted.");
         return;
       }
-
-      // debugPrint("📢 FCM Token: $fcmToken"); 
 
       String? authToken = await _storage.read(key: 'auth_token');
 

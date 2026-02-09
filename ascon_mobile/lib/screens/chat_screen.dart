@@ -15,7 +15,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:open_file/open_file.dart';
+import 'package:open_file/open_file.dart'; // ✅ Ensure this dependency is in pubspec.yaml
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
@@ -99,8 +99,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
+  // ✅ Track which file is downloading
   String? _downloadingFileId;
-  bool _showFormatting = false;
   List<String> _groupAdminIds = [];
 
   @override
@@ -116,7 +116,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    // ✅ FIX: Join Group Room Explicitly & Fetch Admins
     if (widget.isGroup && widget.groupId != null) {
       SocketService().socket?.emit('join_room', widget.groupId);
       _fetchGroupAdmins();
@@ -124,7 +123,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _startStatusPolling();
     }
     
-    // Status Listener (For 1-on-1)
     if (!widget.isGroup) {
       _statusSubscription = SocketService().userStatusStream.listen((data) {
         if (!mounted) return;
@@ -141,10 +139,6 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       });
     }
-
-    _focusNode.addListener(() {
-      setState(() => _showFormatting = _focusNode.hasFocus);
-    });
   }
 
   Future<void> _fetchGroupAdmins() async {
@@ -213,6 +207,10 @@ class _ChatScreenState extends State<ChatScreen> {
       });
     }
 
+    if (widget.isGroup && widget.groupId != null) {
+      SocketService().socket?.emit('leave_room', widget.groupId);
+    }
+
     SocketService().socket?.off('new_message');
     SocketService().socket?.off('messages_read');
     SocketService().socket?.off('messages_deleted_bulk');
@@ -245,6 +243,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
             try {
               final newMessage = ChatMessage.fromJson(data['message']);
+              if (newMessage.senderId == _myUserId) return; // Prevent duplicate
               if (_messages.any((m) => m.id == newMessage.id)) return;
 
               _messages.add(newMessage);
@@ -450,9 +449,63 @@ class _ChatScreenState extends State<ChatScreen> {
     _stopRecording(send: false);
   }
 
-  Future<void> _downloadAndOpenWith(String url, String fileName) async {
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  // ✅ UPDATED: Robust Download & Open Function
+  Future<void> _downloadAndOpenWith(String messageId, String url, String fileName) async {
+    // 1. Web Support (Direct Launch)
+    if (kIsWeb) {
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url));
+      }
+      return;
+    }
+
+    try {
+      // 2. Set Loading State
+      setState(() => _downloadingFileId = messageId);
+
+      // 3. Get Temp Directory
+      final dir = await getTemporaryDirectory();
+      // Ensure we have a valid filename (backend now sends correct ext)
+      final safeFileName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_');
+      final savePath = "${dir.path}/$safeFileName"; 
+
+      debugPrint("Downloading to: $savePath");
+
+      // 4. Download File
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode == 200) {
+        final file = File(savePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        // 5. Open File (Android/iOS)
+        final result = await OpenFile.open(savePath);
+        
+        if (result.type != ResultType.done) {
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+               content: Text("Could not open file: ${result.message}"),
+               backgroundColor: Colors.red,
+             ));
+           }
+        }
+      } else {
+        throw Exception("Download failed with status: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Download/Open Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Failed to download file."),
+          backgroundColor: Colors.red,
+        ));
+      }
+      // Fallback: Try launching in browser
+      if (await canLaunchUrl(Uri.parse(url))) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingFileId = null);
     }
   }
 
@@ -713,7 +766,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     playingMessageId: _playingMessageId,
                     currentPosition: _currentPosition,
                     totalDuration: _totalDuration,
+                    
+                    // ✅ PASS THE DOWNLOADING STATE
                     downloadingFileId: _downloadingFileId,
+                    
                     isAdmin: widget.isGroup && _groupAdminIds.contains(msg.senderId),
                     onSwipeReply: (id) {
                       setState(() { _replyingTo = msg; _editingMessage = null; });
@@ -736,7 +792,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                     onPauseAudio: (id, _) async { await _audioPlayer.pause(); setState(() => _playingMessageId = null); },
                     onSeekAudio: (pos) => _audioPlayer.seek(pos),
-                    onDownloadFile: (url, name) => _downloadAndOpenWith(url, name),
+                    
+                    // ✅ UPDATED CALLBACK: Passes ID too
+                    onDownloadFile: (url, name) => _downloadAndOpenWith(msg.id, url, name),
                   );
                 },
               ),
@@ -751,7 +809,6 @@ class _ChatScreenState extends State<ChatScreen> {
               primaryColor: primaryColor,
               isRecording: _isRecording,
               recordDuration: _recordDuration,
-              showFormatting: _showFormatting,
               replyingTo: _replyingTo,
               editingMessage: _editingMessage,
               myUserId: _myUserId ?? "",
@@ -763,9 +820,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onSendMessage: () => _sendMessage(text: _textController.text),
               onAttachmentMenu: _showAttachmentMenu,
               onTyping: (val) {
-                // ✅ FIX: Force UI update to enable send button instantly
                 setState(() {});
-
                 if (val.isNotEmpty) {
                    if (!_isTyping) { 
                      _isTyping = true; 

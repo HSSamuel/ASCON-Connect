@@ -75,7 +75,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Future<void> _loadChats() async {
-    // ✅ FIX: Ensure ID is loaded BEFORE parsing chats
+    // ✅ Ensure ID is loaded BEFORE parsing chats
     _myUserId = await _storage.read(key: 'userId');
     if (_myUserId == null) {
       final prefs = await SharedPreferences.getInstance();
@@ -92,10 +92,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
       if (mounted && result['success'] == true) {
         final List<dynamic> data = result['data'];
         
-        // Pass _myUserId to properly identify the OTHER person
         final loaded = data
             .map((data) => ChatConversation.fromJson(data, _myUserId ?? ''))
-            .where((chat) => chat.otherUserId != _myUserId) 
+            // Filter out self-chats unless it's a test/group
+            .where((chat) => chat.isGroup || chat.otherUserId != _myUserId) 
             .toList();
 
         loaded.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
@@ -116,7 +116,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   void _checkInitialStatuses() {
     for (var chat in _conversations) {
-      if (chat.otherUserId != null) {
+      if (!chat.isGroup && chat.otherUserId != null) {
          SocketService().checkUserStatus(chat.otherUserId!);
       }
     }
@@ -151,20 +151,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  Widget _buildAvatar(String? url, String name) {
+  Widget _buildAvatar(String? url, String name, bool isGroup) {
     final primaryColor = Theme.of(context).primaryColor;
     
+    // Fallback Icon
+    Widget fallback = Center(
+      child: isGroup 
+        ? Icon(Icons.groups, color: primaryColor)
+        : Text(
+            name.isNotEmpty ? name[0].toUpperCase() : '?', 
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor)
+          )
+    );
+
     bool isInvalid = url == null || 
                      url.isEmpty || 
                      url.contains('profile/picture/1') || 
                      url.contains('googleusercontent.com/profile/picture');
-
-    Widget fallback = Center(
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : '?', 
-        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor)
-      )
-    );
 
     if (isInvalid) {
       return CircleAvatar(radius: 28, backgroundColor: Colors.grey[300], child: fallback);
@@ -254,7 +257,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       itemBuilder: (context, index) {
                         final chat = _filteredConversations[index];
                         final presence = _userPresence[chat.otherUserId];
-                        final bool isOnline = presence != null && presence['isOnline'] == true;
+                        final bool isOnline = !chat.isGroup && (presence != null && presence['isOnline'] == true);
                         final String? lastSeen = presence != null ? presence['lastSeen'] : null;
 
                         return Dismissible(
@@ -283,6 +286,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                           child: ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             onTap: () async {
+                              // ✅ PASS CORRECT GROUP DATA HERE
                               await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
                                 conversationId: chat.id,
                                 receiverName: chat.otherUserName,
@@ -290,12 +294,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                 receiverProfilePic: chat.otherUserImage, 
                                 isOnline: isOnline, 
                                 lastSeen: lastSeen,
+                                isGroup: chat.isGroup, // ✅ NEW
+                                groupId: chat.groupId, // ✅ NEW
                               )));
                               _loadChats(); 
                             },
                             leading: Stack(
                               children: [
-                                _buildAvatar(chat.otherUserImage, chat.otherUserName),
+                                _buildAvatar(chat.otherUserImage, chat.otherUserName, chat.isGroup),
                                 if (isOnline)
                                   Positioned(
                                     right: 2, bottom: 2,
