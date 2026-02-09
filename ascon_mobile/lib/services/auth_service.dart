@@ -48,6 +48,30 @@ class AuthService {
     }
   }
 
+  // ✅ NEW: Save credentials for future Biometric login
+  Future<void> enableBiometrics(String email, String password) async {
+    await _secureStorage.write(key: 'biometric_email', value: email);
+    await _secureStorage.write(key: 'biometric_password', value: password);
+    await _secureStorage.write(key: 'use_biometrics', value: 'true');
+  }
+
+  // ✅ NEW: Check if user has enabled biometrics
+  Future<bool> isBiometricEnabled() async {
+    String? enabled = await _secureStorage.read(key: 'use_biometrics');
+    return enabled == 'true';
+  }
+
+  // ✅ NEW: Perform login using stored secure credentials
+  Future<Map<String, dynamic>> loginWithStoredCredentials() async {
+    final email = await _secureStorage.read(key: 'biometric_email');
+    final password = await _secureStorage.read(key: 'biometric_password');
+
+    if (email != null && password != null) {
+      return await login(email, password);
+    }
+    return {'success': false, 'message': 'No credentials stored'};
+  }
+
   Future<String?> _getFcmToken() async {
     try {
       if (kIsWeb) {
@@ -310,7 +334,7 @@ class AuthService {
     return userData != null ? jsonDecode(userData) : null;
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool clearBiometrics = false}) async {
     try {
       SocketService().disconnect();
     } catch (_) {}
@@ -331,6 +355,12 @@ class AuthService {
       await _secureStorage.delete(key: 'auth_token');
       await _secureStorage.delete(key: 'refresh_token');
       await _secureStorage.delete(key: 'userId');
+      
+      if (clearBiometrics) {
+        await _secureStorage.delete(key: 'biometric_email');
+        await _secureStorage.delete(key: 'biometric_password');
+        await _secureStorage.delete(key: 'use_biometrics');
+      }
     } catch (_) {}
     
     final prefs = await SharedPreferences.getInstance();

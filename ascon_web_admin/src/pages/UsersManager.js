@@ -18,8 +18,12 @@ function UsersManager({ token, canEdit }) {
 
   // ✅ NEW: Listen for real-time registration events
   useEffect(() => {
-    // Connect to the same backend
-    const socket = io(BASE_URL);
+    // Connect to the same backend with AUTH TOKEN
+    const authToken = localStorage.getItem("auth_token") || token;
+
+    const socket = io(BASE_URL, {
+      auth: { token: authToken }, // ✅ Secure Auth
+    });
 
     socket.on("connect", () => {
       console.log("🔌 Admin Socket Connected");

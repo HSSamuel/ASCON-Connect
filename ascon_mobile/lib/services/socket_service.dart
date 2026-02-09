@@ -35,15 +35,16 @@ class SocketService with WidgetsBindingObserver {
   }
 
   Future<void> initSocket({String? userIdOverride}) async {
-    // 1. Resolve User ID
+    // 1. Resolve User ID & Token
+    String? token = await _storage.read(key: "auth_token");
     if (userIdOverride != null) {
       _currentUserId = userIdOverride;
     } else {
       _currentUserId = await _storage.read(key: "userId");
     }
 
-    if (_currentUserId == null) {
-      debugPrint("⚠️ Socket Init Skipped: No User ID found.");
+    if (token == null || _currentUserId == null) {
+      debugPrint("⚠️ Socket Init Skipped: No Token or User ID found.");
       return;
     }
 
@@ -69,7 +70,9 @@ class SocketService with WidgetsBindingObserver {
         'timeout': 20000,
         'reconnection': true,
         'reconnectionDelay': 1000,
-        // ✅ Send User ID in the handshake query
+        // ✅ SECURE AUTH: Send Token
+        'auth': {'token': token},
+        // We keep query for logging/backward compatibility, but auth is primary
         'query': {'userId': _currentUserId},
       });
 

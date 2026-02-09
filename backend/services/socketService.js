@@ -2,6 +2,7 @@
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
+const jwt = require("jsonwebtoken"); // ✅ Import JWT
 const UserAuth = require("../models/UserAuth");
 const Group = require("../models/Group");
 const logger = require("../utils/logger");
@@ -52,20 +53,32 @@ const initializeSocket = async (server) => {
   }
 
   // ==========================================
-  // 2. AUTHENTICATION MIDDLEWARE
+  // 2. AUTHENTICATION MIDDLEWARE (SECURED)
   // ==========================================
   io.use(async (socket, next) => {
     try {
-      const userId = socket.handshake.query.userId;
+      // 1. Extract Token from Handshake Auth or Headers
+      const token =
+        socket.handshake.auth?.token ||
+        socket.handshake.headers?.["auth-token"] ||
+        socket.handshake.headers?.authorization?.split(" ")[1];
 
-      if (!userId || userId === "null" || userId === "undefined") {
-        return next(new Error("User ID required in handshake query"));
+      if (!token) {
+        logger.warn(`🚫 Socket Connection Rejected: No Token (${socket.id})`);
+        return next(new Error("Authentication error: Token required"));
       }
 
-      socket.userId = userId;
+      // 2. Verify Token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // 3. Attach User ID to Socket
+      socket.userId = decoded._id;
+
+      logger.info(`🔑 Socket Authenticated: ${socket.userId}`);
       return next();
     } catch (err) {
-      return next(new Error("Internal Server Error during Socket Auth"));
+      logger.error(`🚫 Socket Auth Failed: ${err.message}`);
+      return next(new Error("Authentication error: Invalid Token"));
     }
   });
 
@@ -73,8 +86,7 @@ const initializeSocket = async (server) => {
   // 3. EVENT HANDLERS
   // ==========================================
   io.on("connection", async (socket) => {
-    const userId = socket.userId;
-    if (!userId) return;
+    const userId = socket.userId; // Guaranteed by middleware
 
     logger.info(`🔌 Socket Connected: ${socket.id} (User: ${userId})`);
 

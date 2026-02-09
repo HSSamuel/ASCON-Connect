@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
 import '../services/socket_service.dart'; 
+import '../services/biometric_service.dart'; // ✅ Added import
 import '../config.dart'; 
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -24,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+  final BiometricService _biometricService = BiometricService(); // ✅ Instance
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? AppConfig.googleWebClientId : null,
@@ -33,6 +35,77 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isEmailLoading = false;
   bool _isGoogleLoading = false;
   bool _obscurePassword = true; 
+  bool _canCheckBiometrics = false;
+
+  @override
+void initState() {
+  super.initState();
+  // ✅ Only check biometrics if NOT running on Web
+  if (!kIsWeb) {
+    _checkBiometrics();
+  }
+}
+
+  Future<void> _checkBiometrics() async {
+    bool available = await _biometricService.isBiometricAvailable;
+    if (mounted) setState(() => _canCheckBiometrics = available);
+  }
+
+  // ✅ OPT-IN DIALOG for Biometrics
+  void _showBiometricOptInDialog(String email, String password, Map<String, dynamic> user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Enable Biometric Login?"),
+        content: const Text("Would you like to use FaceID/Fingerprint for faster access next time?"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _handleLoginSuccess(user);
+            },
+            child: const Text("SKIP"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await _authService.enableBiometrics(email, password);
+              if (mounted) {
+                Navigator.pop(context);
+                _handleLoginSuccess(user);
+              }
+            },
+            child: const Text("ENABLE"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ HANDLE BIOMETRIC BUTTON TAP
+  Future<void> _handleBiometricLogin() async {
+    bool hasConsent = await _authService.isBiometricEnabled();
+    if (!hasConsent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please log in with password once to enable Biometrics.")),
+      );
+      return;
+    }
+
+    bool authenticated = await _biometricService.authenticate();
+    if (authenticated) {
+      setState(() => _isEmailLoading = true); 
+      final result = await _authService.loginWithStoredCredentials();
+      if (mounted) setState(() => _isEmailLoading = false);
+
+      if (result['success']) {
+        _handleLoginSuccess(result['data']['user']);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Biometric login failed: ${result['message']}")),
+        );
+      }
+    }
+  }
 
   Future<void> _handleLoginSuccess(Map<String, dynamic> user) async {
     _syncNotificationToken();
@@ -65,7 +138,6 @@ class _LoginScreenState extends State<LoginScreen> {
         barrierDismissible: false,
         builder: (context) => WelcomeDialog(
           userName: safeName,
-          // ✅ FIX: Navigate to Home after clicking "Get Started"
           onGetStarted: () async {
             await _markWelcomeAsSeen();
             if (mounted) _navigateToHome(safeName); 
@@ -76,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _syncNotificationToken() async {
-    if (kIsWeb) return; // Skip sync on Web
+    if (kIsWeb) return; 
     try {
       await NotificationService().syncToken();
     } catch (e) {
@@ -107,14 +179,26 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isEmailLoading = true);
     
     try {
-      final result = await _authService.login(_emailController.text.trim(), _passwordController.text);
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      final result = await _authService.login(email, password);
+      
       if (!mounted) return;
 
-      setState(() => _isEmailLoading = false);
-
       if (result['success']) {
-        _handleLoginSuccess(result['data']['user']);
+        setState(() => _isEmailLoading = false);
+        
+        // ✅ Check if we should prompt for Biometrics
+        bool alreadyEnabled = await _authService.isBiometricEnabled();
+        bool hardwareAvailable = await _biometricService.isBiometricAvailable;
+
+        if (!alreadyEnabled && hardwareAvailable && mounted) {
+          _showBiometricOptInDialog(email, password, result['data']['user']);
+        } else {
+          _handleLoginSuccess(result['data']['user']);
+        }
       } else {
+        setState(() => _isEmailLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message']), backgroundColor: Colors.red));
       }
     } catch (e) {
@@ -217,7 +301,41 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(alignment: Alignment.centerRight, child: TextButton(onPressed: isAnyLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())), child: Text("Forgot Password?", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13)))),
                 const SizedBox(height: 8),
 
-                SizedBox(width: double.infinity, height: 45, child: ElevatedButton(onPressed: isAnyLoading ? null : loginUser, style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), child: _isEmailLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LOGIN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)))),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 45, 
+                        child: ElevatedButton(
+                          onPressed: isAnyLoading ? null : loginUser, 
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor, 
+                            foregroundColor: Colors.white, 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                          ), 
+                          child: _isEmailLoading 
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                            : const Text('LOGIN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))
+                        )
+                      ),
+                    ),
+                    if (_canCheckBiometrics) ...[
+                      const SizedBox(width: 12),
+                      Container(
+                        height: 45, width: 45,
+                        decoration: BoxDecoration(
+                          color: cardColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: primaryColor.withOpacity(0.5))
+                        ),
+                        child: IconButton(
+                          icon: Icon(Icons.fingerprint, color: primaryColor),
+                          onPressed: isAnyLoading ? null : _handleBiometricLogin,
+                        ),
+                      )
+                    ]
+                  ],
+                ),
                 const SizedBox(height: 12),
                 SizedBox(width: double.infinity, height: 45, child: OutlinedButton(onPressed: isAnyLoading ? null : signInWithGoogle, style: OutlinedButton.styleFrom(side: BorderSide(color: primaryColor), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), backgroundColor: cardColor), child: _isGoogleLoading ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: primaryColor, strokeWidth: 2)) : Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.login, color: primaryColor, size: 20), const SizedBox(width: 8), Text("Continue with Google", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14))]))),
                 const SizedBox(height: 20),
