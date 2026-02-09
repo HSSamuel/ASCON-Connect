@@ -1,13 +1,14 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../viewmodels/events_view_model.dart';
-import '../widgets/skeleton_loader.dart';
-import '../widgets/event_card.dart';
+import '../services/data_service.dart';
+import '../services/auth_service.dart';
+import '../widgets/shimmer_utils.dart'; // ✅ Reusing Shimmer
+import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
   const EventsScreen({super.key});
@@ -17,400 +18,395 @@ class EventsScreen extends StatefulWidget {
 }
 
 class _EventsScreenState extends State<EventsScreen> {
-  final EventsViewModel _viewModel = EventsViewModel();
+  final DataService _dataService = DataService();
+  final TextEditingController _searchController = TextEditingController();
+
+  List<dynamic> _allEvents = [];
+  List<dynamic> _filteredEvents = [];
+  List<dynamic> _featuredEvents = [];
+  
+  bool _isLoading = true;
+  String _selectedCategory = "All";
+  final List<String> _categories = ["All", "Reunion", "Webinar", "Workshop", "General"];
 
   @override
   void initState() {
     super.initState();
-    _viewModel.init();
+    _loadEvents();
   }
 
   @override
   void dispose() {
-    _viewModel.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  // =========================================================
-  // 🗑️ DELETE EVENT
-  // =========================================================
-  Future<void> _deleteEvent(String eventId) async {
-    final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-              title: const Text("Delete Event"),
-              content: const Text("Are you sure? This cannot be undone."),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text("Cancel")),
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                    child: const Text("Delete")),
-              ],
-            ));
-
-    if (confirm == true) {
-      final success = await _viewModel.deleteEvent(eventId);
+  Future<void> _loadEvents() async {
+    setState(() => _isLoading = true);
+    try {
+      final events = await _dataService.fetchEvents();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(success ? "Event deleted." : "Failed to delete event."),
-            backgroundColor: success ? null : Colors.red));
-      }
-    }
-  }
-
-  // =========================================================
-  // 📝 TEXT FORMATTING LOGIC (Helper UI)
-  // =========================================================
-  void _applyFormat(String char, TextEditingController controller) {
-    final text = controller.text;
-    final selection = controller.selection;
-    
-    if (!selection.isValid || selection.start == -1) {
-      final newText = text + "$char$char";
-      controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection.collapsed(offset: newText.length - 1),
-      );
-      return;
-    }
-
-    final start = selection.start;
-    final end = selection.end;
-    final selectedText = text.substring(start, end);
-    
-    if (start >= 1 && end <= text.length - 1 && text[start - 1] == char && text[end] == char) {
-        final newText = text.replaceRange(start - 1, end + 1, selectedText);
-        controller.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection(baseOffset: start - 1, extentOffset: end - 1),
-        );
-    } else {
-      final newText = text.replaceRange(start, end, "$char$selectedText$char");
-      controller.value = TextEditingValue(
-        text: newText,
-        selection: TextSelection(baseOffset: start + 1, extentOffset: end + 1),
-      );
-    }
-  }
-
-  Widget _buildFormatToolbar(TextEditingController controller, bool isDark) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildFormatBtn(Icons.format_bold, "*", controller, isDark),
-        const SizedBox(width: 8),
-        _buildFormatBtn(Icons.format_italic, "_", controller, isDark),
-        const SizedBox(width: 8),
-        _buildFormatBtn(Icons.format_underlined, "~", controller, isDark),
-      ],
-    );
-  }
-
-  Widget _buildFormatBtn(IconData icon, String char, TextEditingController controller, bool isDark) {
-    return GestureDetector(
-      onTap: () => _applyFormat(char, controller),
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: isDark ? Colors.grey[700] : Colors.grey[300], 
-          borderRadius: BorderRadius.circular(4)
-        ),
-        child: Icon(icon, size: 20, color: isDark ? Colors.white : Colors.black87),
-      ),
-    );
-  }
-
-  // =========================================================
-  // ➕ CREATE EVENT SHEET
-  // =========================================================
-  void _showCreateEventSheet() {
-    final formKey = GlobalKey<FormState>();
-    final titleCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final locCtrl = TextEditingController();
-    final timeCtrl = TextEditingController();
-    final dateCtrl = TextEditingController();
-
-    DateTime selectedDate = DateTime.now();
-    XFile? selectedImage;
-    String selectedType = "Event";
-
-    // Set initial date display
-    dateCtrl.text = DateFormat('yyyy-MM-dd').format(selectedDate);
-    timeCtrl.text = "10:00 AM";
-
-    showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-        builder: (sheetCtx) {
-          // Use a local StatefulBuilder to update the sheet UI locally (image, date picker)
-          // while the ViewModel handles the posting state.
-          return StatefulBuilder(builder: (context, setSheetState) {
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-
-            Future<void> pickImage() async {
-              final picker = ImagePicker();
-              final pickedFile = await picker.pickImage(
-                  source: ImageSource.gallery, imageQuality: 80);
-              if (pickedFile != null)
-                setSheetState(() => selectedImage = pickedFile);
-            }
-
-            Future<void> pickDate() async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: selectedDate,
-                firstDate: DateTime.now(),
-                lastDate: DateTime(2030),
-              );
-              if (picked != null) {
-                setSheetState(() {
-                  selectedDate = picked;
-                  dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
-                });
-              }
-            }
-
-            Future<void> pickTime() async {
-              final picked = await showTimePicker(
-                context: context,
-                initialTime: const TimeOfDay(hour: 10, minute: 0),
-              );
-              if (picked != null) {
-                setSheetState(() {
-                  timeCtrl.text = picked.format(context);
-                });
-              }
-            }
-
-            return ListenableBuilder(
-              listenable: _viewModel,
-              builder: (context, _) {
-                return Container(
-                  padding: EdgeInsets.only(
-                      bottom: MediaQuery.of(context).viewInsets.bottom,
-                      left: 20, right: 20, top: 24),
-                  height: MediaQuery.of(context).size.height * 0.85,
-                  child: Form(
-                    key: formKey,
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Create Event", style: GoogleFonts.lato(fontSize: 22, fontWeight: FontWeight.bold)),
-                            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: ListView(
-                            children: [
-                              GestureDetector(
-                                onTap: pickImage,
-                                child: Container(
-                                  height: 180,
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).cardColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: Colors.grey.withOpacity(0.3), style: BorderStyle.solid),
-                                    image: selectedImage != null
-                                        ? DecorationImage(
-                                            image: kIsWeb
-                                                ? NetworkImage(selectedImage!.path)
-                                                : FileImage(File(selectedImage!.path)) as ImageProvider,
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
-                                  ),
-                                  child: selectedImage == null
-                                      ? Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.add_photo_alternate_rounded, size: 40, color: Theme.of(context).primaryColor),
-                                            const SizedBox(height: 8),
-                                            Text("Tap to upload cover image", style: GoogleFonts.lato(color: Colors.grey)),
-                                          ],
-                                        )
-                                      : Container(
-                                          alignment: Alignment.topRight,
-                                          padding: const EdgeInsets.all(8),
-                                          child: CircleAvatar(backgroundColor: Colors.black54, radius: 16, child: const Icon(Icons.edit, size: 16, color: Colors.white)),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              TextFormField(controller: titleCtrl, decoration: _getDecor("Event Title", Icons.title), validator: (v) => (v?.length ?? 0) < 5 ? "Title must be 5+ chars" : null),
-                              const SizedBox(height: 12),
-
-                              DropdownButtonFormField<String>(
-                                value: selectedType,
-                                items: ["Event", "News", "Reunion", "Webinar", "Workshop", "Seminar", "Conference"]
-                                    .map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                                onChanged: (val) => setSheetState(() => selectedType = val!),
-                                decoration: _getDecor("Category", Icons.category_outlined),
-                              ),
-                              const SizedBox(height: 12),
-
-                              Row(
-                                children: [
-                                  Expanded(child: TextFormField(controller: dateCtrl, readOnly: true, onTap: pickDate, decoration: _getDecor("Date", Icons.calendar_today_outlined))),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: TextFormField(controller: timeCtrl, readOnly: true, onTap: pickTime, decoration: _getDecor("Time", Icons.access_time_rounded))),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-
-                              TextFormField(controller: locCtrl, decoration: _getDecor("Location / Link", Icons.location_on_outlined)),
-                              const SizedBox(height: 12),
-
-                              Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: _buildFormatToolbar(descCtrl, isDark))),
-
-                              TextFormField(
-                                controller: descCtrl,
-                                maxLines: 4,
-                                decoration: _getDecor("Description", Icons.description).copyWith(alignLabelWithHint: true),
-                                validator: (v) => (v?.length ?? 0) < 10 ? "Description must be 10+ chars" : null,
-                              ),
-                              const SizedBox(height: 30),
-                            ],
-                          ),
-                        ),
-                        
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _viewModel.isPosting ? null : () async {
-                              if (!formKey.currentState!.validate()) return;
-                              
-                              final errorMsg = await _viewModel.createEvent(
-                                title: titleCtrl.text,
-                                description: descCtrl.text,
-                                location: locCtrl.text,
-                                time: timeCtrl.text,
-                                type: selectedType,
-                                date: selectedDate,
-                                image: selectedImage,
-                              );
-
-                              if (errorMsg == null) {
-                                Navigator.pop(sheetCtx);
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Event Created!")));
-                              } else {
-                                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errorMsg), backgroundColor: Colors.red));
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              elevation: 2,
-                            ),
-                            child: _viewModel.isPosting
-                                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text("Publish Event", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                );
-              }
-            );
-          });
+        setState(() {
+          _allEvents = events;
+          _filteredEvents = events;
+          // Logic: Take first 3 upcoming events as "Featured"
+          _featuredEvents = events.take(3).toList();
+          _isLoading = false;
         });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  InputDecoration _getDecor(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon, size: 20),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      filled: true,
-      fillColor: Theme.of(context).cardColor,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    );
+  void _filterEvents() {
+    final query = _searchController.text.toLowerCase();
+    
+    setState(() {
+      _filteredEvents = _allEvents.where((event) {
+        final title = (event['title'] ?? "").toString().toLowerCase();
+        final type = (event['type'] ?? "General").toString();
+        
+        final matchesSearch = title.contains(query);
+        final matchesCategory = _selectedCategory == "All" || type == _selectedCategory;
+
+        return matchesSearch && matchesCategory;
+      }).toList();
+    });
+  }
+
+  // ✅ PRO FEATURE: Google Calendar Link Generator
+  Future<void> _addToCalendar(Map<String, dynamic> event) async {
+    try {
+      final title = Uri.encodeComponent(event['title'] ?? "ASCON Event");
+      final details = Uri.encodeComponent(event['description'] ?? "");
+      final location = Uri.encodeComponent(event['location'] ?? "Online");
+      
+      // Parse Date
+      DateTime start = DateTime.now();
+      if (event['date'] != null) {
+        start = DateTime.parse(event['date']);
+      }
+      DateTime end = start.add(const Duration(hours: 2));
+
+      final fmt = DateFormat("yyyyMMdd'T'HHmmss");
+      final dates = "${fmt.format(start)}/${fmt.format(end)}";
+
+      final urlString = "https://www.google.com/calendar/render?action=TEMPLATE&text=$title&dates=$dates&details=$details&location=$location";
+      
+      if (await canLaunchUrl(Uri.parse(urlString))) {
+        await launchUrl(Uri.parse(urlString), mode: LaunchMode.externalApplication);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open calendar.")));
+      }
+    } catch (e) {
+      debugPrint("Calendar Error: $e");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
+    final primaryColor = Theme.of(context).primaryColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
-    return ListenableBuilder(
-      listenable: _viewModel,
-      builder: (context, _) {
-        return Scaffold(
-          appBar: AppBar(
-            title: Text("News & Events", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18)),
-            backgroundColor: primaryColor,
-            foregroundColor: Colors.white,
-            automaticallyImplyLeading: false,
-            elevation: 0,
-          ),
-          backgroundColor: scaffoldBg,
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 1. CUSTOM HEADER (Matches Chat Screen)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: cardColor,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ]
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Events", style: GoogleFonts.lato(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
+                      // Optional: Calendar Icon to switch view
+                      IconButton(
+                        icon: Icon(Icons.calendar_month_outlined, color: Colors.grey[600]),
+                        onPressed: () {
+                          // Future: Switch to Calendar View
+                        },
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (val) => _filterEvents(),
+                    decoration: InputDecoration(
+                      hintText: "Find events...",
+                      prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                      filled: true,
+                      fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
-          body: RefreshIndicator(
-            onRefresh: _viewModel.loadEvents,
-            color: primaryColor,
-            child: _viewModel.isLoading
-                ? const EventSkeletonList()
-                : _viewModel.events.isEmpty
-                    ? _buildEmptyState()
-                    : GridView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 220,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 0.72,
-                        ),
-                        itemCount: _viewModel.events.length,
-                        itemBuilder: (context, index) => EventCard(
-                          event: _viewModel.events[index],
-                          isAdmin: _viewModel.isAdmin,
-                          onDelete: _deleteEvent,
-                        ),
+            // 2. SCROLLABLE CONTENT
+            Expanded(
+              child: _isLoading
+                  ? const EventListSkeleton()
+                  : RefreshIndicator(
+                      onRefresh: _loadEvents,
+                      color: primaryColor,
+                      child: CustomScrollView(
+                        slivers: [
+                          // A. FEATURED CAROUSEL
+                          if (_featuredEvents.isNotEmpty && _searchController.text.isEmpty) ...[
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                                child: Text("Featured", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+                              ),
+                            ),
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                height: 200,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: _featuredEvents.length,
+                                  itemBuilder: (context, index) => _buildFeaturedCard(_featuredEvents[index]),
+                                ),
+                              ),
+                            ),
+                          ],
+
+                          // B. CATEGORY CHIPS
+                          SliverToBoxAdapter(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                              child: Row(
+                                children: _categories.map((cat) {
+                                  final isSelected = _selectedCategory == cat;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: ChoiceChip(
+                                      label: Text(cat),
+                                      selected: isSelected,
+                                      selectedColor: primaryColor.withOpacity(0.2),
+                                      labelStyle: TextStyle(
+                                        color: isSelected ? primaryColor : Colors.grey[600],
+                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
+                                      ),
+                                      onSelected: (val) {
+                                        setState(() {
+                                          _selectedCategory = cat;
+                                          _filterEvents();
+                                        });
+                                      },
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+
+                          // C. ALL EVENTS LIST
+                          if (_filteredEvents.isEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.all(40.0),
+                                child: Center(child: Text("No events found.", style: GoogleFonts.lato(color: Colors.grey))),
+                              ),
+                            )
+                          else
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) => _buildEventRow(_filteredEvents[index]),
+                                childCount: _filteredEvents.length,
+                              ),
+                            ),
+                            
+                          const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+                        ],
                       ),
-          ),
-
-          floatingActionButton: _viewModel.isAdmin
-              ? FloatingActionButton.extended(
-                  heroTag: "events_admin_fab",
-                  onPressed: _showCreateEventSheet,
-                  label: const Text("Add Event", style: TextStyle(fontWeight: FontWeight.bold)),
-                  icon: const Icon(Icons.add),
-                  backgroundColor: const Color(0xFFD4AF37),
-                  foregroundColor: Colors.white,
-                )
-              : null,
-        );
-      }
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildEmptyState() {
-    final color = Theme.of(context).textTheme.bodyMedium?.color;
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.newspaper_rounded, size: 70, color: color?.withOpacity(0.2)),
-          const SizedBox(height: 16),
-          Text("No updates yet", style: GoogleFonts.lato(fontSize: 18, color: color, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text("Check back later for news & events.", style: GoogleFonts.lato(fontSize: 14, color: color?.withOpacity(0.6))),
-        ],
+  // ✅ PRO WIDGET: Featured Event Card (Horizontal)
+  Widget _buildFeaturedCard(Map<String, dynamic> event) {
+    final title = event['title'] ?? "Untitled";
+    final dateRaw = event['date'];
+    String dateStr = "Upcoming";
+    if (dateRaw != null) {
+      dateStr = DateFormat("EEE, MMM d").format(DateTime.parse(dateRaw));
+    }
+    final image = event['image'] ?? event['imageUrl'];
+
+    return Container(
+      width: 300,
+      margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Theme.of(context).cardColor,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            // Image Background
+            Positioned.fill(
+              child: image != null 
+                ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover)
+                : Container(color: Colors.grey[300], child: const Icon(Icons.event, size: 50, color: Colors.grey)),
+            ),
+            // Gradient Overlay
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                  ),
+                ),
+              ),
+            ),
+            // Text Content
+            Positioned(
+              bottom: 16, left: 16, right: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: const Color(0xFFD4AF37), borderRadius: BorderRadius.circular(8)),
+                    child: Text(dateStr, style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.lato(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            // Tap Ripple
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    final String resolvedId = (event['_id'] ?? event['id'] ?? '').toString();
+                    final safeData = {...event.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(eventData: safeData)));
+                  },
+                ),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ PRO WIDGET: Event Row Tile (Vertical)
+  Widget _buildEventRow(Map<String, dynamic> event) {
+    final title = event['title'] ?? "Event";
+    final location = event['location'] ?? "TBA";
+    
+    DateTime dateObj = DateTime.now();
+    if (event['date'] != null) dateObj = DateTime.parse(event['date']);
+    
+    final day = DateFormat("d").format(dateObj);
+    final month = DateFormat("MMM").format(dateObj).toUpperCase();
+    final time = event['time'] ?? DateFormat("h:mm a").format(dateObj);
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+      ),
+      child: InkWell(
+        onTap: () {
+          final String resolvedId = (event['_id'] ?? event['id'] ?? '').toString();
+          final safeData = {...event.map((key, value) => MapEntry(key, value.toString())), '_id': resolvedId};
+          Navigator.push(context, MaterialPageRoute(builder: (_) => EventDetailScreen(eventData: safeData)));
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              // Date Box
+              Container(
+                width: 50, height: 50,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[800] : const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(month, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green[700])),
+                    Text(day, style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        const SizedBox(width: 10),
+                        Icon(Icons.location_on, size: 12, color: Colors.grey[500]),
+                        const SizedBox(width: 4),
+                        Flexible(child: Text(location, style: TextStyle(fontSize: 12, color: Colors.grey[600]), overflow: TextOverflow.ellipsis)),
+                      ],
+                    )
+                  ],
+                ),
+              ),
+
+              // Calendar Button
+              IconButton(
+                icon: const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.blue),
+                onPressed: () => _addToCalendar(event),
+                tooltip: "Add to Calendar",
+              )
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -22,19 +22,25 @@ const storage = new CloudinaryStorage({
     let resourceType = "raw";
     // Check if it's an image
     if (file.mimetype.startsWith("image/")) resourceType = "image";
-    
+
     // Explicitly check for document types to treat as 'raw'
-    if (file.originalname.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|csv)$/i)) {
+    if (
+      file.originalname.match(
+        /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|csv)$/i,
+      )
+    ) {
       resourceType = "raw";
     }
 
     // ✅ FIX: Clean filename but PRESERVE EXTENSION for documents
     // This ensures the download URL ends in .pdf, .docx, etc.
-    const nameWithoutExt = file.originalname.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
-    const extension = file.originalname.split('.').pop();
-    
+    const nameWithoutExt = file.originalname
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9]/g, "_");
+    const extension = file.originalname.split(".").pop();
+
     let publicId = `${nameWithoutExt}-${Date.now()}`;
-    
+
     // For raw files, manually append extension to public_id
     if (resourceType === "raw" && extension) {
       publicId += `.${extension}`;
@@ -44,7 +50,7 @@ const storage = new CloudinaryStorage({
       folder: "ascon_chat_files",
       resource_type: resourceType,
       public_id: publicId,
-      // 'format' is only used for images/video conversions. 
+      // 'format' is only used for images/video conversions.
       // For raw files, the extension in public_id is what matters.
       format: resourceType === "raw" ? undefined : file.mimetype.split("/")[1],
     };
@@ -79,6 +85,7 @@ router.get("/", verify, async (req, res) => {
   try {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
+      lastMessage: { $exists: true, $ne: null, $ne: "" },
     })
       .populate("groupId", "name icon")
       .sort({ lastMessageAt: -1 })
@@ -398,11 +405,9 @@ router.post(
           group &&
           !group.members.some((m) => m.toString() === req.user._id)
         ) {
-          return res
-            .status(403)
-            .json({
-              message: "You are no longer a participant of this group.",
-            });
+          return res.status(403).json({
+            message: "You are no longer a participant of this group.",
+          });
         }
         if (
           group &&
@@ -456,12 +461,10 @@ router.post(
       // ✅ NOTIFICATION LOGIC
       if (conversation.isGroup && conversation.groupId) {
         // 1. Emit Socket to Group Room
-        req.io
-          .to(conversation.groupId.toString())
-          .emit("new_message", {
-            message: messageObj,
-            conversationId: conversation._id,
-          });
+        req.io.to(conversation.groupId.toString()).emit("new_message", {
+          message: messageObj,
+          conversationId: conversation._id,
+        });
 
         // 2. Send Push Notification to All Participants (except sender)
         conversation.participants.forEach(async (participantId) => {
@@ -487,12 +490,10 @@ router.post(
         // 1. Emit Socket to User Room
         conversation.participants.forEach(async (participantId) => {
           if (participantId.toString() === req.user._id) return;
-          req.io
-            .to(participantId.toString())
-            .emit("new_message", {
-              message: messageObj,
-              conversationId: conversation._id,
-            });
+          req.io.to(participantId.toString()).emit("new_message", {
+            message: messageObj,
+            conversationId: conversation._id,
+          });
           try {
             // 2. Send Push Notification
             await sendPersonalNotification(

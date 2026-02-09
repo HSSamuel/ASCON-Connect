@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_messaging/firebase_messaging.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ Import GoRouter
+import 'package:go_router/go_router.dart'; 
 
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
@@ -42,8 +42,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _checkSessionAndNavigate() async {
+    // 1. Wait for animation minimum time
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
+
+    // ✅ 2. Request Notification Permission EARLY (Splash Stage)
+    if (!kIsWeb) {
+      try {
+        await NotificationService().requestPermission();
+      } catch (e) {
+        debugPrint("⚠️ Permission Request Error: $e");
+      }
+    }
 
     final bool isValid = await _authService.isSessionValid();
     
@@ -85,10 +95,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   void _navigateToChat(RemoteMessage message) {
-    // Navigate to chat via Router if data exists
-    // (You might need to adjust '/chat' route logic in router.dart to handle params if needed)
-    context.go('/home'); // Fallback to home for now to ensure shell loads
-    // Optionally: context.push('/chat');
+    context.go('/home'); 
   }
 
   @override

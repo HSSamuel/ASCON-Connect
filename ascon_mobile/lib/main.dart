@@ -1,4 +1,4 @@
-import 'dart:async'; // ✅ REQUIRED for runZonedGuarded
+import 'dart:async'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:firebase_core/firebase_core.dart';
@@ -12,6 +12,7 @@ import 'config/theme.dart';
 import 'config.dart';
 import 'router.dart'; 
 import 'utils/error_handler.dart'; 
+import 'screens/call_screen.dart'; // ✅ Import Call Screen
 
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -79,8 +80,45 @@ void main() async {
   });
 }
 
-class MyApp extends StatelessWidget {
+// ✅ CHANGED TO STATEFUL WIDGET FOR GLOBAL LISTENERS
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    _setupGlobalCallListener();
+  }
+
+  // ✅ GLOBAL INCOMING CALL LISTENER
+  void _setupGlobalCallListener() {
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    // Remove existing listener to avoid duplicates on hot restart
+    socket.off('call_made');
+
+    socket.on('call_made', (data) {
+      debugPrint("📞 Incoming Call Detected!");
+      
+      // Navigate to Call Screen
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            remoteName: "Alumni Member", // You can fetch real name via API if needed
+            remoteId: data['callerId'],
+            isCaller: false, // I am the receiver
+            offer: data['offer'],
+          ),
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

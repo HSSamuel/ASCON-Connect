@@ -33,6 +33,8 @@ const registerSchema = Joi.object({
   city: Joi.string().optional().allow(""),
   googleToken: Joi.string().optional().allow(null, ""),
   fcmToken: Joi.string().optional().allow(null, ""),
+  // ✅ Added Date of Birth
+  dateOfBirth: Joi.string().isoDate().optional().allow(null, ""),
 });
 
 const loginSchema = Joi.object({
@@ -78,6 +80,7 @@ exports.register = asyncHandler(async (req, res) => {
     customProgramme,
     city,
     fcmToken,
+    dateOfBirth, // ✅ Extract DOB
   } = req.body;
 
   // 1. Check if Auth exists (Read-only, no transaction needed yet)
@@ -117,6 +120,8 @@ exports.register = asyncHandler(async (req, res) => {
       customProgramme: customProgramme || "",
       city: city || "",
       alumniId: newAlumniId,
+      // ✅ Save Date if present
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
     });
     await newUserProfile.save({ session });
 
@@ -126,6 +131,7 @@ exports.register = asyncHandler(async (req, res) => {
       hasSeenWelcome: false,
       isEmailVisible: true,
       isPhoneVisible: false,
+      isBirthdayVisible: true, // ✅ Default to visible
     });
     await newUserSettings.save({ session });
 
@@ -206,9 +212,9 @@ exports.register = asyncHandler(async (req, res) => {
       refreshToken: refreshToken,
       user: {
         id: savedAuth._id,
-        fullName: savedProfile.fullName,
+        fullName: newUserProfile.fullName,
         email: savedAuth.email,
-        alumniId: savedProfile.alumniId,
+        alumniId: newUserProfile.alumniId,
         hasSeenWelcome: false,
       },
     });

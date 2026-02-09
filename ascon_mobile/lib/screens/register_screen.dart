@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl_phone_field/intl_phone_field.dart'; // ✅ IMPORTED PHONE FIELD
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:intl/intl.dart'; // ✅ Needed for Date Format
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import '../widgets/loading_dialog.dart';
@@ -30,8 +31,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _customProgrammeController = TextEditingController();
+  
+  // ✅ DOB Controller
+  final TextEditingController _dobController = TextEditingController();
+  DateTime? _selectedDate;
 
-  // ✅ New variable to store the complete phone number (Code + Number)
   String _completePhoneNumber = ""; 
 
   bool _obscurePassword = true;
@@ -58,6 +62,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.prefilledName ?? '');
     _emailController = TextEditingController(text: widget.prefilledEmail ?? '');
+  }
+
+  @override
+  void dispose() {
+    _dobController.dispose();
+    super.dispose();
+  }
+
+  // ✅ Date Picker Logic
+  Future<void> _pickDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(1990),
+      firstDate: DateTime(1940),
+      lastDate: now,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).primaryColor, 
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _dobController.text = DateFormat('MMM d, y').format(picked);
+      });
+    }
   }
 
   void _showSuccessDialog() {
@@ -132,7 +172,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
     
-    // ✅ Ensure a valid phone number is entered
     if (_completePhoneNumber.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please enter a valid phone number"), backgroundColor: Colors.red),
@@ -166,10 +205,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: _nameController.text.trim(),
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        phoneNumber: _completePhoneNumber, // ✅ Sends full country code + number
+        phoneNumber: _completePhoneNumber, 
         programmeTitle: finalProgrammeTitle,
         yearOfAttendance: _yearController.text.trim(),
         googleToken: widget.googleToken,
+        // ✅ Send Date of Birth
+        dateOfBirth: _selectedDate?.toIso8601String(),
       );
 
       if (!mounted) return;
@@ -259,7 +300,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _buildTextField("Email Address", _emailController, Icons.email_outlined),
                 const SizedBox(height: 16),
 
-                // ✅ NEW: INTERNATIONAL PHONE FIELD
+                // ✅ Date of Birth Field (Optional)
+                _buildTextField(
+                  "Date of Birth (Optional)",
+                  _dobController,
+                  Icons.cake_outlined,
+                  readOnly: true,
+                  onTap: _pickDate,
+                ),
+                const SizedBox(height: 16),
+
                 IntlPhoneField(
                   decoration: InputDecoration(
                     labelText: 'Phone Number',
@@ -267,11 +317,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
                   ),
-                  initialCountryCode: 'NG', // Defaults to Nigeria (+234)
+                  initialCountryCode: 'NG', 
                   style: TextStyle(fontSize: 14, color: textColor),
                   dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
                   onChanged: (phone) {
-                    _completePhoneNumber = phone.completeNumber; // Captures +23480...
+                    _completePhoneNumber = phone.completeNumber; 
                   },
                 ),
                 const SizedBox(height: 16),
@@ -355,7 +405,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPassword = false, bool isNumber = false}) {
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPassword = false, bool isNumber = false, bool readOnly = false, VoidCallback? onTap}) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final primaryColor = Theme.of(context).primaryColor;
@@ -364,8 +414,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       controller: controller,
       obscureText: isPassword ? _obscurePassword : false,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      readOnly: readOnly,
+      onTap: onTap,
       style: TextStyle(fontSize: 14, color: textColor),
-      validator: (value) => value == null || value.isEmpty ? 'Field required' : null,
+      validator: (value) {
+        if (label.contains("Optional")) return null; // ✅ Allow empty DOB
+        return value == null || value.isEmpty ? 'Field required' : null;
+      },
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(fontSize: 13, color: subTextColor),

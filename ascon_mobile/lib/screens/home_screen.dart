@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:google_fonts/google_fonts.dart'; 
@@ -10,6 +10,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 
 import '../main.dart';
+import '../router.dart'; 
 import 'event_detail_screen.dart';
 import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
@@ -20,6 +21,7 @@ import '../widgets/celebration_card.dart';
 import '../widgets/active_poll_card.dart'; 
 import '../widgets/chapter_card.dart';     
 import '../widgets/digital_id_card.dart';
+import '../widgets/shimmer_utils.dart'; // ✅ ADDED: Shimmer Import
 
 import '../viewmodels/dashboard_view_model.dart';
 import '../services/socket_service.dart'; 
@@ -117,9 +119,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ✅ FIXED: Robust Back Navigation Logic
+  // ✅ SMART BACK NAVIGATION LOGIC
   Future<void> _handleBackPress() async {
-    // 1. If Keyboard is open, let the system handle closing it (return early)
+    // 1. If Keyboard is open, close it
     if (MediaQuery.of(context).viewInsets.bottom > 0) {
       SystemChannels.textInput.invokeMethod('TextInput.hide');
       return;
@@ -127,17 +129,32 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final int currentIndex = widget.navigationShell.currentIndex;
 
-    // 2. If NOT on Dashboard (Tab 0), go to Dashboard
+    // 2. CHECK INTERNAL STACK: If current tab has screens to pop, pop them first!
+    GlobalKey<NavigatorState>? currentNavigatorKey;
+    switch (currentIndex) {
+      case 0: currentNavigatorKey = homeNavKey; break;
+      case 1: currentNavigatorKey = eventsNavKey; break;
+      case 2: currentNavigatorKey = updatesNavKey; break;
+      case 3: currentNavigatorKey = directoryNavKey; break;
+      case 4: currentNavigatorKey = profileNavKey; break;
+    }
+
+    if (currentNavigatorKey != null && currentNavigatorKey.currentState != null && currentNavigatorKey.currentState!.canPop()) {
+      currentNavigatorKey.currentState!.pop();
+      return; // ✅ Stop here, we just went back one screen
+    }
+
+    // 3. If NOT on Dashboard (Tab 0) and stack is empty, go to Dashboard
     if (currentIndex != 0) {
       _goBranch(0);
       return; 
     }
 
-    // 3. If on Dashboard, check double-tap to exit
+    // 4. If on Dashboard Root, check double-tap to exit
     final now = DateTime.now();
     if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
       _lastPressedAt = now;
-      ScaffoldMessenger.of(context).clearSnackBars(); // Clear old snackbars
+      ScaffoldMessenger.of(context).clearSnackBars(); 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Press back again to exit"),
@@ -148,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return; // Do NOT exit yet
     }
 
-    // 4. Exit App
+    // 5. Exit App
     SystemNavigator.pop();
   }
 
@@ -164,7 +181,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final showAppBar = uiIndex == 0;
 
     return PopScope(
-      // ✅ STRICTLY block system pop to ensure our logic runs
       canPop: false, 
       onPopInvoked: (didPop) async {
         if (didPop) return;
@@ -382,6 +398,16 @@ class _DashboardViewState extends State<DashboardView> {
     return ListenableBuilder(
       listenable: _viewModel,
       builder: (context, child) {
+        
+        // ✅ 1. ADDED: SKELETON LOADER
+        // If data is loading and we have no alumni list (initial load), show skeleton
+        if (_viewModel.isLoading && _viewModel.topAlumni.isEmpty) {
+           return Scaffold(
+             backgroundColor: scaffoldBg,
+             body: const SafeArea(child: DashboardSkeleton()), // Calls the utility we made
+           );
+        }
+
         return Scaffold(
           backgroundColor: scaffoldBg,
           body: SafeArea(
@@ -428,9 +454,11 @@ class _DashboardViewState extends State<DashboardView> {
                     ),
                     const SizedBox(height: 12),
                     
-                    if (_viewModel.isLoading)
+                    // ✅ FIXED: Only show spinner if we already have data but are refreshing quietly
+                    // If no data, the Skeleton above handles it.
+                    if (_viewModel.isLoading && _viewModel.topAlumni.isNotEmpty)
                       const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
-                    else if (_viewModel.topAlumni.isEmpty)
+                    else if (_viewModel.topAlumni.isEmpty && !_viewModel.isLoading)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Text("No recently active alumni found.", style: GoogleFonts.lato(color: Colors.grey)),
@@ -498,9 +526,9 @@ class _DashboardViewState extends State<DashboardView> {
                     ),
                     const SizedBox(height: 12),
 
-                    if (_viewModel.isLoading)
+                    if (_viewModel.isLoading && _viewModel.events.isNotEmpty)
                       const SizedBox.shrink()
-                    else if (_viewModel.events.isEmpty)
+                    else if (_viewModel.events.isEmpty && !_viewModel.isLoading)
                       _buildEmptyState("No upcoming events")
                     else
                       ListView.separated(
@@ -533,9 +561,9 @@ class _DashboardViewState extends State<DashboardView> {
                     ),
                     const SizedBox(height: 12),
                     
-                    if (_viewModel.isLoading)
+                    if (_viewModel.isLoading && _viewModel.programmes.isNotEmpty)
                       const SizedBox.shrink()
-                    else if (_viewModel.programmes.isEmpty)
+                    else if (_viewModel.programmes.isEmpty && !_viewModel.isLoading)
                       _buildEmptyState("No updates available")
                     else
                       ListView.separated(
@@ -558,7 +586,7 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // ✅ COMPACT PROFILE ALERT (FIXED VISIBILITY)
+  // ✅ FIXED: Using context.go to switch tabs
   Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final percent = _viewModel.profileCompletionPercent;
@@ -573,7 +601,6 @@ class _DashboardViewState extends State<DashboardView> {
       ),
       child: Row(
         children: [
-          // ✅ VISIBLE PERCENTAGE INDICATOR
           Stack(
             alignment: Alignment.center,
             children: [
@@ -610,9 +637,9 @@ class _DashboardViewState extends State<DashboardView> {
             ),
           ),
           ElevatedButton(
-            onPressed: () async {
-              await context.push('/profile');
-              _viewModel.loadData(); 
+            onPressed: () {
+              // ✅ GoRouter switches tabs automatically
+              context.go('/profile'); 
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.amber[800],

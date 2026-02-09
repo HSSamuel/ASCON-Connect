@@ -432,6 +432,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         const SizedBox(height: 4),
                         
                         // Header Work Info (Brief)
+                        // ✅ MODIFIED: Removed single-line constraint
                         if (job.isNotEmpty || org.isNotEmpty)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -443,8 +444,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                   "$job${(job.isNotEmpty && org.isNotEmpty) ? ' at ' : ''}$org",
                                   style: GoogleFonts.lato(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                                   textAlign: TextAlign.center,
-                                  maxLines: 1, // Truncate here to keep header clean
-                                  overflow: TextOverflow.ellipsis,
+                                  // maxLines: 1, // REMOVED to allow multiline
+                                  // overflow: TextOverflow.ellipsis, // REMOVED to prevent dots
                                 ),
                               ),
                             ],

@@ -99,6 +99,7 @@ class AuthService {
     required String phoneNumber,
     required String programmeTitle,
     required String yearOfAttendance,
+    String? dateOfBirth,
     String? googleToken,
   }) async {
     try {
@@ -111,6 +112,7 @@ class AuthService {
         'phoneNumber': phoneNumber,
         'programmeTitle': programmeTitle,
         'yearOfAttendance': yearOfAttendance,
+        'dateOfBirth': dateOfBirth,
         'googleToken': googleToken,
         'fcmToken': fcmToken ?? "", 
       });

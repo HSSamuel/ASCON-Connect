@@ -5,10 +5,10 @@ const UserSettings = require("../models/UserSettings");
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
 
-// ✅ NEW: Centralized Profile Completeness Logic
+// ✅ Centralized Profile Completeness Logic
 const calculateProfileCompleteness = (profile) => {
   let totalScore = 0;
-  const maxScore = 7;
+  const maxScore = 8; // Score is out of 8 now
 
   if (profile.profilePicture) totalScore++;
   if (profile.jobTitle) totalScore++;
@@ -17,6 +17,7 @@ const calculateProfileCompleteness = (profile) => {
   if (profile.city) totalScore++;
   if (profile.bio) totalScore++;
   if (profile.linkedin) totalScore++;
+  if (profile.dateOfBirth) totalScore++; // ✅ Added DOB Check
 
   const percent = totalScore / maxScore;
   return {
@@ -50,6 +51,7 @@ router.put("/update", verifyToken, (req, res) => {
       // Handle Boolean Toggles
       const isMentor = req.body.isOpenToMentorship === "true";
       const isLocationVisible = req.body.isLocationVisible === "true";
+      const isBirthdayVisible = req.body.isBirthdayVisible === "true"; // ✅ New Flag
 
       // Handle Skills Array
       let skillsArray = [];
@@ -77,6 +79,11 @@ router.put("/update", verifyToken, (req, res) => {
         skills: skillsArray,
       };
 
+      // ✅ HANDLE DATE OF BIRTH
+      if (req.body.dateOfBirth && req.body.dateOfBirth !== "null") {
+        profileUpdateData.dateOfBirth = new Date(req.body.dateOfBirth);
+      }
+
       if (req.file) {
         profileUpdateData.profilePicture = req.file.path;
       }
@@ -85,6 +92,7 @@ router.put("/update", verifyToken, (req, res) => {
       const settingsUpdateData = {
         isLocationVisible: isLocationVisible,
         isOpenToMentorship: isMentor,
+        isBirthdayVisible: isBirthdayVisible, // ✅ Save setting
       };
 
       // ✅ 3. RUN UPDATES IN PARALLEL

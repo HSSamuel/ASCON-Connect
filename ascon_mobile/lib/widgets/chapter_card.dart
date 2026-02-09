@@ -38,13 +38,26 @@ class _ChapterCardState extends State<ChapterCard> {
   Widget build(BuildContext context) {
     if (_isLoading) return const SizedBox.shrink();
     
+    // ✅ 1. Theme Detection
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF3F4F6); // Dark vs Light Grey
+    final textColor = isDark ? Colors.white : Colors.black87;
+    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final iconBgColor = isDark ? const Color(0xFF2C2C2C) : Colors.white;
+
     // Fallback if no groups
     if (_groups.isEmpty) {
        return Container(
          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
          padding: const EdgeInsets.all(16),
-         decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(16)),
-         child: const Text("You are not in any Chapters yet."),
+         decoration: BoxDecoration(
+           color: isDark ? Colors.grey[900] : Colors.grey[100], // ✅ Adaptive Fallback
+           borderRadius: BorderRadius.circular(16)
+         ),
+         child: Text(
+           "You are not in any Chapters yet.", 
+           style: TextStyle(color: subTextColor) // ✅ Adaptive Text
+         ),
        );
     }
 
@@ -59,15 +72,18 @@ class _ChapterCardState extends State<ChapterCard> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: cardColor, // ✅ Adaptive Background
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.grey.withOpacity(0.2)), // ✅ Adaptive Border
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8), // Reduced padding
-            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: iconBgColor, // ✅ Adaptive Icon Background
+              shape: BoxShape.circle
+            ),
             child: const Icon(Icons.groups, color: Colors.teal, size: 24),
           ),
           const SizedBox(width: 12),
@@ -75,8 +91,14 @@ class _ChapterCardState extends State<ChapterCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("MY COMMUNITY", style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.grey[600])),
-                Text(name, style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+                Text(
+                  "MY COMMUNITY", 
+                  style: GoogleFonts.lato(fontSize: 9, fontWeight: FontWeight.w900, color: subTextColor) // ✅ Adaptive Subtext
+                ),
+                Text(
+                  name, 
+                  style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: textColor) // ✅ Adaptive Name
+                ),
               ],
             ),
           ),

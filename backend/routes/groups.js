@@ -1,23 +1,41 @@
 // backend/routes/groups.js
 const router = require("express").Router();
 const Group = require("../models/Group");
+const GroupFile = require("../models/GroupFile");
 const UserProfile = require("../models/UserProfile");
 const Conversation = require("../models/Conversation");
 const verifyToken = require("./verifyToken");
 
-// Cloudinary & Multer Config for Group Icons
+// Cloudinary & Multer Config
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinary").cloudinary;
 
-const storage = new CloudinaryStorage({
+// --- Config 1: Group Icons (Images Only) ---
+const iconStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "ascon_groups",
     allowed_formats: ["jpg", "png", "jpeg"],
   },
 });
-const upload = multer({ storage: storage });
+const uploadIcon = multer({ storage: iconStorage });
+
+// --- Config 2: Group Documents (PDFs, Docs, etc.) ---
+const docStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "ascon_group_docs",
+    resource_type: "raw",
+    format: async (req, file) => {
+      const ext = file.originalname.split(".").pop();
+      return ext;
+    },
+    public_id: (req, file) =>
+      file.originalname.split(".")[0] + "_" + Date.now(),
+  },
+});
+const uploadDoc = multer({ storage: docStorage });
 
 // Helper to safely check if a user is an admin
 const isUserAdmin = (group, userId) => {
@@ -28,20 +46,17 @@ const isUserAdmin = (group, userId) => {
 };
 
 // ==========================================
-// 1. GET GROUP INFO (Members & Admins)
+// 1. GET GROUP INFO
 // ==========================================
 router.get("/:groupId/info", verifyToken, async (req, res) => {
   try {
     const group = await Group.findById(req.params.groupId).lean();
-
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // Fetch Profile Details for all members
     const memberProfiles = await UserProfile.find({
       userId: { $in: group.members },
     }).select("userId fullName profilePicture jobTitle alumniId");
 
-    // Enrich with 'isAdmin' flag
     const enrichedMembers = memberProfiles.map((p) => ({
       _id: p.userId,
       fullName: p.fullName,
@@ -66,18 +81,17 @@ router.get("/:groupId/info", verifyToken, async (req, res) => {
 });
 
 // ==========================================
-// 2. UPDATE GROUP ICON (Admin Only)
+// 2. UPDATE GROUP ICON
 // ==========================================
 router.put(
   "/:groupId/icon",
   verifyToken,
-  upload.single("icon"),
+  uploadIcon.single("icon"),
   async (req, res) => {
     try {
       const group = await Group.findById(req.params.groupId);
       if (!group) return res.status(404).json({ message: "Group not found" });
 
-      // ✅ FIX: Safe Admin Check
       if (!isUserAdmin(group, req.user._id)) {
         return res
           .status(403)
@@ -102,14 +116,94 @@ router.put(
 );
 
 // ==========================================
-// 3. GET MY GROUPS
+// 3. DOCUMENT ROUTES
 // ==========================================
+
+// Upload Document
+router.post(
+  "/:groupId/documents",
+  verifyToken,
+  uploadDoc.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file)
+        return res.status(400).json({ message: "No file uploaded" });
+
+      const newFile = new GroupFile({
+        groupId: req.params.groupId,
+        uploader: req.user._id,
+        fileName: req.file.originalname,
+        fileUrl: req.file.path,
+        fileType: req.file.mimetype,
+        size: req.file.size,
+      });
+
+      await newFile.save();
+
+      res.json({
+        success: true,
+        message: "File uploaded successfully",
+        data: newFile,
+      });
+    } catch (err) {
+      console.error("Upload Error:", err);
+      res.status(500).json({ message: "Upload failed: " + err.message });
+    }
+  },
+);
+
+// Get Documents
+router.get("/:groupId/documents", verifyToken, async (req, res) => {
+  try {
+    const files = await GroupFile.find({ groupId: req.params.groupId })
+      .populate("uploader", "email _id") // ✅ Get ID to check permission
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: files });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ✅ DELETE DOCUMENT (NEW)
+router.delete("/:groupId/documents/:docId", verifyToken, async (req, res) => {
+  try {
+    const file = await GroupFile.findById(req.params.docId);
+    if (!file) return res.status(404).json({ message: "File not found" });
+
+    const group = await Group.findById(req.params.groupId);
+
+    // Permission Check: Uploader OR Group Admin
+    const isUploader = file.uploader._id.toString() === req.user._id;
+    const isAdmin = isUserAdmin(group, req.user._id);
+
+    if (!isUploader && !isAdmin) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized to delete this file." });
+    }
+
+    await GroupFile.findByIdAndDelete(req.params.docId);
+
+    // Note: To delete from Cloudinary, we'd need the public_id stored in the model.
+    // For now, removing from DB hides it from the app.
+
+    res.json({ success: true, message: "File deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ==========================================
+// 4. EXISTING GROUP LOGIC
+// ==========================================
+
+// Get My Groups
 router.get("/my-groups", verifyToken, async (req, res) => {
   try {
     const groups = await Group.find({ members: req.user._id })
       .select("name type icon members")
       .lean();
-
     const formattedGroups = groups.map((g) => ({
       _id: g._id,
       name: g.name,
@@ -117,41 +211,33 @@ router.get("/my-groups", verifyToken, async (req, res) => {
       icon: g.icon,
       memberCount: g.members.length,
     }));
-
     res.json({ success: true, data: formattedGroups });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ==========================================
-// 4. TOGGLE GROUP ADMIN STATUS
-// ==========================================
+// Toggle Admin
 router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
   try {
     const { targetUserId } = req.body;
     const group = await Group.findById(req.params.groupId);
-
     if (!group) return res.status(404).json({ message: "Group not found" });
-    if (!group.admins) group.admins = [];
 
-    // ✅ FIX: Safe Admin Check
     const amIAdmin = isUserAdmin(group, req.user._id);
-    // Allow if I am admin, OR if there are NO admins yet (first setup)
-    if (!amIAdmin && group.admins.length > 0) {
+    if (!amIAdmin && (!group.admins || group.admins.length > 0)) {
       return res
         .status(403)
         .json({ message: "Only Group Admins can do this." });
     }
 
-    // Toggle logic using strings
+    if (!group.admins) group.admins = [];
     const strAdmins = group.admins.map((id) => id.toString());
     const index = strAdmins.indexOf(targetUserId);
 
     if (index === -1) {
       group.admins.push(targetUserId);
     } else {
-      // Find the actual ObjectId index to splice correctly
       const actualIndex = group.admins.findIndex(
         (id) => id.toString() === targetUserId,
       );
@@ -165,83 +251,68 @@ router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 5. REMOVE MEMBER (With Socket Eviction)
-// ==========================================
+// Remove Member
 router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
   try {
     const { targetUserId } = req.body;
     const group = await Group.findById(req.params.groupId);
-
     if (!group) return res.status(404).json({ message: "Group not found" });
-    if (!group.admins) group.admins = [];
 
-    // ✅ FIX: Safe Admin Check
     if (!isUserAdmin(group, req.user._id)) {
       return res
         .status(403)
         .json({ message: "Only Group Admins can remove members." });
     }
 
-    // 1. Remove from Group Model
     group.members = group.members.filter(
       (id) => id.toString() !== targetUserId,
     );
-    group.admins = group.admins.filter((id) => id.toString() !== targetUserId);
+    if (group.admins)
+      group.admins = group.admins.filter(
+        (id) => id.toString() !== targetUserId,
+      );
     await group.save();
 
-    // 2. Remove from Chat Conversation (Database Level)
     await Conversation.updateOne(
       { groupId: req.params.groupId },
       { $pull: { participants: targetUserId } },
     );
 
-    // 3. ✅ REAL-TIME EVICTION: Tell the specific user they are removed
     if (req.io) {
       req.io.to(targetUserId).emit("removed_from_group", {
         groupId: req.params.groupId,
         groupName: group.name,
       });
     }
-
     res.json({ success: true, message: "User removed from group." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ==========================================
-// 6. GET GROUP NOTICES (Notice Board)
-// ==========================================
+// Get Notices
 router.get("/:groupId/notices", verifyToken, async (req, res) => {
   try {
     const group = await Group.findById(req.params.groupId)
       .select("notices")
       .populate("notices.postedBy", "email");
-
     if (!group) return res.status(404).json({ message: "Group not found" });
-
     const sortedNotices = group.notices.sort(
       (a, b) => b.createdAt - a.createdAt,
     );
-
     res.json({ success: true, data: sortedNotices });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ==========================================
-// 7. POST NEW NOTICE (Admin Only)
-// ==========================================
+// Post Notice
 router.post("/:groupId/notices", verifyToken, async (req, res) => {
   try {
     const { title, content } = req.body;
     const group = await Group.findById(req.params.groupId);
-
     if (!group) return res.status(404).json({ message: "Group not found" });
 
-    // ✅ FIX: Safe Admin Check
     if (!isUserAdmin(group, req.user._id)) {
       return res
         .status(403)
@@ -254,7 +325,6 @@ router.post("/:groupId/notices", verifyToken, async (req, res) => {
       postedBy: req.user._id,
       createdAt: new Date(),
     });
-
     await group.save();
     res.json({ success: true, message: "Notice posted successfully!" });
   } catch (err) {
@@ -262,33 +332,7 @@ router.post("/:groupId/notices", verifyToken, async (req, res) => {
   }
 });
 
-// ==========================================
-// 8. DELETE GROUP ICON (Revert to Default)
-// ==========================================
-router.delete("/:groupId/icon", verifyToken, async (req, res) => {
-  try {
-    const group = await Group.findById(req.params.groupId);
-    if (!group) return res.status(404).json({ message: "Group not found" });
-
-    // ✅ FIX: Safe Admin Check
-    if (!isUserAdmin(group, req.user._id)) {
-      return res
-        .status(403)
-        .json({ message: "Only Admins can remove the icon." });
-    }
-
-    group.icon = ""; // Clear the icon string
-    await group.save();
-
-    res.json({ success: true, message: "Group icon removed." });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// ==========================================
-// 9. DELETE NOTICE
-// ==========================================
+// Delete Notice
 router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
   try {
     const group = await Group.findById(req.params.groupId);
@@ -299,27 +343,22 @@ router.delete("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
 
     const isPoster =
       notice.postedBy && notice.postedBy.toString() === req.user._id;
-    // ✅ FIX: Safe Admin Check
     const isAdmin = isUserAdmin(group, req.user._id);
 
-    if (!isPoster && !isAdmin) {
+    if (!isPoster && !isAdmin)
       return res
         .status(403)
         .json({ message: "Unauthorized to delete this notice." });
-    }
 
     group.notices.pull(req.params.noticeId);
     await group.save();
-
     res.json({ success: true, message: "Notice deleted." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// ==========================================
-// 10. EDIT NOTICE
-// ==========================================
+// Edit Notice
 router.put("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
   try {
     const { title, content } = req.body;
@@ -331,21 +370,37 @@ router.put("/:groupId/notices/:noticeId", verifyToken, async (req, res) => {
 
     const isPoster =
       notice.postedBy && notice.postedBy.toString() === req.user._id;
-    // ✅ FIX: Safe Admin Check
     const isAdmin = isUserAdmin(group, req.user._id);
 
-    if (!isPoster && !isAdmin) {
+    if (!isPoster && !isAdmin)
       return res
         .status(403)
         .json({ message: "Unauthorized to edit this notice." });
-    }
 
     if (title) notice.title = title;
     if (content) notice.content = content;
-
     await group.save();
-
     res.json({ success: true, message: "Notice updated." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Delete Icon
+router.delete("/:groupId/icon", verifyToken, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+
+    if (!isUserAdmin(group, req.user._id)) {
+      return res
+        .status(403)
+        .json({ message: "Only Admins can remove the icon." });
+    }
+
+    group.icon = "";
+    await group.save();
+    res.json({ success: true, message: "Group icon removed." });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

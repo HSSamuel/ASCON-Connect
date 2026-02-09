@@ -1965,3 +1965,29 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-08 07:44:31"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-08 07:44:33"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-08 07:44:33"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-09 10:26:53"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-09 10:26:55"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-09 10:26:56"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-09 10:27:11"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-09 10:27:15"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-09 10:27:15"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-09 10:56:21"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-09 10:56:23"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-09 10:56:24"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-09 10:56:33"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-09 10:56:36"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-09 10:56:36"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-09 11:34:42"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-09 11:34:43"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-09 11:34:43"}
+{"code":"ESERVFAIL","hostname":"cluster0.mrowpyh.mongodb.net","level":"error","message":"❌ Database Connection Failed: queryTxt ESERVFAIL cluster0.mrowpyh.mongodb.net","stack":"Error: queryTxt ESERVFAIL cluster0.mrowpyh.mongodb.net\n    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17)","syscall":"queryTxt","timestamp":"2026-02-09 11:34:44"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-09 11:36:48"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-09 11:36:48"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-09 11:36:48"}
+{"code":"ESERVFAIL","hostname":"cluster0.mrowpyh.mongodb.net","level":"error","message":"❌ Database Connection Failed: queryTxt ESERVFAIL cluster0.mrowpyh.mongodb.net","stack":"Error: queryTxt ESERVFAIL cluster0.mrowpyh.mongodb.net\n    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17)","syscall":"queryTxt","timestamp":"2026-02-09 11:36:49"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-09 11:55:11"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-09 11:55:12"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-09 11:55:12"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-09 11:55:15"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-09 11:55:19"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-09 11:55:19"}

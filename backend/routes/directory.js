@@ -441,9 +441,10 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           jobTitle: 1,
           dobDay: { $dayOfMonth: "$dateOfBirth" },
           dobMonth: { $month: "$dateOfBirth" },
+          isVisible: "$settings.isBirthdayVisible",
         },
       },
-      { $match: { dobDay: day, dobMonth: month } },
+      { $match: { dobDay: day, dobMonth: month, isVisible: true } },
     ]);
 
     // 2. ✅ NEW: Class Anniversaries (Milestones: 5, 10, 15... 50 years)

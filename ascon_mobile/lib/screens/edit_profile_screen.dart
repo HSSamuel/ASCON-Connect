@@ -1,7 +1,8 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl_phone_field/intl_phone_field.dart'; // ✅ IMPORTED PHONE FIELD
+import 'package:intl_phone_field/intl_phone_field.dart';
+import 'package:intl/intl.dart'; // ✅ Needed for Date Format
 import '../services/data_service.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
@@ -24,17 +25,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _linkedinController;
   late TextEditingController _yearController;
   late TextEditingController _otherProgrammeController;
-
-  // Geolocation Controllers
   late TextEditingController _cityController;
   late TextEditingController _stateController;
+  
+  // ✅ DOB Controller
+  final TextEditingController _dobController = TextEditingController();
+  DateTime? _selectedDate;
 
-  // ✅ New variable to hold the combined phone number
   String _completePhoneNumber = "";
-
   String? _selectedProgramme;
+  
   bool _isOpenToMentorship = false; 
   bool _isLocationVisible = false; 
+  bool _isBirthdayVisible = true; // ✅ New Privacy Toggle
 
   Uint8List? _selectedImageBytes; 
   XFile? _pickedFile; 
@@ -64,19 +67,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _linkedinController = TextEditingController(text: widget.userData['linkedin'] ?? '');
     _yearController = TextEditingController(text: widget.userData['yearOfAttendance']?.toString() ?? '');
     _otherProgrammeController = TextEditingController(text: widget.userData['customProgramme'] ?? '');
-
-    // ✅ Initialize Geolocation (This will now save to the DB once you add 'state' to the backend schema)
     _cityController = TextEditingController(text: widget.userData['city'] ?? '');
     _stateController = TextEditingController(text: widget.userData['state'] ?? '');
 
-    // Set existing phone number
     _completePhoneNumber = widget.userData['phoneNumber'] ?? '';
-
     _isOpenToMentorship = widget.userData['isOpenToMentorship'] == true;
     _isLocationVisible = widget.userData['isLocationVisible'] == true; 
+    _isBirthdayVisible = widget.userData['isBirthdayVisible'] ?? true; // ✅ Load setting
+
+    // ✅ Initialize Date of Birth
+    if (widget.userData['dateOfBirth'] != null) {
+      try {
+        _selectedDate = DateTime.parse(widget.userData['dateOfBirth']);
+        _dobController.text = DateFormat('MMM d, y').format(_selectedDate!);
+      } catch (e) {
+        // Ignore invalid date formats
+      }
+    }
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
-
     if (_programmeOptions.contains(existingProg)) {
       _selectedProgramme = existingProg;
     } else {
@@ -100,6 +109,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _otherProgrammeController.dispose();
     _cityController.dispose(); 
     _stateController.dispose(); 
+    _dobController.dispose();
     super.dispose();
   }
 
@@ -120,6 +130,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _pickDate() async {
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime(1990),
+      firstDate: DateTime(1940),
+      lastDate: now,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Theme.of(context).primaryColor, 
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _dobController.text = DateFormat('MMM d, y').format(picked);
+      });
+    }
+  }
+
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -131,14 +170,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'jobTitle': _jobController.text.trim(),
         'organization': _orgController.text.trim(),
         'linkedin': _linkedinController.text.trim(),
-        'phoneNumber': _completePhoneNumber, // ✅ Sends full country code + number
+        'phoneNumber': _completePhoneNumber, 
         'yearOfAttendance': _yearController.text.trim(),
         
         'city': _cityController.text.trim(),
         'state': _stateController.text.trim(),
         'isLocationVisible': _isLocationVisible.toString(),
         'isOpenToMentorship': _isOpenToMentorship.toString(), 
+        // ✅ Send Privacy Setting
+        'isBirthdayVisible': _isBirthdayVisible.toString(),
       };
+
+      // ✅ ADD DOB TO PAYLOAD
+      if (_selectedDate != null) {
+        fields['dateOfBirth'] = _selectedDate!.toIso8601String();
+      }
 
       if (_selectedProgramme == "Other") {
         fields['programmeTitle'] = "Other";
@@ -180,7 +226,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return null;
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false}) {
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false, bool readOnly = false, VoidCallback? onTap}) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final primaryColor = Theme.of(context).primaryColor;
@@ -188,6 +234,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
+      readOnly: readOnly,
+      onTap: onTap,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       style: TextStyle(fontSize: 14, color: textColor),
       decoration: InputDecoration(
@@ -216,15 +264,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final cardColor = Theme.of(context).cardColor;
 
-    // Helper to extract raw number for the UI if the saved number already has a country code.
     String initialPhoneNumber = widget.userData['phoneNumber'] ?? '';
-    String initialCountryCode = 'NG'; // Default NG
+    String initialCountryCode = 'NG'; 
     
-    // Check if the saved number includes a country code (e.g., +234)
     if (initialPhoneNumber.startsWith('+')) {
       if (initialPhoneNumber.startsWith('+234')) {
         initialCountryCode = 'NG';
-        initialPhoneNumber = initialPhoneNumber.substring(4); // Remove +234 for the text box
+        initialPhoneNumber = initialPhoneNumber.substring(4); 
       } else if (initialPhoneNumber.startsWith('+1')) {
         initialCountryCode = 'US';
         initialPhoneNumber = initialPhoneNumber.substring(2);
@@ -232,9 +278,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         initialCountryCode = 'GB';
         initialPhoneNumber = initialPhoneNumber.substring(3);
       }
-      // Expand this list based on your user base, intl_phone_field handles the display automatically
     } else if (initialPhoneNumber.startsWith('0')) {
-      // Legacy numbers without code, remove the leading zero
       initialPhoneNumber = initialPhoneNumber.substring(1); 
     }
 
@@ -287,6 +331,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               _buildTextField("Organization", _orgController, Icons.business),
               const SizedBox(height: 12),
 
+              // ✅ DATE OF BIRTH PICKER
+              _buildTextField(
+                "Date of Birth",
+                _dobController,
+                Icons.cake,
+                readOnly: true,
+                onTap: _pickDate,
+              ),
+              const SizedBox(height: 12),
+
               DropdownButtonFormField<String>(
                 value: _selectedProgramme,
                 isExpanded: true,
@@ -332,7 +386,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               
               const SizedBox(height: 12),
 
-              // ✅ NEW: INTERNATIONAL PHONE FIELD
               IntlPhoneField(
                 initialValue: initialPhoneNumber,
                 initialCountryCode: initialCountryCode,
@@ -345,7 +398,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 style: TextStyle(fontSize: 14, color: textColor),
                 dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
                 onChanged: (phone) {
-                  _completePhoneNumber = phone.completeNumber; // Captures +23480...
+                  _completePhoneNumber = phone.completeNumber; 
                 },
               ),
 
@@ -419,6 +472,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     });
                   },
                   secondary: Icon(Icons.stars, color: _isOpenToMentorship ? const Color(0xFFD4AF37) : Colors.grey),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ✅ PRIVACY TOGGLE FOR BIRTHDAY
+              Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: SwitchListTile(
+                  title: const Text("Show Birthday", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: const Text("Announce my birthday to alumni on the dashboard.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  value: _isBirthdayVisible,
+                  activeColor: Colors.pinkAccent,
+                  inactiveThumbColor: Colors.grey, 
+                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
+                  onChanged: (bool value) {
+                    setState(() => _isBirthdayVisible = value);
+                  },
+                  secondary: Icon(Icons.cake, color: _isBirthdayVisible ? Colors.pinkAccent : Colors.grey),
                 ),
               ),
 

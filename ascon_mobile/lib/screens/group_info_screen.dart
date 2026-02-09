@@ -4,12 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart'; 
+import 'package:http/http.dart' as http; 
+import 'package:url_launcher/url_launcher.dart'; 
+
+import '../config.dart'; 
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
-import '../services/socket_service.dart'; // ✅ Added SocketService
+import '../services/socket_service.dart'; 
 import 'alumni_detail_screen.dart';
+import 'call_screen.dart'; 
 
 class GroupInfoScreen extends StatefulWidget {
   final String groupId;
@@ -42,17 +48,16 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   void initState() {
     super.initState();
     _loadGroupInfo();
-    _setupSocketListener(); // ✅ Init Listener
+    _setupSocketListener();
   }
 
   @override
   void dispose() {
     final socket = SocketService().socket;
-    socket?.off('removed_from_group'); // ✅ Clean up
+    socket?.off('removed_from_group');
     super.dispose();
   }
 
-  // ✅ REAL-TIME EVICTION HANDLING
   void _setupSocketListener() {
     final socket = SocketService().socket;
     if (socket == null) return;
@@ -69,8 +74,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             actions: [
               TextButton(
                 onPressed: () {
-                  Navigator.pop(c); // Close Dialog
-                  Navigator.of(context).popUntil((route) => route.isFirst); // Go back to Dashboard
+                  Navigator.pop(c); 
+                  Navigator.of(context).popUntil((route) => route.isFirst); 
                 },
                 child: const Text("OK"),
               )
@@ -86,10 +91,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final result = await _dataService.fetchGroupInfo(widget.groupId);
     
     if (mounted) {
-      // 1. Get the raw list
       List<dynamic> members = List.from(result?['members'] ?? []);
 
-      // 2. ✅ SORT: Admins first, then Alphabetical by Name
       members.sort((a, b) {
         final bool isAdminA = a['isAdmin'] ?? false;
         final bool isAdminB = b['isAdmin'] ?? false;
@@ -172,8 +175,230 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     }
   }
 
-  // --- NOTICE BOARD LOGIC ---
+  // ==========================================
+  // 📞 VOICE CALL LOGIC
+  // ==========================================
+  void _startVoiceCall() {
+    if (_allMembers.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No one else to call!")));
+      return;
+    }
+
+    final target = _allMembers.firstWhere((m) => m['_id'] != _myUserId, orElse: () => null);
+    
+    if (target != null) {
+      Navigator.push(
+        context, 
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            remoteName: target['fullName'],
+            remoteId: target['_id'],
+            isCaller: true,
+          )
+        )
+      );
+    }
+  }
+
+  // ==========================================
+  // 📄 DOCS LOGIC (Web Compatible)
+  // ==========================================
+  void _openDocsSheet() {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (_, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("📂 Group Documents", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  IconButton(onPressed: _uploadFile, icon: const Icon(Icons.upload_file, color: Colors.blue)),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: FutureBuilder(
+                  future: _api.get('/api/groups/${widget.groupId}/documents'),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                    if (snapshot.hasError) return const Center(child: Text("Error loading files"));
+
+                    List files = [];
+                    try {
+                      if (snapshot.data is Map) {
+                        final apiResponse = snapshot.data; 
+                        if (apiResponse['data'] is Map) {
+                          final body = apiResponse['data']; 
+                          if (body['data'] is List) {
+                            files = body['data'];
+                          }
+                        } else if (apiResponse['data'] is List) {
+                          files = apiResponse['data']; 
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint("Docs Parse Error: $e");
+                    }
+
+                    if (files.isEmpty) {
+                      return Center(child: Text("No documents yet.", style: theme.textTheme.bodyMedium));
+                    }
+
+                    return ListView.builder(
+                      controller: scrollCtrl,
+                      itemCount: files.length,
+                      itemBuilder: (context, index) {
+                        final file = files[index];
+                        final String fileName = file['fileName'] ?? "Unknown File";
+                        final String date = file['createdAt'] != null 
+                            ? DateFormat('MMM d').format(DateTime.parse(file['createdAt'])) 
+                            : "Unknown Date";
+                        final String url = file['fileUrl'] ?? "";
+                        final String docId = file['_id'];
+                        final String uploaderId = file['uploader'] is Map ? file['uploader']['_id'] : (file['uploader'] ?? "");
+
+                        final bool canDelete = _isCurrentUserAdmin || (uploaderId == _myUserId);
+
+                        return ListTile(
+                          leading: const Icon(Icons.insert_drive_file, color: Colors.redAccent),
+                          title: Text(fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text("Uploaded $date"),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.download_rounded, size: 20, color: Colors.grey),
+                                onPressed: () async {
+                                  if (url.isNotEmpty) {
+                                    final uri = Uri.parse(url);
+                                    if (await canLaunchUrl(uri)) {
+                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                    }
+                                  }
+                                },
+                              ),
+                              if (canDelete)
+                                IconButton(
+                                  icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                                  onPressed: () => _deleteDocument(docId),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ✅ FIXED UPLOAD LOGIC FOR WEB & MOBILE
+  Future<void> _uploadFile() async {
+    try {
+      // 1. Pick File with Data (Critical for Web)
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        withData: true, 
+      );
+      
+      if (result != null && result.files.isNotEmpty) {
+        final platformFile = result.files.single;
+        
+        Navigator.pop(context); 
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Uploading file..."), duration: Duration(seconds: 1)),
+        );
+
+        var request = http.MultipartRequest(
+          'POST', 
+          Uri.parse('${AppConfig.baseUrl}/api/groups/${widget.groupId}/documents')
+        );
+        
+        // 2. Add File based on Platform
+        if (kIsWeb) {
+          // 🌍 WEB: Use Bytes
+          if (platformFile.bytes != null) {
+            request.files.add(http.MultipartFile.fromBytes(
+              'file', 
+              platformFile.bytes!,
+              filename: platformFile.name
+            ));
+          } else {
+            throw Exception("File bytes are missing. Cannot upload on Web.");
+          }
+        } else {
+          // 📱 MOBILE: Use Path
+          if (platformFile.path != null) {
+            request.files.add(await http.MultipartFile.fromPath('file', platformFile.path!));
+          } else {
+             throw Exception("File path is missing.");
+          }
+        }
+        
+        String? token = await AuthService().getToken();
+        if (token != null) {
+          request.headers['auth-token'] = token;
+        }
+        
+        var response = await request.send();
+        
+        if (!mounted) return;
+
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File uploaded successfully!")));
+          _openDocsSheet(); 
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: ${response.statusCode}")));
+        }
+      }
+    } catch (e) {
+      debugPrint("Upload Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
+    }
+  }
+
+  Future<void> _deleteDocument(String docId) async {
+    Navigator.pop(context); 
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Deleting file...")));
+
+    final success = await _dataService.deleteGroupDocument(widget.groupId, docId);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("File deleted.")));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to delete file.")));
+      }
+      _openDocsSheet(); 
+    }
+  }
+
+  // ==========================================
+  // 📢 NOTICE BOARD LOGIC
+  // ==========================================
   void _openNoticeBoard() {
+    final theme = Theme.of(context);
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -183,21 +408,27 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
         minChildSize: 0.5,
         maxChildSize: 0.95,
         builder: (_, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: theme.dividerColor))
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("📢 Notice Board", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text("📢 Notice Board", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                     if (_isCurrentUserAdmin)
-                      TextButton.icon(onPressed: () => _postOrEditNotice(context, null), icon: const Icon(Icons.add, size: 18), label: const Text("Post"))
+                      TextButton.icon(
+                        onPressed: () => _postOrEditNotice(context, null), 
+                        icon: const Icon(Icons.add, size: 18), 
+                        label: const Text("Post")
+                      )
                   ],
                 ),
               ),
@@ -214,20 +445,26 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     
                     List<dynamic> notices = [];
                     try {
-                      final wrapper = snapshot.data;
-                      if (wrapper is Map) {
-                        final body = wrapper['data']; 
-                        if (body is Map && body.containsKey('data') && body['data'] is List) {
-                          notices = body['data'];
-                        } else if (body is List) {
-                          notices = body;
+                      if (snapshot.data is Map) {
+                        final apiResponse = snapshot.data; 
+                        if (apiResponse['data'] is Map) {
+                          final body = apiResponse['data']; 
+                          if (body['data'] is List) {
+                            notices = body['data'];
+                          } else if (body is List) {
+                            notices = body; 
+                          }
+                        } else if (apiResponse['data'] is List) {
+                          notices = apiResponse['data']; 
                         }
                       }
                     } catch (e) {
-                      debugPrint("Parsing Error: $e");
+                      debugPrint("Notice Parsing Error: $e");
                     }
 
-                    if (notices.isEmpty) return const Center(child: Text("No notices yet."));
+                    if (notices.isEmpty) {
+                      return Center(child: Text("No notices yet.", style: theme.textTheme.bodyMedium));
+                    }
 
                     return ListView.builder(
                       controller: scrollController,
@@ -241,7 +478,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           elevation: 0,
-                          color: Colors.amber.withOpacity(0.05),
+                          color: Colors.amber.withOpacity(0.1),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.amber.withOpacity(0.2))),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -252,7 +489,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                                   children: [
                                     const Icon(Icons.push_pin, size: 16, color: Colors.amber),
                                     const SizedBox(width: 8),
-                                    Expanded(child: Text(notice['title'] ?? "Notice", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                                    Expanded(
+                                      child: Text(
+                                        notice['title'] ?? "Notice", 
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: theme.textTheme.bodyLarge?.color)
+                                      )
+                                    ),
                                     
                                     if (canManage)
                                       PopupMenuButton<String>(
@@ -264,14 +506,20 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                                           const PopupMenuItem(value: 'edit', child: Text("Edit")),
                                           const PopupMenuItem(value: 'delete', child: Text("Delete", style: TextStyle(color: Colors.red))),
                                         ],
-                                        child: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
+                                        child: Icon(Icons.more_vert, size: 18, color: theme.iconTheme.color),
                                       )
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text(notice['content'] ?? "", style: TextStyle(color: Colors.grey[800])),
+                                Text(
+                                  notice['content'] ?? "", 
+                                  style: TextStyle(color: theme.textTheme.bodyMedium?.color)
+                                ),
                                 const SizedBox(height: 12),
-                                Text("Posted on ${DateFormat('MMM d, y').format(DateTime.parse(notice['createdAt']))}", style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                                Text(
+                                  "Posted on ${DateFormat('MMM d, y').format(DateTime.parse(notice['createdAt']))}", 
+                                  style: TextStyle(fontSize: 12, color: theme.textTheme.bodySmall?.color ?? Colors.grey)
+                                ),
                               ],
                             ),
                           ),
@@ -353,10 +601,11 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   @override
   Widget build(BuildContext context) {
     final String? iconUrl = _groupData?['icon'];
-    final primaryColor = Theme.of(context).primaryColor;
+    final theme = Theme.of(context);
+    final primaryColor = theme.primaryColor;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : Stack(
@@ -416,9 +665,9 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildActionBtn(Icons.call, "Voice", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice Call..."))), Colors.green),
+                          _buildActionBtn(Icons.call, "Voice", _startVoiceCall, Colors.green),
                           _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange),
-                          _buildActionBtn(Icons.description, "Docs", () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Docs (Coming Soon)"))), Colors.blue),
+                          _buildActionBtn(Icons.description, "Docs", _openDocsSheet, Colors.blue),
                         ],
                       ),
                     ),
@@ -450,11 +699,12 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       child: TextField(
                         controller: _searchController,
                         onChanged: _filterMembers,
+                        style: theme.textTheme.bodyLarge,
                         decoration: InputDecoration(
                           hintText: "Search members...",
                           prefixIcon: const Icon(Icons.search, color: Colors.grey),
                           filled: true,
-                          fillColor: Colors.grey[100],
+                          fillColor: theme.inputDecorationTheme.fillColor ?? Colors.grey[100],
                           contentPadding: const EdgeInsets.symmetric(vertical: 0),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                         ),

@@ -816,4 +816,17 @@ class DataService {
       return false;
     }
   }
+
+  // ✅ NEW: DELETE GROUP DOCUMENT
+  Future<bool> deleteGroupDocument(String groupId, String docId) async {
+    try {
+      final headers = await _getHeaders();
+      final url = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/documents/$docId');
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("Delete Document Error: $e");
+      return false;
+    }
+  }
 }

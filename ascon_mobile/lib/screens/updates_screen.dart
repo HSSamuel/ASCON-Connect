@@ -87,8 +87,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
   // =========================================================
   // 📝 TEXT FORMATTING LOGIC
   // =========================================================
-  
-  // 1. Helper to Parse Markdown (*bold*, _italic_, ~underline~)
   List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
     final List<TextSpan> spans = [];
     final RegExp exp = RegExp(r'([*_~])(.*?)\1'); 
@@ -113,7 +111,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     return spans;
   }
 
-  // 2. Helper to Insert Formatting Characters
   void _applyFormat(String char, TextEditingController controller) {
     final text = controller.text;
     final selection = controller.selection;
@@ -146,7 +143,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     }
   }
 
-  // 3. UI Widget for the Toolbar
   Widget _buildFormatToolbar(TextEditingController controller, bool isDark) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -819,6 +815,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
+    final cardColor = Theme.of(context).cardColor;
 
     final bool isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
 
@@ -834,9 +831,10 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           headerSliverBuilder: (context, innerBoxIsScrolled) {
             return [
               SliverAppBar(
-                backgroundColor: scaffoldBg,
+                backgroundColor: cardColor, 
+                shadowColor: Colors.black.withOpacity(0.1),
+                elevation: 2.0, 
                 foregroundColor: isDark ? Colors.white : Colors.black,
-                elevation: 0,
                 centerTitle: false,
                 floating: true,
                 snap: true,
@@ -848,11 +846,16 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                           hintText: "Search updates...",
                           border: InputBorder.none,
                           hintStyle: GoogleFonts.lato(fontSize: 18),
+                          filled: true,
+                          fillColor: isDark ? Colors.grey[800] : Colors.grey[100], 
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                         ),
                         style: GoogleFonts.lato(fontSize: 18, color: isDark ? Colors.white : Colors.black),
                         onChanged: _onSearchChanged,
                       )
-                    : Text("Updates", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 22, color: isDark ? Colors.white : Colors.black)),
+                    : Text("Updates", style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 24, color: isDark ? Colors.white : Colors.black)),
                 actions: [
                   IconButton(
                     icon: Icon(_isSearching ? Icons.close : Icons.search),
@@ -960,7 +963,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     );
   }
 
-  // ✅ CORRECTED BUILDER: Z-INDEX FIX FOR DELETE ICON
+  // ✅ FIXED: Strict clipping and robust layout
   Widget _buildStatusCard(Map<String, dynamic> item) {
     final title = item['title'] ?? "News";
     final image = item['image'] ?? item['imageUrl'];
@@ -975,7 +978,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       ),
       child: Stack(
         children: [
-          // 1. Navigation Layer (Bottom)
+          // 1. Navigation Layer
           GestureDetector(
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => ProgrammeDetailScreen(programme: item)));
@@ -985,7 +988,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               children: [
                 Expanded(
                   child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), // ✅ FIX: Strict clipping
                     child: image != null 
                       ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, width: double.infinity)
                       : Container(color: Colors.grey[300], child: const Icon(Icons.article, color: Colors.grey)),
@@ -1004,14 +1007,14 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             ),
           ),
 
-          // 2. Delete Action Layer (Top)
+          // 2. Delete Action
           if (_isAdmin)
             Positioned(
               right: 4, top: 4,
               child: GestureDetector(
-                onTap: () => _deleteProgramme(id), // ✅ Now captures taps!
+                onTap: () => _deleteProgramme(id), 
                 child: const CircleAvatar(
-                  radius: 12, // Slightly larger touch target
+                  radius: 12, 
                   backgroundColor: Colors.red, 
                   child: Icon(Icons.close, color: Colors.white, size: 14)
                 ),
@@ -1022,11 +1025,12 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     );
   }
 
+  // ✅ FIXED: Action Bar now uses Expanded to prevent overflow
   Widget _buildPostCard(Map<String, dynamic> post, int index) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-    final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
 
     final author = post['author'] ?? {};
     final String timeAgo = timeago.format(DateTime.tryParse(post['createdAt'] ?? "") ?? DateTime.now());
@@ -1039,100 +1043,169 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     final bool canEdit = isMyPost;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
-        boxShadow: [
-          if (!isDark) BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))
-        ]
-      ),
+      color: cardColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. HEADER
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: author['profilePicture'] != null && author['profilePicture'].toString().startsWith('http')
-                      ? CachedNetworkImageProvider(author['profilePicture'])
-                      : null,
-                  child: author['profilePicture'] == null ? const Icon(Icons.person, size: 20, color: Colors.grey) : null,
+                GestureDetector(
+                  onTap: () {
+                    // Optional: Navigate to user profile
+                  },
+                  child: CircleAvatar(
+                    radius: 24, 
+                    backgroundColor: Colors.grey[200],
+                    backgroundImage: author['profilePicture'] != null && author['profilePicture'].toString().startsWith('http')
+                        ? CachedNetworkImageProvider(author['profilePicture'])
+                        : null,
+                    child: author['profilePicture'] == null ? Icon(Icons.person, size: 26, color: Colors.grey[400]) : null,
+                  ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
+                
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(author['fullName'] ?? 'Alumni User', style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14, color: textColor)),
-                      Text(author['jobTitle'] ?? 'Member', style: GoogleFonts.lato(color: subTextColor, fontSize: 11)),
+                      Text(
+                        author['fullName'] ?? 'Alumni Member', 
+                        style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 16, color: textColor)
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        author['jobTitle'] ?? 'Member', 
+                        style: GoogleFonts.lato(color: subTextColor, fontSize: 12),
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(timeAgo, style: GoogleFonts.lato(fontSize: 11, color: Colors.grey)),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.public, size: 12, color: Colors.grey), 
+                        ],
+                      )
                     ],
                   ),
                 ),
-                Text(timeAgo, style: GoogleFonts.lato(fontSize: 10, color: subTextColor)),
-                
+
                 if (canDelete || canEdit)
-                  PopupMenuButton<String>(
-                    onSelected: (val) {
-                      if (val == 'edit') _editPost(post['_id'], post['text']);
-                      if (val == 'delete') _deletePost(post['_id']);
-                    },
-                    itemBuilder: (c) => [
-                      if (canEdit)
-                        const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text("Edit")])),
-                      if (canDelete)
-                        const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text("Delete", style: TextStyle(color: Colors.red))]))
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
-                      child: Icon(Icons.more_vert, size: 20, color: subTextColor),
+                  SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      icon: Icon(Icons.more_horiz, color: subTextColor), 
+                      onSelected: (val) {
+                        if (val == 'edit') _editPost(post['_id'], post['text']);
+                        if (val == 'delete') _deletePost(post['_id']);
+                      },
+                      itemBuilder: (c) => [
+                        if (canEdit)
+                          const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 10), Text("Edit")])),
+                        if (canDelete)
+                          const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 20), SizedBox(width: 10), Text("Delete", style: TextStyle(color: Colors.red))]))
+                      ],
                     ),
                   )
               ],
             ),
           ),
 
+          // 2. TEXT CONTENT
           if (post['text'] != null && post['text'].toString().isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Text.rich(
-                TextSpan(children: _parseFormattedText(post['text'], GoogleFonts.lato(fontSize: 14, color: textColor, height: 1.4))),
-              ),
-            ),
-
-          if (post['mediaType'] == 'image' && post['mediaUrl'] != null && post['mediaUrl'].toString().startsWith('http'))
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: ClipRRect(
-                child: CachedNetworkImage(
-                  imageUrl: post['mediaUrl'],
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  placeholder: (context, url) => Container(height: 200, color: Colors.grey[100]),
-                  errorWidget: (context, url, error) => const SizedBox.shrink(),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SelectableText.rich( 
+                TextSpan(
+                  children: _parseFormattedText(
+                    post['text'], 
+                    GoogleFonts.lato(fontSize: 15, color: textColor, height: 1.5)
+                  )
                 ),
               ),
             ),
 
+          // 3. MEDIA
+          if (post['mediaType'] == 'image' && post['mediaUrl'] != null && post['mediaUrl'].toString().startsWith('http'))
+            GestureDetector(
+              onTap: () {
+                Navigator.of(context, rootNavigator: true).push(
+                  MaterialPageRoute(
+                    builder: (context) => FullScreenImage(imageUrl: post['mediaUrl']),
+                  ),
+                );
+              },
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(maxHeight: 500), 
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black : Colors.grey[100],
+                  border: Border.symmetric(horizontal: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!))
+                ),
+                child: ClipRect(
+                  child: CachedNetworkImage(
+                    imageUrl: post['mediaUrl'],
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    placeholder: (context, url) => Container(height: 200, color: Colors.grey[100]),
+                    errorWidget: (context, url, error) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+
+          // 4. STATS ROW
+          if ((post['likes']?.length ?? 0) > 0 || (post['comments']?.length ?? 0) > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  if ((post['likes']?.length ?? 0) > 0) ...[
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
+                      child: const Icon(Icons.thumb_up, size: 10, color: Colors.white)
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      "${post['likes']?.length}", 
+                      style: TextStyle(fontSize: 12, color: subTextColor)
+                    ),
+                  ],
+                  const Spacer(),
+                  if ((post['comments']?.length ?? 0) > 0)
+                    Text(
+                      "${post['comments']?.length} comments", 
+                      style: TextStyle(fontSize: 12, color: subTextColor)
+                    ),
+                ],
+              ),
+            ),
+
+          const Divider(height: 1), 
+
+          // 5. ACTION BAR (Fixed Overflow)
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(
               children: [
-                _buildReactionButton(
+                _buildActionButton(
                   icon: post['isLikedByMe'] == true ? Icons.thumb_up : Icons.thumb_up_outlined,
-                  count: "${post['likes']?.length ?? 0}",
-                  isActive: post['isLikedByMe'] == true,
+                  label: "Like",
+                  color: post['isLikedByMe'] == true ? Colors.blue : subTextColor!,
                   onTap: () => _toggleLike(index, post['_id']),
                 ),
-                const SizedBox(width: 16),
-                _buildReactionButton(
-                  icon: Icons.comment_outlined,
-                  count: "${post['comments']?.length ?? 0}",
-                  isActive: false,
+                _buildActionButton(
+                  icon: Icons.mode_comment_outlined,
+                  label: "Comment",
+                  color: subTextColor!,
                   onTap: () => _showCommentsSheet(post['_id'], index, (newCount) {
                     setState(() {
                       if (_filteredPosts.length > index) {
@@ -1141,32 +1214,44 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
                     });
                   }),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: Icon(Icons.share_outlined, size: 20, color: subTextColor),
-                  onPressed: () => _sharePost(post),
-                )
+                _buildActionButton(
+                  icon: Icons.share_outlined,
+                  label: "Share",
+                  color: subTextColor,
+                  onTap: () => _sharePost(post),
+                ),
               ],
             ),
           ),
+          
+          Container(height: 8, color: isDark ? Colors.black : Colors.grey[200]),
         ],
       ),
     );
   }
 
-  Widget _buildReactionButton({required IconData icon, required String count, required bool isActive, required VoidCallback onTap}) {
-    final color = isActive ? const Color(0xFFD4AF37) : Colors.grey[600];
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 6),
-            Text(count, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
-          ],
+  // ✅ FIXED: Uses Expanded to share width equally
+  Widget _buildActionButton({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center, // Center content
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 6),
+              Flexible( // Prevent text overflow
+                child: Text(
+                  label, 
+                  style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 13, color: color),
+                  overflow: TextOverflow.ellipsis,
+                )
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1180,6 +1265,53 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           Icon(Icons.mark_chat_unread_rounded, size: 60, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(_isSearching ? "No matching updates." : "No updates yet.", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[500])),
+        ],
+      ),
+    );
+  }
+}
+
+// =========================================================
+// 🖼️ FULL SCREEN IMAGE VIEWER (NEW)
+// =========================================================
+class FullScreenImage extends StatelessWidget {
+  final String imageUrl;
+  const FullScreenImage({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              panEnabled: true,
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.contain,
+                placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
+                errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white, size: 50),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 40,
+            right: 20,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 30),
+              ),
+            ),
+          ),
         ],
       ),
     );

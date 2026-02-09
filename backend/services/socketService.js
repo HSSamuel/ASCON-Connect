@@ -8,12 +8,12 @@ const logger = require("../utils/logger");
 
 let io;
 const onlineUsers = new Map(); // userId -> Set<socketId>
-const disconnectTimers = new Map(); // userId -> TimeoutID
+const disconnectTimers = new Map(); // userId -> TimeoutID (Wait 5s before marking offline)
 
 const initializeSocket = async (server) => {
   const ioConfig = {
     cors: {
-      origin: "*",
+      origin: "*", // Allow all origins (Adjust for production if needed)
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -23,7 +23,9 @@ const initializeSocket = async (server) => {
 
   io = new Server(server, ioConfig);
 
-  // 1. Redis Adapter Setup (Optional)
+  // ==========================================
+  // 1. REDIS ADAPTER SETUP (Scalability)
+  // ==========================================
   if (process.env.USE_REDIS === "true") {
     logger.info("🔌 Redis Enabled. Attempting to connect...");
     try {
@@ -49,7 +51,9 @@ const initializeSocket = async (server) => {
     logger.info("ℹ️ Running in Memory Mode (Redis disabled).");
   }
 
+  // ==========================================
   // 2. AUTHENTICATION MIDDLEWARE
+  // ==========================================
   io.use(async (socket, next) => {
     try {
       const userId = socket.handshake.query.userId;
@@ -65,7 +69,9 @@ const initializeSocket = async (server) => {
     }
   });
 
-  // 3. Event Handlers
+  // ==========================================
+  // 3. EVENT HANDLERS
+  // ==========================================
   io.on("connection", async (socket) => {
     const userId = socket.userId;
     if (!userId) return;
@@ -88,7 +94,7 @@ const initializeSocket = async (server) => {
       logger.error(`Error joining group rooms for ${userId}: ${err.message}`);
     }
 
-    // C. DYNAMIC ROOM MANAGEMENT (✅ ADDED THIS)
+    // C. DYNAMIC ROOM MANAGEMENT
     socket.on("join_room", (room) => {
       socket.join(room);
       logger.info(`Socket ${socket.id} joined room ${room}`);
@@ -99,24 +105,63 @@ const initializeSocket = async (server) => {
       logger.info(`Socket ${socket.id} left room ${room}`);
     });
 
+    // ==========================================
+    // D. WEBRTC SIGNALING (VOICE CALLS)
+    // ==========================================
+
+    // 1. Initiate Call
+    socket.on("call_user", (data) => {
+      logger.info(
+        `📞 Call initiated by ${socket.userId} to ${data.userToCall}`,
+      );
+      io.to(data.userToCall).emit("call_made", {
+        offer: data.offer,
+        socket: socket.id,
+        callerId: socket.userId, // Sent so receiver knows who is calling
+      });
+    });
+
+    // 2. Answer Call
+    socket.on("make_answer", (data) => {
+      logger.info(`📞 Call answered by ${socket.userId}`);
+      io.to(data.to).emit("answer_made", {
+        socket: socket.id,
+        answer: data.answer,
+      });
+    });
+
+    // 3. Exchange ICE Candidates (Connectivity)
+    socket.on("ice_candidate", (data) => {
+      io.to(data.to).emit("ice_candidate_received", {
+        candidate: data.candidate,
+      });
+    });
+
+    // Handle standard connection logic (Status, Typing, Logout)
     handleConnection(socket, userId);
   });
 
   return io;
 };
 
+// ==========================================
+// 4. CONNECTION & STATUS LOGIC
+// ==========================================
 const handleConnection = (socket, userId) => {
   // --- Online Status Logic ---
 
+  // If user was pending disconnect, cancel it (reconnected quickly)
   if (disconnectTimers.has(userId)) {
     clearTimeout(disconnectTimers.get(userId));
     disconnectTimers.delete(userId);
   }
 
+  // Track socket count for this user
   if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
   const previousSocketCount = onlineUsers.get(userId).size;
   onlineUsers.get(userId).add(socket.id);
 
+  // If this is the first socket, mark user as ONLINE
   if (previousSocketCount === 0) {
     UserAuth.findByIdAndUpdate(userId, { isOnline: true }).catch((e) =>
       logger.error(e),
@@ -199,7 +244,7 @@ const handleConnection = (socket, userId) => {
 
     if (userSockets.size > 0) return;
 
-    // Grace Period (5 seconds)
+    // Grace Period (5 seconds) to prevent flickering on page refresh
     const timer = setTimeout(async () => {
       if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
         try {
