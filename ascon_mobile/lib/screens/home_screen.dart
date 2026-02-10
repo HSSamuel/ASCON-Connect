@@ -130,6 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final int currentIndex = widget.navigationShell.currentIndex;
 
     // 2. CHECK INTERNAL STACK: If current tab has screens to pop, pop them first!
+    // This relies on the GlobalKeys being exported correctly in router.dart
     GlobalKey<NavigatorState>? currentNavigatorKey;
     switch (currentIndex) {
       case 0: currentNavigatorKey = homeNavKey; break;
@@ -139,9 +140,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 4: currentNavigatorKey = profileNavKey; break;
     }
 
-    if (currentNavigatorKey != null && currentNavigatorKey.currentState != null && currentNavigatorKey.currentState!.canPop()) {
+    if (currentNavigatorKey != null && 
+        currentNavigatorKey.currentState != null && 
+        currentNavigatorKey.currentState!.canPop()) {
       currentNavigatorKey.currentState!.pop();
-      return; // ✅ Stop here, we just went back one screen
+      return; // ✅ Stop here, we just went back one screen within the tab
     }
 
     // 3. If NOT on Dashboard (Tab 0) and stack is empty, go to Dashboard
@@ -181,8 +184,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final showAppBar = uiIndex == 0;
 
     return PopScope(
+      // ✅ LOGIC: Always block the system pop. We will handle ALL back events manually.
       canPop: false, 
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _handleBackPress();
       },
@@ -399,7 +403,7 @@ class _DashboardViewState extends State<DashboardView> {
       listenable: _viewModel,
       builder: (context, child) {
         
-        // ✅ 1. ADDED: SKELETON LOADER
+        // ✅ 1. SKELETON LOADER
         // If data is loading and we have no alumni list (initial load), show skeleton
         if (_viewModel.isLoading && _viewModel.topAlumni.isEmpty) {
            return Scaffold(
@@ -455,7 +459,6 @@ class _DashboardViewState extends State<DashboardView> {
                     const SizedBox(height: 12),
                     
                     // ✅ FIXED: Only show spinner if we already have data but are refreshing quietly
-                    // If no data, the Skeleton above handles it.
                     if (_viewModel.isLoading && _viewModel.topAlumni.isNotEmpty)
                       const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
                     else if (_viewModel.topAlumni.isEmpty && !_viewModel.isLoading)

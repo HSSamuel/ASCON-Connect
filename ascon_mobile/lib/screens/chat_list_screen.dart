@@ -32,7 +32,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String _myId = "";
   final TextEditingController _searchController = TextEditingController();
 
-  // ✅ PRO: Track typing status per conversation ID
   final Map<String, bool> _typingStatus = {};
 
   @override
@@ -44,11 +43,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   void dispose() {
-    // Socket listeners for typing are global, careful removing them if used elsewhere
-    // Ideally, turn off specific listeners here
-    _socket.socket?.off('new_message');
-    _socket.socket?.off('typing_start');
-    _socket.socket?.off('typing_stop');
+    final socket = _socket.socket;
+    socket?.off('new_message');
+    socket?.off('messages_read'); // ✅ Clean up listener
+    socket?.off('typing_start');
+    socket?.off('typing_stop');
     _searchController.dispose();
     super.dispose();
   }
@@ -61,7 +60,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _loadConversations() async {
     if (!mounted) return;
     try {
-      final res = await _api.get('/api/chat'); // Ensure this endpoint returns full conversation objects
+      final res = await _api.get('/api/chat'); 
       
       if (mounted && res['success'] == true) {
         final List<dynamic> data = res['data'];
@@ -71,7 +70,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
           _filteredConversations = data;
           _isLoading = false;
           
-          // Logic for "Active Now" rail
           _onlineUsers = data.where((c) {
              final other = _getOtherParticipant(c);
              return other['isOnline'] == true;
@@ -83,7 +81,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  // ✅ PRO: Live Socket Updates
   void _setupSocket() {
     final socket = _socket.socket;
     if (socket == null) return;
@@ -94,7 +91,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
       _handleIncomingMessage(data);
     });
 
-    // 2. Typing Indicators
+    // 2. ✅ NEW: Listen for read receipts to clear badges
+    socket.on('messages_read', (data) {
+      if (!mounted) return;
+      final convId = data['conversationId'];
+      final index = _conversations.indexWhere((c) => c['_id'] == convId);
+      if (index != -1) {
+        setState(() {
+          _conversations[index]['unreadCount'] = 0;
+        });
+      }
+    });
+
+    // 3. Typing Indicators
     socket.on('typing_start', (data) {
       if (mounted) setState(() => _typingStatus[data['conversationId']] = true);
     });
@@ -104,7 +113,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     });
   }
 
-  // ✅ PRO: Handle incoming message without full reload
   void _handleIncomingMessage(dynamic data) {
     final convId = data['conversationId'];
     final index = _conversations.indexWhere((c) => c['_id'] == convId);
@@ -113,11 +121,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
       setState(() {
         var chat = _conversations.removeAt(index);
         
-        // Update last message preview
         chat['lastMessage'] = data['message']['text'] ?? "Media";
         chat['lastMessageAt'] = data['message']['createdAt'];
-        
-        // Handle lastMessage object if your API supports it structure
         chat['lastMessageObj'] = data['message']; 
 
         // Increment unread count if not from me
@@ -126,7 +131,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         }
 
         _conversations.insert(0, chat);
-        // Re-apply search filter if active
+        
         if (_searchController.text.isNotEmpty) {
           _onSearchChanged(_searchController.text);
         } else {
@@ -134,7 +139,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         }
       });
     } else {
-      _loadConversations(); // New chat created remotely
+      _loadConversations(); 
     }
   }
 
@@ -147,7 +152,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
           final other = _getOtherParticipant(c);
           final name = (other['fullName'] ?? other['name'] ?? "").toString().toLowerCase();
           
-          // Handle dynamic lastMessage type (String or Map)
           String lastMsgText = "";
           if (c['lastMessage'] is Map) {
             lastMsgText = c['lastMessage']['text'] ?? "";
@@ -161,17 +165,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
     });
   }
 
-  // ✅ PRO: Delete Conversation Action
   Future<void> _deleteConversation(String id) async {
     try {
-      // Optimistic remove
       setState(() {
         _conversations.removeWhere((c) => c['_id'] == id);
         _filteredConversations.removeWhere((c) => c['_id'] == id);
       });
       await _api.delete('/api/chat/conversation/$id');
     } catch (e) {
-      // Revert if failed (optional, usually not needed for delete)
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not delete chat")));
     }
   }
@@ -179,7 +180,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation) {
     if (conversation['isGroup'] == true) {
       final group = conversation['groupId'];
-      // Handle case where group info might be populated or ID string
       if (group is Map) {
         return {
           '_id': group['_id'],
@@ -201,9 +201,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return other;
   }
 
-  // ==========================================
-  // 🎨 UI BUILDER
-  // ==========================================
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -216,7 +213,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. CUSTOM APP BAR (Search & Title)
+            // 1. CUSTOM APP BAR
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -249,7 +246,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
             // 2. CONTENT
             Expanded(
               child: _isLoading 
-                ? const ChatListSkeleton() // ✅ Using new skeleton from utils
+                ? const ChatListSkeleton() 
                 : RefreshIndicator(
                     onRefresh: _loadConversations,
                     child: SingleChildScrollView(
@@ -364,13 +361,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  // ✅ PRO WIDGET: Chat Tile with Swipe-to-Delete
   Widget _buildChatTile(Map<String, dynamic> chat) {
     final other = _getOtherParticipant(chat);
     final String convId = chat['_id'];
     
-    // Handle message data safely
-    dynamic lastMsgObj = chat['lastMessage']; // Could be String or Map depending on API
+    dynamic lastMsgObj = chat['lastMessage']; 
     String lastMessageText = "Photo";
     String? senderId;
     bool isRead = true;
@@ -383,13 +378,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
       lastMessageText = lastMsgObj;
     }
 
+    // ✅ FIXED: unreadCount is now fetched from Backend
     final int unreadCount = chat['unreadCount'] ?? 0;
     final bool isOnline = other['isOnline'] == true;
     final bool isTyping = _typingStatus[convId] ?? false;
     final String time = _formatTime(chat['lastMessageAt']);
     final bool isMe = senderId == _myId;
-
-    
 
     return Dismissible(
       key: Key(convId),
@@ -416,7 +410,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
       onDismissed: (direction) => _deleteConversation(convId),
       child: InkWell(
         onTap: () {
-          // Clear unread count visually immediately
           setState(() {
              chat['unreadCount'] = 0;
           });
@@ -426,7 +419,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              // Avatar
               Stack(
                 children: [
                   CircleAvatar(
@@ -454,8 +446,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 ],
               ),
               const SizedBox(width: 14),
-              
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -487,8 +477,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     ),
                     const SizedBox(height: 4),
                     
-                    // Subtitle Row: Typing OR (Status Tick + Message)
-                    
                     Row(
                       children: [
                         Expanded(
@@ -499,10 +487,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               )
                             : Row(
                                 children: [
-                                  // ✅ Message Status Tick
                                   if (isMe) ...[
                                     Icon(
-                                      // If API doesn't give 'isRead', assume read for now or check logic
                                       isRead ? Icons.done_all : Icons.check, 
                                       size: 16, 
                                       color: isRead ? Colors.blue : Colors.grey
@@ -525,7 +511,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               ),
                         ),
                         
-                        // ✅ Unread Badge
+                        // ✅ UNREAD BADGE DISPLAY
                         if (unreadCount > 0)
                           Container(
                             margin: const EdgeInsets.only(left: 8),

@@ -25,7 +25,7 @@ class AuthService {
     _api.onTokenRefresh = _performSilentRefresh;
   }
 
-  // ✅ NEW: Helper to check Admin Status
+  // Helper to check Admin Status
   Future<bool> get isAdmin async {
     try {
       final userMap = await getCachedUser();
@@ -38,7 +38,7 @@ class AuthService {
     }
   }
 
-  // ✅ NEW: Helper to check current User ID (for "Delete my own post")
+  // Helper to check current User ID
   Future<String?> get currentUserId async {
     try {
       final userMap = await getCachedUser();
@@ -48,20 +48,20 @@ class AuthService {
     }
   }
 
-  // ✅ NEW: Save credentials for future Biometric login
+  // Save credentials for future Biometric login
   Future<void> enableBiometrics(String email, String password) async {
     await _secureStorage.write(key: 'biometric_email', value: email);
     await _secureStorage.write(key: 'biometric_password', value: password);
     await _secureStorage.write(key: 'use_biometrics', value: 'true');
   }
 
-  // ✅ NEW: Check if user has enabled biometrics
+  // Check if user has enabled biometrics
   Future<bool> isBiometricEnabled() async {
     String? enabled = await _secureStorage.read(key: 'use_biometrics');
     return enabled == 'true';
   }
 
-  // ✅ NEW: Perform login using stored secure credentials
+  // Perform login using stored secure credentials
   Future<Map<String, dynamic>> loginWithStoredCredentials() async {
     final email = await _secureStorage.read(key: 'biometric_email');
     final password = await _secureStorage.read(key: 'biometric_password');
@@ -108,6 +108,8 @@ class AuthService {
         );
 
         await NotificationService().init();
+        // ✅ EXPLICIT SYNC WITH RETRY (Race condition fix)
+        await NotificationService().syncToken(retry: true); 
       }
       return result;
     } catch (e) {
@@ -150,7 +152,8 @@ class AuthService {
         );
         
         await NotificationService().init();
-        await NotificationService().syncToken();
+        // ✅ EXPLICIT SYNC WITH RETRY
+        await NotificationService().syncToken(retry: true); 
       }
 
       return result;
@@ -180,6 +183,8 @@ class AuthService {
         );
         
         await NotificationService().init();
+        // ✅ EXPLICIT SYNC WITH RETRY
+        await NotificationService().syncToken(retry: true); 
       }
       return result;
     } catch (e) {

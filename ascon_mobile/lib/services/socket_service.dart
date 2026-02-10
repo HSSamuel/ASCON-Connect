@@ -8,6 +8,9 @@ class SocketService with WidgetsBindingObserver {
   IO.Socket? socket;
   final _storage = StorageConfig.storage;
   String? _currentUserId;
+  
+  // ✅ FIX: Track the ID the socket is currently connected with
+  String? _connectedUserId; 
 
   // Stream Controller to broadcast updates to UI
   final _userStatusController = StreamController<Map<String, dynamic>>.broadcast();
@@ -43,8 +46,8 @@ class SocketService with WidgetsBindingObserver {
       _currentUserId = await _storage.read(key: "userId");
     }
 
+    // ✅ SILENT EXIT: If no credentials, return immediately without logging.
     if (token == null || _currentUserId == null) {
-      debugPrint("⚠️ Socket Init Skipped: No Token or User ID found.");
       return;
     }
 
@@ -54,8 +57,8 @@ class SocketService with WidgetsBindingObserver {
     if (socketUrl.endsWith('/api')) socketUrl = socketUrl.replaceAll('/api', '');
 
     // 3. Create Socket Connection
-    // Check if socket exists and if the user ID has changed or it's disconnected
-    if (socket == null || socket!.io.options?['query']?['userId'] != _currentUserId) {
+    // Check against _connectedUserId tracker to verify if we need to reconnect
+    if (socket == null || _connectedUserId != _currentUserId) {
       // If recreating, disconnect old one first
       if (socket != null) {
         socket!.disconnect();
@@ -72,12 +75,14 @@ class SocketService with WidgetsBindingObserver {
         'reconnectionDelay': 1000,
         // ✅ SECURE AUTH: Send Token
         'auth': {'token': token},
-        // We keep query for logging/backward compatibility, but auth is primary
         'query': {'userId': _currentUserId},
       });
 
       _setupListeners();
       socket!.connect();
+      
+      // Update the tracker
+      _connectedUserId = _currentUserId;
     } else if (!socket!.connected) {
       socket!.connect();
     }
@@ -148,6 +153,7 @@ class SocketService with WidgetsBindingObserver {
     if (socket != null) {
       socket!.disconnect();
       socket = null;
+      _connectedUserId = null; // ✅ Reset tracker
     }
   }
 }

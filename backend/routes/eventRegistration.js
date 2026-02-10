@@ -3,6 +3,7 @@ const EventRegistration = require("../models/EventRegistration");
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
 const Joi = require("joi");
+const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ Added
 
 // ==========================================
 // 🛡️ VALIDATION SCHEMA (UPDATED)
@@ -41,7 +42,7 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    const { eventId, email, userId } = req.body;
+    const { eventId, email, userId, eventTitle } = req.body;
     const emailLower = email.toLowerCase().trim();
 
     // ✅ CHECK DUPLICATE
@@ -67,6 +68,20 @@ router.post("/", async (req, res) => {
     // Save to Database
     const newReg = new EventRegistration(finalData);
     await newReg.save();
+
+    // ✅ SEND CONFIRMATION NOTIFICATION
+    if (finalData.userId) {
+      try {
+        await sendPersonalNotification(
+          finalData.userId,
+          "Registration Confirmed ✅",
+          `We have received your registration for: ${eventTitle || "the event"}.`,
+          { route: "event_detail", id: eventId },
+        );
+      } catch (e) {
+        console.error("Event reg notification failed", e);
+      }
+    }
 
     res.status(201).json({
       success: true,

@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
-import '../widgets/shimmer_utils.dart'; // ✅ Reusing Shimmer
+import '../widgets/shimmer_utils.dart'; 
 import 'event_detail_screen.dart';
 
 class EventsScreen extends StatefulWidget {
@@ -27,7 +27,9 @@ class _EventsScreenState extends State<EventsScreen> {
   
   bool _isLoading = true;
   String _selectedCategory = "All";
-  final List<String> _categories = ["All", "Reunion", "Webinar", "Workshop", "General"];
+  
+  // News added as requested
+  final List<String> _categories = ["All", "News", "Reunion", "Webinar", "Workshop", "General"];
 
   @override
   void initState() {
@@ -42,14 +44,15 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Future<void> _loadEvents() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     try {
       final events = await _dataService.fetchEvents();
       if (mounted) {
         setState(() {
           _allEvents = events;
           _filteredEvents = events;
-          // Logic: Take first 3 upcoming events as "Featured"
           _featuredEvents = events.take(3).toList();
           _isLoading = false;
         });
@@ -75,14 +78,12 @@ class _EventsScreenState extends State<EventsScreen> {
     });
   }
 
-  // ✅ PRO FEATURE: Google Calendar Link Generator
   Future<void> _addToCalendar(Map<String, dynamic> event) async {
     try {
       final title = Uri.encodeComponent(event['title'] ?? "ASCON Event");
       final details = Uri.encodeComponent(event['description'] ?? "");
       final location = Uri.encodeComponent(event['location'] ?? "Online");
       
-      // Parse Date
       DateTime start = DateTime.now();
       if (event['date'] != null) {
         start = DateTime.parse(event['date']);
@@ -97,7 +98,7 @@ class _EventsScreenState extends State<EventsScreen> {
       if (await canLaunchUrl(Uri.parse(urlString))) {
         await launchUrl(Uri.parse(urlString), mode: LaunchMode.externalApplication);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open calendar.")));
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open calendar.")));
       }
     } catch (e) {
       debugPrint("Calendar Error: $e");
@@ -112,12 +113,20 @@ class _EventsScreenState extends State<EventsScreen> {
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
+    // Calculate card width ONCE per frame here
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Formula: (ScreenWidth - ListPaddingLeft - ListPaddingRight - CardMargin) / 2
+    double cardWidth = (screenWidth - 48) / 2;
+    if (cardWidth < 140) cardWidth = 140; // Safety floor
+
+    final bool showFeatured = _featuredEvents.isNotEmpty && _searchController.text.isEmpty;
+
     return Scaffold(
       backgroundColor: scaffoldBg,
       body: SafeArea(
         child: Column(
           children: [
-            // 1. CUSTOM HEADER (Matches Chat Screen)
+            // 1. CUSTOM HEADER
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -133,12 +142,9 @@ class _EventsScreenState extends State<EventsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Events", style: GoogleFonts.lato(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
-                      // Optional: Calendar Icon to switch view
                       IconButton(
                         icon: Icon(Icons.calendar_month_outlined, color: Colors.grey[600]),
-                        onPressed: () {
-                          // Future: Switch to Calendar View
-                        },
+                        onPressed: () {},
                       )
                     ],
                   ),
@@ -169,51 +175,57 @@ class _EventsScreenState extends State<EventsScreen> {
                       child: CustomScrollView(
                         slivers: [
                           // A. FEATURED CAROUSEL
-                          if (_featuredEvents.isNotEmpty && _searchController.text.isEmpty) ...[
+                          if (showFeatured)
                             SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-                                child: Text("Featured", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                                    child: Text("Featured", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+                                  ),
+                                  SizedBox(
+                                    height: 200,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      itemCount: _featuredEvents.length,
+                                      separatorBuilder: (c, i) => const SizedBox(width: 16), 
+                                      itemBuilder: (context, index) => _buildFeaturedCard(
+                                        context, 
+                                        _featuredEvents[index], 
+                                        cardWidth 
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            SliverToBoxAdapter(
-                              child: SizedBox(
-                                height: 200,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: _featuredEvents.length,
-                                  itemBuilder: (context, index) => _buildFeaturedCard(_featuredEvents[index]),
-                                ),
-                              ),
-                            ),
-                          ],
 
-                          // B. CATEGORY CHIPS
+                          // B. CATEGORY CHIPS (WRAPPED)
+                          // ✅ CHANGED: Replaced SingleChildScrollView+Row with Wrap for responsiveness
                           SliverToBoxAdapter(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
+                            child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-                              child: Row(
+                              child: Wrap(
+                                spacing: 8.0, // Horizontal gap
+                                runSpacing: 10.0, // Vertical gap
                                 children: _categories.map((cat) {
                                   final isSelected = _selectedCategory == cat;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8.0),
-                                    child: ChoiceChip(
-                                      label: Text(cat),
-                                      selected: isSelected,
-                                      selectedColor: primaryColor.withOpacity(0.2),
-                                      labelStyle: TextStyle(
-                                        color: isSelected ? primaryColor : Colors.grey[600],
-                                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
-                                      ),
-                                      onSelected: (val) {
-                                        setState(() {
-                                          _selectedCategory = cat;
-                                          _filterEvents();
-                                        });
-                                      },
+                                  return ChoiceChip(
+                                    label: Text(cat),
+                                    selected: isSelected,
+                                    selectedColor: primaryColor.withOpacity(0.2),
+                                    labelStyle: TextStyle(
+                                      color: isSelected ? primaryColor : Colors.grey[600],
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal
                                     ),
+                                    onSelected: (val) {
+                                      setState(() {
+                                        _selectedCategory = cat;
+                                        _filterEvents();
+                                      });
+                                    },
                                   );
                                 }).toList(),
                               ),
@@ -247,8 +259,7 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // ✅ PRO WIDGET: Featured Event Card (Horizontal)
-  Widget _buildFeaturedCard(Map<String, dynamic> event) {
+  Widget _buildFeaturedCard(BuildContext context, Map<String, dynamic> event, double cardWidth) {
     final title = event['title'] ?? "Untitled";
     final dateRaw = event['date'];
     String dateStr = "Upcoming";
@@ -256,10 +267,11 @@ class _EventsScreenState extends State<EventsScreen> {
       dateStr = DateFormat("EEE, MMM d").format(DateTime.parse(dateRaw));
     }
     final image = event['image'] ?? event['imageUrl'];
+    final id = event['_id'] ?? event['id'] ?? DateTime.now().toString();
 
     return Container(
-      width: 300,
-      margin: const EdgeInsets.only(right: 16),
+      width: cardWidth, 
+      key: ValueKey(id), 
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         color: Theme.of(context).cardColor,
@@ -288,21 +300,22 @@ class _EventsScreenState extends State<EventsScreen> {
             ),
             // Text Content
             Positioned(
-              bottom: 16, left: 16, right: 16,
+              bottom: 12, left: 10, right: 10,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center, // Center Alignment
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: const Color(0xFFD4AF37), borderRadius: BorderRadius.circular(8)),
-                    child: Text(dateStr, style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(color: const Color(0xFFD4AF37), borderRadius: BorderRadius.circular(6)),
+                    child: Text(dateStr, style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.bold)),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     title,
-                    maxLines: 2,
+                    maxLines: 4, // More lines
+                    textAlign: TextAlign.center, // Center text
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.lato(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.lato(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -326,10 +339,10 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
-  // ✅ PRO WIDGET: Event Row Tile (Vertical)
   Widget _buildEventRow(Map<String, dynamic> event) {
     final title = event['title'] ?? "Event";
     final location = event['location'] ?? "TBA";
+    final id = event['_id'] ?? event['id'] ?? DateTime.now().toString();
     
     DateTime dateObj = DateTime.now();
     if (event['date'] != null) dateObj = DateTime.parse(event['date']);
@@ -342,6 +355,7 @@ class _EventsScreenState extends State<EventsScreen> {
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
     return Container(
+      key: ValueKey(id), 
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,

@@ -13,9 +13,9 @@ import 'screens/chat_list_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/polls_screen.dart';
+import 'screens/notification_permission_screen.dart'; // ✅ Added
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
-// ✅ Keys for tabs to ensure separate stacks
 final GlobalKey<NavigatorState> homeNavKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> eventsNavKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> updatesNavKey = GlobalKey<NavigatorState>();
@@ -31,6 +31,15 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SplashScreen(),
     ),
     
+    // ✅ NEW ROUTE FOR NOTIFICATION PERMISSION
+    GoRoute(
+      path: '/notification_permission',
+      builder: (context, state) {
+        final nextPath = state.extra as String? ?? '/login';
+        return NotificationPermissionScreen(nextPath: nextPath);
+      },
+    ),
+
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
@@ -44,7 +53,7 @@ final GoRouter appRouter = GoRouter(
       branches: [
         // Tab 0: Dashboard
         StatefulShellBranch(
-          navigatorKey: homeNavKey, // ✅ Added Key
+          navigatorKey: homeNavKey, 
           routes: [
             GoRoute(
               path: '/home',
@@ -55,7 +64,7 @@ final GoRouter appRouter = GoRouter(
         
         // Tab 1: Events
         StatefulShellBranch(
-          navigatorKey: eventsNavKey, // ✅ Added Key
+          navigatorKey: eventsNavKey, 
           routes: [
             GoRoute(
               path: '/events',
@@ -66,7 +75,7 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 2: Updates
         StatefulShellBranch(
-          navigatorKey: updatesNavKey, // ✅ Added Key
+          navigatorKey: updatesNavKey, 
           routes: [
             GoRoute(
               path: '/updates',
@@ -77,7 +86,7 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 3: Directory
         StatefulShellBranch(
-          navigatorKey: directoryNavKey, // ✅ Added Key
+          navigatorKey: directoryNavKey, 
           routes: [
             GoRoute(
               path: '/directory',
@@ -88,7 +97,7 @@ final GoRouter appRouter = GoRouter(
 
         // Tab 4: Profile
         StatefulShellBranch(
-          navigatorKey: profileNavKey, // ✅ Added Key
+          navigatorKey: profileNavKey, 
           routes: [
             GoRoute(
               path: '/profile',

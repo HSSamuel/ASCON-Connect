@@ -1,4 +1,5 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 import 'socket_service.dart';
 
 class CallService {
@@ -7,20 +8,48 @@ class CallService {
   
   final _socket = SocketService().socket;
 
-  // STUN Servers (Google's public ones)
-  final Map<String, dynamic> _iceServers = {
-    'iceServers': [
+  /// ✅ DYNAMIC ICE CONFIGURATION
+  /// Uses public STUN servers + Your Metered.ca TURN servers
+  Future<Map<String, dynamic>> _getIceServers() async {
+    // 1. Default Public STUN Servers (Always included)
+    List<Map<String, dynamic>> iceServers = [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
-    ]
-  };
+    ];
+
+    // 2. Add TURN Servers from Environment
+    final String? turnUrlRaw = dotenv.env['TURN_URL'];
+    final String? turnUser = dotenv.env['TURN_USERNAME'];
+    final String? turnPass = dotenv.env['TURN_PASSWORD'];
+
+    if (turnUrlRaw != null && turnUrlRaw.isNotEmpty && 
+        turnUser != null && turnUser.isNotEmpty && 
+        turnPass != null && turnPass.isNotEmpty) {
+      
+      // ✅ Split comma-separated URLs to support TCP/UDP fallbacks
+      List<String> turnUrls = turnUrlRaw.split(',').map((e) => e.trim()).toList();
+
+      iceServers.add({
+        'urls': turnUrls, 
+        'username': turnUser,
+        'credential': turnPass,
+      });
+    }
+
+    return {
+      'iceServers': iceServers,
+      // 'all' allows WebRTC to test both direct (P2P) and Relay (TURN) connections
+      'iceTransportPolicy': 'all', 
+    };
+  }
 
   /// 1. Initialize & Start Call
   Future<void> startCall(String receiverId) async {
     if (_socket == null) return;
 
-    // Create Connection
-    _peerConnection = await createPeerConnection(_iceServers);
+    // ✅ Get Config with TURN support
+    final configuration = await _getIceServers();
+    _peerConnection = await createPeerConnection(configuration);
 
     // Get Microphone
     _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
@@ -51,7 +80,9 @@ class CallService {
   Future<void> answerCall(Map<String, dynamic> offer, String callerId) async {
     if (_socket == null) return;
 
-    _peerConnection = await createPeerConnection(_iceServers);
+    // ✅ Get Config with TURN support
+    final configuration = await _getIceServers();
+    _peerConnection = await createPeerConnection(configuration);
 
     _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
     _localStream!.getTracks().forEach((track) {

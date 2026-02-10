@@ -5,6 +5,10 @@ const GroupFile = require("../models/GroupFile");
 const UserProfile = require("../models/UserProfile");
 const Conversation = require("../models/Conversation");
 const verifyToken = require("./verifyToken");
+const {
+  sendBroadcastNotification,
+  sendPersonalNotification,
+} = require("../utils/notificationHandler");
 
 // Cloudinary & Multer Config
 const multer = require("multer");
@@ -165,7 +169,7 @@ router.get("/:groupId/documents", verifyToken, async (req, res) => {
   }
 });
 
-// ✅ DELETE DOCUMENT (NEW)
+// ✅ DELETE DOCUMENT
 router.delete("/:groupId/documents/:docId", verifyToken, async (req, res) => {
   try {
     const file = await GroupFile.findById(req.params.docId);
@@ -234,9 +238,11 @@ router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
     if (!group.admins) group.admins = [];
     const strAdmins = group.admins.map((id) => id.toString());
     const index = strAdmins.indexOf(targetUserId);
+    let isAdminNow = false;
 
     if (index === -1) {
       group.admins.push(targetUserId);
+      isAdminNow = true;
     } else {
       const actualIndex = group.admins.findIndex(
         (id) => id.toString() === targetUserId,
@@ -245,6 +251,21 @@ router.put("/:groupId/toggle-admin", verifyToken, async (req, res) => {
     }
 
     await group.save();
+
+    // ✅ NOTIFY USER
+    try {
+      const msg = isAdminNow
+        ? `You are now an Admin of ${group.name}`
+        : `You have been removed as Admin of ${group.name}`;
+
+      await sendPersonalNotification(targetUserId, "Group Update", msg, {
+        route: "group_info",
+        id: group._id.toString(),
+      });
+    } catch (e) {
+      console.error("Admin toggle notification failed", e);
+    }
+
     res.json({ success: true, message: "Admin role updated successfully." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -284,6 +305,18 @@ router.put("/:groupId/remove-member", verifyToken, async (req, res) => {
         groupName: group.name,
       });
     }
+
+    // ✅ NOTIFY REMOVED USER
+    try {
+      await sendPersonalNotification(
+        targetUserId,
+        "Group Alert",
+        `You have been removed from the group: ${group.name}`,
+      );
+    } catch (e) {
+      console.error("Remove member notification failed", e);
+    }
+
     res.json({ success: true, message: "User removed from group." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -326,6 +359,29 @@ router.post("/:groupId/notices", verifyToken, async (req, res) => {
       createdAt: new Date(),
     });
     await group.save();
+
+    // ✅ NOTIFY GROUP MEMBERS (BROADCAST simulation via socket loop or similar)
+    // Since `sendBroadcastNotification` sends to ALL users, we need to iterate here
+    // or improve `notificationHandler` to accept a list of IDs.
+    // For now, we will use `sendPersonalNotification` in a loop for the members.
+    try {
+      const membersToNotify = group.members.filter(
+        (id) => id.toString() !== req.user._id,
+      );
+
+      // We process this asynchronously so we don't block the response
+      membersToNotify.forEach(async (memberId) => {
+        await sendPersonalNotification(
+          memberId.toString(),
+          `Notice: ${group.name}`,
+          title,
+          { route: "group_info", id: group._id.toString() },
+        );
+      });
+    } catch (e) {
+      console.error("Notice notification failed", e);
+    }
+
     res.json({ success: true, message: "Notice posted successfully!" });
   } catch (err) {
     res.status(500).json({ message: err.message });

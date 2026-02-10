@@ -4,6 +4,7 @@ const Programme = require("../models/Programme");
 const Joi = require("joi"); // ✅ Added Joi
 const verifyToken = require("./verifyToken");
 const verifyAdmin = require("./verifyAdmin");
+const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ Added
 
 // ==========================================
 // 🛡️ VALIDATION SCHEMA
@@ -90,6 +91,21 @@ router.post("/", async (req, res) => {
     });
 
     await newInterest.save();
+
+    // ✅ SEND CONFIRMATION NOTIFICATION
+    if (userId) {
+      try {
+        await sendPersonalNotification(
+          userId,
+          "Application Received 🎓",
+          `We have received your interest in: ${programme.title}.`,
+          { route: "programme_detail", id: programmeId },
+        );
+      } catch (e) {
+        console.error("Programme interest notification failed", e);
+      }
+    }
+
     res.status(201).json({ message: "Registration Submitted Successfully!" });
   } catch (err) {
     console.error("Registration Error:", err);

@@ -20,6 +20,7 @@ import '../screens/chat_screen.dart';
 import '../screens/login_screen.dart'; 
 import '../services/socket_service.dart';
 
+// Background handler must be a top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("🌙 Background Message: ${message.messageId}");
@@ -45,9 +46,10 @@ class NotificationService {
     if (_isInitialized) return; 
     _isInitialized = true;
 
+    // 1. Setup Local Notifications (Android/iOS)
     if (!kIsWeb) {
       await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-        alert: false, 
+        alert: false, // We manually show local notifications for better control
         badge: true,
         sound: true,
       );
@@ -65,6 +67,7 @@ class NotificationService {
         },
       );
 
+      // Create Android Channel
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         AppConfig.notificationChannelId, 
         AppConfig.notificationChannelName,
@@ -80,11 +83,12 @@ class NotificationService {
           ?.createNotificationChannel(channel);
     }
 
+    // 2. Setup Listeners
     if (!kIsWeb) {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
-    // ✅ LISTENERS ENABLED FOR WEB NOW
+    // Foreground Message Listener
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("🔔 Foreground Message: ${message.notification?.title}");
       if (message.notification != null) {
@@ -94,11 +98,13 @@ class NotificationService {
       }
     });
 
+    // App Opened from Background Listener
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint("🚀 App Opened from Notification: ${message.data}");
       handleNavigation(message.data);
     });
 
+    // App Opened from Terminated State Listener
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,14 +112,23 @@ class NotificationService {
       });
     }
 
+    // Token Rotation Listener
     _firebaseMessaging.onTokenRefresh.listen((newToken) {
       debugPrint("🔄 Token Rotated: $newToken");
-      syncToken(); 
+      syncToken(tokenOverride: newToken, retry: true); 
     });
 
-    await syncToken();
+    // Initial Token Sync: We retry here assuming this might be a fresh app launch with a session
+    await syncToken(retry: true);
   }
 
+  // ✅ NEW: Helper to check current permission status without prompting
+  Future<AuthorizationStatus> getAuthorizationStatus() async {
+    final settings = await _firebaseMessaging.getNotificationSettings();
+    return settings.authorizationStatus;
+  }
+
+  // Request Permission (Standard Dialog)
   Future<void> requestPermission() async {
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true, badge: true, sound: true, provisional: false,
@@ -121,12 +136,14 @@ class NotificationService {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       debugPrint('✅ User granted notifications');
-      await syncToken(); 
+      // ✅ FIX: Don't retry/wait here. We are likely on the Permission Screen (No Session yet).
+      await syncToken(retry: false); 
     } else {
       debugPrint('❌ User declined notifications');
     }
   }
 
+  // Global Navigation Handler
   Future<void> handleNavigation(Map<String, dynamic> data) async {
     final route = data['route'];
     final type = data['type']; 
@@ -140,6 +157,7 @@ class NotificationService {
       token = prefs.getString('auth_token');
     }
 
+    // If not logged in, redirect to login
     if (token == null) {
       debugPrint("🔒 User logged out. Redirecting to Login with pending navigation.");
       navigatorKey.currentState?.pushAndRemoveUntil(
@@ -153,14 +171,15 @@ class NotificationService {
 
     debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
 
+    // Slight delay to ensure context is ready if app just woke up
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
+      // Handle Chat Messages
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
         
-        // ✅ FIXED: Determine Correct Name & ID
         final isGroup = data['isGroup'].toString().toLowerCase() == 'true';
         final groupId = data['groupId']; 
         
@@ -168,7 +187,6 @@ class NotificationService {
         if (isGroup) {
           displayName = data['groupName'] ?? "Group Chat";
         } else {
-          // Fix for "Alumni Member" issue - use senderName from backend
           displayName = data['senderName'] ?? "Alumni Member";
         }
         
@@ -181,13 +199,12 @@ class NotificationService {
             MaterialPageRoute(
               builder: (_) => ChatScreen(
                 conversationId: conversationId,
-                // For 1-on-1, receiver is the sender of the msg. For Group, receiverId isn't strictly used for routing but we pass senderId.
                 receiverId: senderId, 
-                receiverName: displayName, // ✅ Shows correct name/group
+                receiverName: displayName, 
                 receiverProfilePic: senderProfilePic,
                 isOnline: false, 
-                isGroup: isGroup, // ✅ Pass group flag
-                groupId: groupId, // ✅ Pass group ID for socket joining
+                isGroup: isGroup, 
+                groupId: groupId, 
               ),
             ),
           );
@@ -195,6 +212,7 @@ class NotificationService {
         return;
       }
 
+      // Handle Mentorship
       if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
@@ -202,6 +220,7 @@ class NotificationService {
         return;
       }
 
+      // Handle Content Details
       if (id != null) {
         if (route == 'event_detail') {
           navigatorKey.currentState?.push(
@@ -232,6 +251,7 @@ class NotificationService {
     });
   }
 
+  // Display Local Notification
   Future<void> _showLocalNotification(RemoteMessage message) async {
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
@@ -274,36 +294,44 @@ class NotificationService {
     );
   }
 
-  Future<void> syncToken() async {
+  // ✅ UPDATED: Added [retry] parameter to control the 1.5s wait
+  Future<void> syncToken({String? tokenOverride, bool retry = false}) async {
     try {
       debugPrint("🔄 NotificationService: Starting Token Sync...");
 
       String? fcmToken;
-      if (kIsWeb) {
+      
+      // 1. Use Override if provided (Rotation)
+      if (tokenOverride != null) {
+        fcmToken = tokenOverride;
+      } 
+      // 2. Fetch for Web
+      else if (kIsWeb) {
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
         if (vapidKey != null && vapidKey.isNotEmpty) {
           fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
         } else {
-          debugPrint("⚠️ Web Notifications require FIREBASE_VAPID_KEY in .env");
           return;
         }
-      } else {
+      } 
+      // 3. Fetch for Mobile
+      else {
         fcmToken = await _firebaseMessaging.getToken();
       }
 
-      if (fcmToken == null) {
-        debugPrint("❌ FCM Token is null. Sync aborted.");
-        return;
-      }
+      if (fcmToken == null) return;
 
       String? authToken = await _storage.read(key: 'auth_token');
 
+      // Fallback to SharedPreferences if secure storage is empty
       if (authToken == null) {
         final prefs = await SharedPreferences.getInstance();
         authToken = prefs.getString('auth_token');
       }
 
-      if (authToken == null) {
+      // ✅ FIX: Only wait if retry is TRUE (Login Flow). 
+      // If retry is FALSE (Permission Flow), return immediately to avoid UI delay.
+      if (authToken == null && retry) {
         debugPrint("⏳ Auth Token not found yet. Retrying in 1.5s...");
         await Future.delayed(const Duration(milliseconds: 1500));
         authToken = await _storage.read(key: 'auth_token');
@@ -328,6 +356,8 @@ class NotificationService {
         } else {
            debugPrint("⚠️ Backend rejected token: ${response.statusCode} - ${response.body}");
         }
+      } else {
+        debugPrint("ℹ️ Skipped Token Sync (No Session).");
       }
     } catch (e) {
       debugPrint("❌ Error syncing token: $e");

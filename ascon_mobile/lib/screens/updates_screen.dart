@@ -963,7 +963,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     );
   }
 
-  // ✅ FIXED: Strict clipping and robust layout
   Widget _buildStatusCard(Map<String, dynamic> item) {
     final title = item['title'] ?? "News";
     final image = item['image'] ?? item['imageUrl'];
@@ -978,7 +977,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       ),
       child: Stack(
         children: [
-          // 1. Navigation Layer
           GestureDetector(
             onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => ProgrammeDetailScreen(programme: item)));
@@ -988,7 +986,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
               children: [
                 Expanded(
                   child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), // ✅ FIX: Strict clipping
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), 
                     child: image != null 
                       ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, width: double.infinity)
                       : Container(color: Colors.grey[300], child: const Icon(Icons.article, color: Colors.grey)),
@@ -1007,7 +1005,6 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             ),
           ),
 
-          // 2. Delete Action
           if (_isAdmin)
             Positioned(
               right: 4, top: 4,
@@ -1025,7 +1022,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
     );
   }
 
-  // ✅ FIXED: Action Bar now uses Expanded to prevent overflow
+  // ✅ REDESIGNED: Compact Post Card
   Widget _buildPostCard(Map<String, dynamic> post, int index) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = Theme.of(context).cardColor;
@@ -1047,70 +1044,72 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. HEADER
+          // 1. HEADER (Compact)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center, // Vertically centered
               children: [
                 GestureDetector(
-                  onTap: () {
-                    // Optional: Navigate to user profile
-                  },
+                  onTap: () {},
                   child: CircleAvatar(
-                    radius: 24, 
+                    radius: 20, // Reduced from 24
                     backgroundColor: Colors.grey[200],
                     backgroundImage: author['profilePicture'] != null && author['profilePicture'].toString().startsWith('http')
                         ? CachedNetworkImageProvider(author['profilePicture'])
                         : null,
-                    child: author['profilePicture'] == null ? Icon(Icons.person, size: 26, color: Colors.grey[400]) : null,
+                    child: author['profilePicture'] == null ? Icon(Icons.person, size: 20, color: Colors.grey[400]) : null,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        author['fullName'] ?? 'Alumni Member', 
-                        style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 16, color: textColor)
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        author['jobTitle'] ?? 'Member', 
-                        style: GoogleFonts.lato(color: subTextColor, fontSize: 12),
-                        maxLines: 1, 
-                        overflow: TextOverflow.ellipsis
-                      ),
-                      const SizedBox(height: 2),
                       Row(
                         children: [
-                          Text(timeAgo, style: GoogleFonts.lato(fontSize: 11, color: Colors.grey)),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.public, size: 12, color: Colors.grey), 
+                          Flexible(
+                            child: Text(
+                              author['fullName'] ?? 'Alumni Member', 
+                              style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 15, color: textColor), // Reduced size
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "• $timeAgo", 
+                            style: GoogleFonts.lato(fontSize: 11, color: Colors.grey)
+                          ),
                         ],
-                      )
+                      ),
+                      if (author['jobTitle'] != null)
+                        Text(
+                          author['jobTitle'], 
+                          style: GoogleFonts.lato(color: subTextColor, fontSize: 11),
+                          maxLines: 1, 
+                          overflow: TextOverflow.ellipsis
+                        ),
                     ],
                   ),
                 ),
 
                 if (canDelete || canEdit)
                   SizedBox(
-                    width: 30,
-                    height: 30,
+                    width: 24,
+                    height: 24,
                     child: PopupMenuButton<String>(
                       padding: EdgeInsets.zero,
-                      icon: Icon(Icons.more_horiz, color: subTextColor), 
+                      icon: Icon(Icons.more_horiz, color: subTextColor, size: 20), 
                       onSelected: (val) {
                         if (val == 'edit') _editPost(post['_id'], post['text']);
                         if (val == 'delete') _deletePost(post['_id']);
                       },
                       itemBuilder: (c) => [
                         if (canEdit)
-                          const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 10), Text("Edit")])),
+                          const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text("Edit", style: TextStyle(fontSize: 14))])),
                         if (canDelete)
-                          const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 20), SizedBox(width: 10), Text("Delete", style: TextStyle(color: Colors.red))]))
+                          const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text("Delete", style: TextStyle(color: Colors.red, fontSize: 14))]))
                       ],
                     ),
                   )
@@ -1118,44 +1117,44 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             ),
           ),
 
-          // 2. TEXT CONTENT
+          // 2. TEXT CONTENT (Tighter Padding)
           if (post['text'] != null && post['text'].toString().isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: SelectableText.rich( 
                 TextSpan(
                   children: _parseFormattedText(
                     post['text'], 
-                    GoogleFonts.lato(fontSize: 15, color: textColor, height: 1.5)
+                    GoogleFonts.lato(fontSize: 14, color: textColor, height: 1.4) // Slightly smaller
                   )
                 ),
               ),
             ),
 
-          // 3. MEDIA
+          // 3. MEDIA (Compact & Rounded)
           if (post['mediaType'] == 'image' && post['mediaUrl'] != null && post['mediaUrl'].toString().startsWith('http'))
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context, rootNavigator: true).push(
-                  MaterialPageRoute(
-                    builder: (context) => FullScreenImage(imageUrl: post['mediaUrl']),
-                  ),
-                );
-              },
-              child: Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 500), 
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.black : Colors.grey[100],
-                  border: Border.symmetric(horizontal: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!))
-                ),
-                child: ClipRect(
-                  child: CachedNetworkImage(
-                    imageUrl: post['mediaUrl'],
-                    fit: BoxFit.cover,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), // Side spacing
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(
+                      builder: (context) => FullScreenImage(imageUrl: post['mediaUrl']),
+                    ),
+                  );
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12), // Rounded corners
+                  child: Container(
                     width: double.infinity,
-                    placeholder: (context, url) => Container(height: 200, color: Colors.grey[100]),
-                    errorWidget: (context, url, error) => const SizedBox.shrink(),
+                    constraints: const BoxConstraints(maxHeight: 320), // Reduced max height to prevent stretching
+                    color: isDark ? Colors.black : Colors.grey[100],
+                    child: CachedNetworkImage(
+                      imageUrl: post['mediaUrl'],
+                      fit: BoxFit.cover, // Ensures image fills the box neatly
+                      placeholder: (context, url) => Container(height: 200, color: Colors.grey[200]),
+                      errorWidget: (context, url, error) => const SizedBox(height: 50),
+                    ),
                   ),
                 ),
               ),
@@ -1164,36 +1163,39 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
           // 4. STATS ROW
           if ((post['likes']?.length ?? 0) > 0 || (post['comments']?.length ?? 0) > 0)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   if ((post['likes']?.length ?? 0) > 0) ...[
                     Container(
                       padding: const EdgeInsets.all(4),
                       decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
-                      child: const Icon(Icons.thumb_up, size: 10, color: Colors.white)
+                      child: const Icon(Icons.thumb_up, size: 8, color: Colors.white)
                     ),
                     const SizedBox(width: 6),
                     Text(
                       "${post['likes']?.length}", 
-                      style: TextStyle(fontSize: 12, color: subTextColor)
+                      style: TextStyle(fontSize: 11, color: subTextColor)
                     ),
                   ],
                   const Spacer(),
                   if ((post['comments']?.length ?? 0) > 0)
                     Text(
                       "${post['comments']?.length} comments", 
-                      style: TextStyle(fontSize: 12, color: subTextColor)
+                      style: TextStyle(fontSize: 11, color: subTextColor)
                     ),
                 ],
               ),
             ),
 
-          const Divider(height: 1), 
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Divider(height: 1),
+          ),
 
-          // 5. ACTION BAR (Fixed Overflow)
+          // 5. ACTION BAR (Compact)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 0),
             child: Row(
               children: [
                 _buildActionButton(
@@ -1224,7 +1226,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
             ),
           ),
           
-          Container(height: 8, color: isDark ? Colors.black : Colors.grey[200]),
+          Container(height: 6, color: isDark ? Colors.black : Colors.grey[200]),
         ],
       ),
     );
@@ -1237,16 +1239,16 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(4),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 10), // Reduced vertical padding
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center, // Center content
+            mainAxisAlignment: MainAxisAlignment.center, 
             children: [
-              Icon(icon, size: 20, color: color),
+              Icon(icon, size: 18, color: color), // Smaller Icon
               const SizedBox(width: 6),
-              Flexible( // Prevent text overflow
+              Flexible( 
                 child: Text(
                   label, 
-                  style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 13, color: color),
+                  style: GoogleFonts.lato(fontWeight: FontWeight.w600, fontSize: 12, color: color), // Smaller text
                   overflow: TextOverflow.ellipsis,
                 )
               ),
@@ -1272,7 +1274,7 @@ class _UpdatesScreenState extends State<UpdatesScreen> {
 }
 
 // =========================================================
-// 🖼️ FULL SCREEN IMAGE VIEWER (NEW)
+// 🖼️ FULL SCREEN IMAGE VIEWER
 // =========================================================
 class FullScreenImage extends StatelessWidget {
   final String imageUrl;

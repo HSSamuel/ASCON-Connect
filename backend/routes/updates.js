@@ -171,6 +171,23 @@ router.put("/:id/like", verifyToken, async (req, res) => {
       );
     } else {
       post.likes.push(userId);
+
+      // ✅ SEND NOTIFICATION (If not liking own post)
+      if (post.authorId.toString() !== userId) {
+        try {
+          const likerProfile = await UserProfile.findOne({ userId });
+          const likerName = likerProfile ? likerProfile.fullName : "Someone";
+
+          await sendPersonalNotification(
+            post.authorId.toString(),
+            "New Like ❤️",
+            `${likerName} liked your post.`,
+            { type: "post_like", postId: post._id.toString() },
+          );
+        } catch (e) {
+          console.error("Like notification failed", e);
+        }
+      }
     }
 
     await post.save();

@@ -32,8 +32,6 @@ const storage = new CloudinaryStorage({
       resourceType = "raw";
     }
 
-    // ✅ FIX: Clean filename but PRESERVE EXTENSION for documents
-    // This ensures the download URL ends in .pdf, .docx, etc.
     const nameWithoutExt = file.originalname
       .replace(/\.[^/.]+$/, "")
       .replace(/[^a-zA-Z0-9]/g, "_");
@@ -41,7 +39,6 @@ const storage = new CloudinaryStorage({
 
     let publicId = `${nameWithoutExt}-${Date.now()}`;
 
-    // For raw files, manually append extension to public_id
     if (resourceType === "raw" && extension) {
       publicId += `.${extension}`;
     }
@@ -50,8 +47,6 @@ const storage = new CloudinaryStorage({
       folder: "ascon_chat_files",
       resource_type: resourceType,
       public_id: publicId,
-      // 'format' is only used for images/video conversions.
-      // For raw files, the extension in public_id is what matters.
       format: resourceType === "raw" ? undefined : file.mimetype.split("/")[1],
     };
   },
@@ -79,7 +74,7 @@ router.get("/unread-status", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 2. GET ALL CONVERSATIONS
+// 2. GET ALL CONVERSATIONS (✅ UPDATED: With Unread Count)
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
@@ -100,7 +95,6 @@ router.get("/", verify, async (req, res) => {
       userId: { $in: Array.from(allParticipantIds) },
     }).lean();
 
-    // Fetch Auth (Emails) for fallback
     const auths = await UserAuth.find({
       _id: { $in: Array.from(allParticipantIds) },
     })
@@ -113,15 +107,13 @@ router.get("/", verify, async (req, res) => {
     profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
     auths.forEach((a) => (authMap[a._id.toString()] = a));
 
-    const enrichedChats = chats
-      .map((chat) => {
+    // ✅ Use Promise.all to fetch unread counts asynchronously
+    const enrichedChats = await Promise.all(
+      chats.map(async (chat) => {
         // Group Logic
         if (chat.isGroup && chat.groupId) {
-          return {
-            ...chat,
-            groupName: chat.groupId.name,
-            groupIcon: chat.groupId.icon,
-          };
+          chat.groupName = chat.groupId.name;
+          chat.groupIcon = chat.groupId.icon;
         }
 
         // Direct Message Logic
@@ -151,11 +143,24 @@ router.get("/", verify, async (req, res) => {
           return null;
         }
 
-        return { ...chat, participants: enrichedParticipants };
-      })
-      .filter((chat) => chat !== null);
+        // ✅ NEW: Calculate Unread Count for THIS user
+        const unreadCount = await Message.countDocuments({
+          conversationId: chat._id,
+          sender: { $ne: req.user._id }, // Sender is NOT me
+          isRead: false,
+        });
 
-    res.json(enrichedChats);
+        return {
+          ...chat,
+          participants: enrichedParticipants,
+          unreadCount: unreadCount, // Return the count
+        };
+      }),
+    );
+
+    const validChats = enrichedChats.filter((chat) => chat !== null);
+
+    res.json({ success: true, data: validChats });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -213,7 +218,7 @@ router.post("/start", verify, async (req, res) => {
         await chat.save();
       }
     }
-    res.status(200).json(chat);
+    res.status(200).json({ success: true, data: chat });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -370,7 +375,7 @@ router.get("/:conversationId", verify, async (req, res) => {
       };
     });
 
-    res.status(200).json(enrichedMessages.reverse());
+    res.status(200).json({ success: true, data: enrichedMessages.reverse() });
   } catch (err) {
     res.status(500).json(err);
   }
@@ -432,7 +437,6 @@ router.post(
 
       const savedMessage = await newMessage.save();
 
-      // ✅ 1. Manually fetch Sender Profile for the response object
       const senderProfile = await UserProfile.findOne({ userId: req.user._id });
       const senderName = senderProfile
         ? senderProfile.fullName
@@ -460,34 +464,31 @@ router.post(
 
       // ✅ NOTIFICATION LOGIC
       if (conversation.isGroup && conversation.groupId) {
-        // 1. Emit Socket to Group Room
         req.io.to(conversation.groupId.toString()).emit("new_message", {
           message: messageObj,
           conversationId: conversation._id,
         });
 
-        // 2. Send Push Notification to All Participants (except sender)
         conversation.participants.forEach(async (participantId) => {
           if (participantId.toString() === req.user._id) return;
           try {
             await sendPersonalNotification(
               participantId.toString(),
-              conversation.groupName, // Title: Group Name (No prefix)
-              `${senderName}: ${lastMessagePreview}`, // Body: "Sender: Message"
+              conversation.groupName,
+              `${senderName}: ${lastMessagePreview}`,
               {
                 type: "chat_message",
                 conversationId: conversation._id.toString(),
                 senderId: req.user._id.toString(),
                 isGroup: "true",
-                groupId: conversation.groupId.toString(), // ✅ Added Group ID for navigation
-                groupName: conversation.groupName, // ✅ Added Group Name
-                senderName: senderName, // ✅ Added Sender Name
+                groupId: conversation.groupId.toString(),
+                groupName: conversation.groupName,
+                senderName: senderName,
               },
             );
           } catch (e) {}
         });
       } else {
-        // 1. Emit Socket to User Room
         conversation.participants.forEach(async (participantId) => {
           if (participantId.toString() === req.user._id) return;
           req.io.to(participantId.toString()).emit("new_message", {
@@ -495,18 +496,17 @@ router.post(
             conversationId: conversation._id,
           });
           try {
-            // 2. Send Push Notification
             await sendPersonalNotification(
               participantId.toString(),
-              senderName, // Title: Sender Name (No prefix)
-              lastMessagePreview, // Body: Message
+              senderName,
+              lastMessagePreview,
               {
                 type: "chat_message",
                 conversationId: conversation._id.toString(),
                 senderId: req.user._id.toString(),
                 isGroup: "false",
-                senderName: senderName, // ✅ Added Sender Name
-                senderProfilePic: senderPic, // ✅ Added Profile Pic
+                senderName: senderName,
+                senderProfilePic: senderPic,
               },
             );
           } catch (e) {}
@@ -557,7 +557,7 @@ router.put("/read/:conversationId", verify, async (req, res) => {
 // ---------------------------------------------------------
 // 8. DELETE CONVERSATION
 // ---------------------------------------------------------
-router.delete("/:conversationId", verify, async (req, res) => {
+router.delete("/conversation/:conversationId", verify, async (req, res) => {
   try {
     const conversation = await Conversation.findByIdAndDelete(
       req.params.conversationId,

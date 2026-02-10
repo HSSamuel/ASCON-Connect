@@ -42,49 +42,56 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _checkSessionAndNavigate() async {
-    // 1. Wait for animation minimum time
+    // 1. Wait for animation
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
 
-    // ✅ 2. Request Notification Permission EARLY (Splash Stage)
-    if (!kIsWeb) {
+    // 2. Check Session Validity
+    final bool isValid = await _authService.isSessionValid();
+    
+    // 3. Determine Next Destination
+    final String nextPath = isValid ? '/home' : '/login';
+
+    if (isValid) {
       try {
-        await NotificationService().requestPermission();
+        SocketService().initSocket();
+        // Initialize notifications if possible
+        NotificationService().init();
       } catch (e) {
-        debugPrint("⚠️ Permission Request Error: $e");
+        debugPrint("⚠️ Init error: $e");
       }
     }
 
-    final bool isValid = await _authService.isSessionValid();
-    
     if (!mounted) return;
 
+    // ✅ 4. CHECK NOTIFICATION PERMISSION STATE
+    final prefs = await SharedPreferences.getInstance();
+    
+    // ⚠️ FOR TESTING ONLY: Uncomment the line below to reset the "seen" status
+    // await prefs.remove('has_seen_notification_prompt'); 
+
+    bool hasSeenPrompt = prefs.getBool('has_seen_notification_prompt') ?? false;
+    
+    // Check system permission status
+    final status = await NotificationService().getAuthorizationStatus();
+    bool isAuthorized = status == AuthorizationStatus.authorized;
+
+    // If never seen prompt AND not already authorized -> Go to Permission Screen
+    // (Removed !kIsWeb check so you can test on Chrome)
+    if (!hasSeenPrompt && !isAuthorized) {
+      context.go('/notification_permission', extra: nextPath);
+      return;
+    }
+
+    // 5. Normal Navigation (Deep Link or Next Path)
     if (isValid) {
-      // ✅ Reconnect Socket
-      try {
-        SocketService().initSocket();
-      } catch (e) {
-        debugPrint("⚠️ Socket init error: $e");
-      }
-
-      if (!kIsWeb) {
-         try {
-           await NotificationService().init();
-         } catch (e) {}
-      }
-
-      // ✅ Deep Link Check
-      RemoteMessage? initialMessage =
-          await FirebaseMessaging.instance.getInitialMessage();
-
+      RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null && _isChatMessage(initialMessage)) {
-        _navigateToChat(initialMessage);
+        context.go('/home');
       } else {
-        // ✅ GoRouter Navigation
         context.go('/home');
       }
     } else {
-      // ✅ GoRouter Navigation
       context.go('/login');
     }
   }
@@ -92,10 +99,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   bool _isChatMessage(RemoteMessage message) {
     return message.data['type'] == 'chat_message' ||
            message.data['route'] == 'chat_screen';
-  }
-
-  void _navigateToChat(RemoteMessage message) {
-    context.go('/home'); 
   }
 
   @override

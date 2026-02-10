@@ -163,6 +163,14 @@ router.put("/respond/:id", verifyToken, async (req, res) => {
         "Your mentor has accepted your request. Chat now!",
         { route: "chat_screen", id: conversation._id.toString() },
       );
+    } else if (status === "Rejected") {
+      // ✅ NOTIFY MENTEE OF REJECTION
+      await sendPersonalNotification(
+        request.mentee._id.toString(),
+        "Mentorship Update",
+        "Your mentorship request was not accepted at this time.",
+        { route: "mentorship_requests" },
+      );
     }
 
     res.json(request);
@@ -292,7 +300,6 @@ router.delete("/cancel/:id", verifyToken, async (req, res) => {
     await MentorshipRequest.findByIdAndDelete(req.params.id);
 
     // 3. ✅ CLEANUP: Find and Delete associated Conversation
-    // This removes it from the Message List of both users.
     const conversation = await Conversation.findOne({
       participants: { $all: [mentor, mentee] },
     });
@@ -342,6 +349,18 @@ router.delete("/end/:id", verifyToken, async (req, res) => {
       console.log(
         `[Mentorship] Ended & cleaned conversation ${conversation._id}`,
       );
+    }
+
+    // ✅ NOTIFY THE OTHER PARTY
+    try {
+      const otherPartyId = req.user._id === mentor.toString() ? mentee : mentor;
+      await sendPersonalNotification(
+        otherPartyId.toString(),
+        "Mentorship Ended",
+        "Your mentorship connection has been ended.",
+      );
+    } catch (e) {
+      console.error("End mentorship notification failed", e);
     }
 
     res.json({ message: "Mentorship ended and chat history cleared." });

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import '../widgets/full_screen_image.dart'; 
 import 'chat_screen.dart'; 
+import 'call_screen.dart'; // ✅ Import Call Screen
 import '../services/data_service.dart';
 import '../services/socket_service.dart';
 import '../utils/presence_formatter.dart'; 
@@ -216,6 +217,23 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
+  // ✅ START 1-on-1 VOICE CALL
+  void _startVoiceCall() {
+    final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
+    final String fullName = _currentAlumniData['fullName'] ?? 'Alumni Member';
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          remoteName: fullName,
+          remoteId: targetId,
+          isCaller: true,
+        ),
+      ),
+    );
+  }
+
   String _formatLastSeen(String? dateString) {
     if (dateString == null) return "Offline";
     final formatted = PresenceFormatter.format(dateString);
@@ -237,11 +255,9 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     final String fullName = _currentAlumniData['fullName'] ?? 'Unknown Alumnus';
     final String job = _currentAlumniData['jobTitle'] ?? '';
     final String org = _currentAlumniData['organization'] ?? '';
-    // ✅ NEW: Extract Industry
     final String industry = _currentAlumniData['industry'] ?? '';
     
     String rawBio = _currentAlumniData['bio'] ?? '';
-    
     final String bio = rawBio.trim().isNotEmpty 
         ? rawBio 
         : (_isLoadingFullProfile ? 'Loading biography...' : 'No biography provided.');
@@ -431,8 +447,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                         ),
                         const SizedBox(height: 4),
                         
-                        // Header Work Info (Brief)
-                        // ✅ MODIFIED: Removed single-line constraint
                         if (job.isNotEmpty || org.isNotEmpty)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -444,8 +458,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
                                   "$job${(job.isNotEmpty && org.isNotEmpty) ? ' at ' : ''}$org",
                                   style: GoogleFonts.lato(fontSize: 13, color: subTextColor, fontWeight: FontWeight.w500),
                                   textAlign: TextAlign.center,
-                                  // maxLines: 1, // REMOVED to allow multiline
-                                  // overflow: TextOverflow.ellipsis, // REMOVED to prevent dots
                                 ),
                               ),
                             ],
@@ -520,33 +532,41 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
                   const SizedBox(height: 10),
 
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
-                        final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
-                        Navigator.of(context, rootNavigator: true).push(
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              receiverId: targetId,
-                              receiverName: fullName,
-                              receiverProfilePic: imageString,
-                              isOnline: _isOnline, 
-                              lastSeen: _lastSeen, 
+                  // ✅ ACTION BUTTONS (Voice Call Added)
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildCircleAction(context, Icons.chat_bubble_outline, "Message", primaryColor, () {
+                          final targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
+                          Navigator.of(context, rootNavigator: true).push(
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                receiverId: targetId,
+                                receiverName: fullName,
+                                receiverProfilePic: imageString,
+                                isOnline: _isOnline, 
+                                lastSeen: _lastSeen, 
+                              ),
                             ),
-                          ),
-                        );
-                      }),
+                          );
+                        }),
 
-                      if (linkedin.isNotEmpty)
-                        _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
-                      
-                      if (email.isNotEmpty)
-                        _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
-                      
-                      if (showPhone && phone.isNotEmpty)
-                        _buildCircleAction(context, Icons.phone, "Call", Colors.green[600]!, () => _launchURL("tel:$phone")),
-                    ],
+                        // ✅ NEW CALL BUTTON
+                        _buildCircleAction(context, Icons.call, "Voice Call", Colors.purple[700]!, _startVoiceCall),
+
+                        if (linkedin.isNotEmpty)
+                          _buildCircleAction(context, Icons.link, "LinkedIn", Colors.blue[700]!, () => _launchURL(linkedin)),
+                        
+                        if (email.isNotEmpty)
+                          _buildCircleAction(context, Icons.email, "Email", Colors.red[400]!, () => _launchURL("mailto:$email")),
+                        
+                        // Regular phone call (GSM)
+                        if (showPhone && phone.isNotEmpty)
+                          _buildCircleAction(context, Icons.phone_android, "Phone", Colors.green[600]!, () => _launchURL("tel:$phone")),
+                      ],
+                    ),
                   ),
 
                   const SizedBox(height: 25),
@@ -604,7 +624,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
                         const SizedBox(height: 16),
 
-                        // ✅ NEW: PROFESSIONAL INFO CARD
                         if (job.isNotEmpty || org.isNotEmpty || industry.isNotEmpty) 
                           Container(
                             width: double.infinity,
@@ -718,7 +737,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     );
   }
 
-  // ✅ Helper for the new Professional Card rows
   Widget _buildDetailRow(IconData icon, String label, String value, Color textColor) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
