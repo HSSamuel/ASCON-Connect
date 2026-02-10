@@ -145,8 +145,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     try {
       final result = await _api.get('/api/groups/$groupId/info');
       if (result['success'] == true) {
-        final data = result['data'];
-        final List<dynamic> admins = data['admins'] ?? [];
+        final data = result['data']; // Check if this also needs ['data'] depending on backend
+        final List<dynamic> admins = (data is Map && data.containsKey('data')) ? data['data']['admins'] : data['admins'] ?? [];
         if (mounted) {
           state = state.copyWith(groupAdminIds: admins.map((e) => e.toString()).toList());
         }
@@ -156,7 +156,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ UPDATED: Robust Fallback for ID and Logging
+  // ✅ UPDATED: Correctly parses the nested API response
   Future<String?> _findOrCreateConversation() async {
     try {
       final result = await _api.post('/api/chat/start', {
@@ -165,12 +165,16 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       });
       
       if (result['success'] == true && result['data'] != null) {
-        // ✅ Try both _id and id
-        final newId = result['data']['_id'] ?? result['data']['id'];
+        final body = result['data']; // This is the API body: {success: true, data: {...}}
+        
+        // Check if the body itself has a 'data' field (Double wrapping)
+        final innerData = (body is Map && body.containsKey('data')) ? body['data'] : body;
+        
+        // Try both _id and id
+        final newId = innerData['_id'] ?? innerData['id'];
         
         if (newId == null) {
-          // Log the full payload to see what we actually got
-          debugPrint("❌ CRITICAL: ID Missing. Full Response: ${result['data']}");
+          debugPrint("❌ CRITICAL: ID Missing. Parsed Body: $innerData");
           throw Exception("Server returned success but ID is missing in response.");
         }
 
@@ -194,22 +198,29 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
     try {
       final result = await _api.get('/api/chat/${state.conversationId}');
+      
       if (result['success'] == true) {
-        final List<dynamic> data = result['data'];
-        final newMessages = data.map((m) => ChatMessage.fromJson(m)).toList();
-        
-        if (mounted) {
-          state = state.copyWith(
-            messages: newMessages,
-            isLoading: false,
-            hasMoreMessages: newMessages.length >= 20
-          );
-          if (initial) _markRead();
+        // ✅ Handle nested data for GET requests too
+        final body = result['data'];
+        final rawList = (body is Map && body.containsKey('data')) ? body['data'] : body;
+
+        if (rawList is List) {
+          final newMessages = rawList.map((m) => ChatMessage.fromJson(m)).toList();
+          
+          if (mounted) {
+            state = state.copyWith(
+              messages: newMessages,
+              isLoading: false,
+              hasMoreMessages: newMessages.length >= 20
+            );
+            if (initial) _markRead();
+          }
         }
       } else if (result['statusCode'] == 403) {
         if (mounted) state = state.copyWith(isKicked: true);
       }
     } catch (e) {
+      debugPrint("Load Messages Error: $e");
       if (mounted) state = state.copyWith(isLoading: false);
     }
   }
@@ -223,17 +234,22 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     try {
       final result = await _api.get('/api/chat/${state.conversationId}?beforeId=$oldestId');
       if (result['success'] == true) {
-        final List<dynamic> data = result['data'];
-        final olderMessages = data.map((m) => ChatMessage.fromJson(m)).toList();
-        
-        if (mounted) {
-          if (olderMessages.isEmpty) {
-            state = state.copyWith(hasMoreMessages: false, isLoadingMore: false);
-          } else {
-            state = state.copyWith(
-              messages: [...olderMessages, ...state.messages],
-              isLoadingMore: false
-            );
+        // ✅ Handle nested data here as well
+        final body = result['data'];
+        final rawList = (body is Map && body.containsKey('data')) ? body['data'] : body;
+
+        if (rawList is List) {
+          final olderMessages = rawList.map((m) => ChatMessage.fromJson(m)).toList();
+          
+          if (mounted) {
+            if (olderMessages.isEmpty) {
+              state = state.copyWith(hasMoreMessages: false, isLoadingMore: false);
+            } else {
+              state = state.copyWith(
+                messages: [...olderMessages, ...state.messages],
+                isLoadingMore: false
+              );
+            }
           }
         }
       }
@@ -279,7 +295,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       try {
         currentConvId = await _findOrCreateConversation();
       } catch (e) {
-        // Return clear error message for Snackbar
         return "Chat Init Failed: ${e.toString().replaceAll('Exception: ', '')}";
       }
       
