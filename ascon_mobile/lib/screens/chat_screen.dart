@@ -19,7 +19,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:open_file/open_file.dart'; 
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
-import 'package:swipe_to/swipe_to.dart'; // Ensure you have this package or remove SwipeTo wrapper
 
 import '../services/api_client.dart';
 import '../services/socket_service.dart';
@@ -76,10 +75,6 @@ class _ChatScreenState extends State<ChatScreen> {
   
   bool _isLoadingMore = false;
   bool _hasMoreMessages = true;
-  
-  // ✅ New State Variable for precise button control
-  bool _isComposing = false;
-  
   bool _isTyping = false;
   Timer? _typingDebounce;
   bool _isPeerTyping = false;
@@ -122,17 +117,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _setupSocketListeners();
     _setupAudioPlayerListeners();
 
-    // ✅ ADD LISTENER to handle button state instantly
-    _textController.addListener(() {
-      final isComposing = _textController.text.trim().isNotEmpty;
-      if (_isComposing != isComposing) {
-        setState(() {
-          _isComposing = isComposing;
-        });
-      }
-      _handleTypingEvents();
-    });
-
     if (widget.isGroup && widget.groupId != null) {
       SocketService().socket?.emit('join_room', widget.groupId);
       _fetchGroupAdmins();
@@ -154,30 +138,6 @@ class _ChatScreenState extends State<ChatScreen> {
             }
           });
         }
-      });
-    }
-  }
-
-  void _handleTypingEvents() {
-    if (_activeConversationId == null) return;
-    
-    if (_textController.text.isNotEmpty) {
-      if (!_isTyping) {
-        _isTyping = true;
-        SocketService().socket?.emit('typing_start', {
-          'receiverId': widget.receiverId,
-          'conversationId': _activeConversationId,
-          'groupId': widget.isGroup ? widget.groupId : null
-        });
-      }
-      _typingDebounce?.cancel();
-      _typingDebounce = Timer(const Duration(seconds: 2), () {
-        _isTyping = false;
-        SocketService().socket?.emit('typing_stop', {
-          'receiverId': widget.receiverId,
-          'conversationId': _activeConversationId,
-          'groupId': widget.isGroup ? widget.groupId : null
-        });
       });
     }
   }
@@ -241,7 +201,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _audioPlayer.dispose();
 
     if (_isTyping && _activeConversationId != null) {
-      SocketService().socket?.emit('typing_stop', {
+      SocketService().socket?.emit('stop_typing', {
         'receiverId': widget.receiverId,
         'conversationId': _activeConversationId,
         'groupId': widget.isGroup ? widget.groupId : null
@@ -432,10 +392,9 @@ class _ChatScreenState extends State<ChatScreen> {
      if (_activeConversationId != null) await _api.put('/api/chat/read/$_activeConversationId', {});
   }
 
-  // ✅ FIXED: Use addPostFrameCallback to ensure scroll happens AFTER render
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 100), () {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
@@ -459,41 +418,29 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice recording not supported on Web yet.")));
       return;
     }
-    
-    // ✅ CHECK PERMISSIONS FIRST
     if (await Permission.microphone.request().isGranted) {
       try {
         if (await Vibration.hasVibrator() ?? false) Vibration.vibrate(duration: 50);
-        
         final tempDir = await getTemporaryDirectory();
         final path = '${tempDir.path}/audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        
-        // Ensure recorder has permission internally
-        if (await _audioRecorder.hasPermission()) {
-           await _audioRecorder.start(const RecordConfig(), path: path);
-           setState(() {
-             _isRecording = true;
-             _recordDuration = 0;
-           });
-           _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-             setState(() => _recordDuration++);
-           });
-        }
+        await _audioRecorder.start(const RecordConfig(), path: path);
+        setState(() {
+          _isRecording = true;
+          _recordDuration = 0;
+        });
+        _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          setState(() => _recordDuration++);
+        });
       } catch (e) {
         debugPrint("Recording Error: $e");
       }
-    } else {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Microphone permission needed")));
     }
   }
 
   Future<void> _stopRecording({bool send = true}) async {
     _recordTimer?.cancel();
-    if (!_isRecording) return; // Safety check
-
     final path = await _audioRecorder.stop();
     setState(() => _isRecording = false);
-    
     if (send && path != null) {
       _sendMessage(filePath: path, type: 'audio');
     }
@@ -564,8 +511,6 @@ class _ChatScreenState extends State<ChatScreen> {
           _editingMessage!.isEdited = true;
           _editingMessage = null;
           _textController.clear();
-          // ✅ Reset composing state manually after edit
-          _isComposing = false;
         });
       } catch (e) { debugPrint("Edit Failed"); }
       return;
@@ -595,7 +540,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(tempMessage);
       _textController.clear();
       _isTyping = false;
-      _isComposing = false; // ✅ Reset button state immediately
       _replyingTo = null;
     });
     _scrollToBottom();
@@ -866,6 +810,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         totalDuration: _totalDuration,
                         downloadingFileId: _downloadingFileId,
                         isAdmin: widget.isGroup && _groupAdminIds.contains(msg.senderId),
+                        
                         showSenderName: widget.isGroup && msg.senderId != _myUserId,
                         
                         onSwipeReply: (id) {
@@ -915,17 +860,34 @@ class _ChatScreenState extends State<ChatScreen> {
                   replyingTo: _replyingTo,
                   editingMessage: _editingMessage,
                   myUserId: _myUserId ?? "",
-                  // ✅ Pass the _isComposing state for button logic
-                  isComposing: _isComposing, 
                   onCancelReply: () => setState(() => _replyingTo = null),
-                  onCancelEdit: () => setState(() { _editingMessage = null; _textController.clear(); _isComposing = false; }),
+                  onCancelEdit: () => setState(() { _editingMessage = null; _textController.clear(); }),
                   onStartRecording: _startRecording,
                   onStopRecording: () => _stopRecording(send: true),
                   onCancelRecording: _cancelRecording,
                   onSendMessage: () => _sendMessage(text: _textController.text),
                   onAttachmentMenu: _showAttachmentMenu,
                   onTyping: (val) {
-                    // Handled by listener now, but keep for fallback
+                    setState(() {});
+                    if (val.isNotEmpty) {
+                       if (!_isTyping) { 
+                         _isTyping = true; 
+                         SocketService().socket?.emit('typing', {
+                           'receiverId': widget.receiverId, 
+                           'conversationId': _activeConversationId,
+                           'groupId': widget.isGroup ? widget.groupId : null
+                         }); 
+                       }
+                       _typingDebounce?.cancel();
+                       _typingDebounce = Timer(const Duration(seconds: 2), () { 
+                         _isTyping = false; 
+                         SocketService().socket?.emit('stop_typing', {
+                           'receiverId': widget.receiverId, 
+                           'conversationId': _activeConversationId,
+                           'groupId': widget.isGroup ? widget.groupId : null
+                         }); 
+                       });
+                    }
                   },
                 ),
               ),
@@ -979,8 +941,12 @@ class MessageBubble extends StatelessWidget {
     final statusIcon = msg.status == MessageStatus.sending ? Icons.access_time : (msg.isRead ? Icons.done_all : Icons.check);
     final statusColor = msg.status == MessageStatus.sending ? Colors.grey : (msg.isRead ? Colors.blue : Colors.grey);
 
-    // If swipe to library is available
-    Widget bubbleContent = GestureDetector(
+    return Dismissible(
+      key: Key(msg.id),
+      direction: DismissDirection.startToEnd,
+      confirmDismiss: (d) async { onSwipeReply(msg.id); return false; },
+      background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: Colors.transparent, child: Icon(Icons.reply, color: primaryColor)),
+      child: GestureDetector(
         onLongPress: () => onToggleSelection(msg.id),
         onTap: () { if (isSelectionMode) onToggleSelection(msg.id); },
         child: Container(
@@ -1045,22 +1011,16 @@ class MessageBubble extends StatelessWidget {
             ),
           ),
         ),
-      );
-
-    // Optional: Wrap with SwipeTo if package exists
-    return Dismissible(
-      key: Key(msg.id),
-      direction: DismissDirection.startToEnd,
-      confirmDismiss: (d) async { onSwipeReply(msg.id); return false; },
-      background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: Colors.transparent, child: Icon(Icons.reply, color: primaryColor)),
-      child: bubbleContent,
+      ),
     );
   }
 
+  // ✅ FIX: Added heroTag to FullScreenImage parameters to support existing widget
   Widget _buildMediaContent(BuildContext context) {
     if (msg.type == 'image') {
       return GestureDetector(
         onTap: () {
+           // We use msg.id as a unique heroTag for the animation
            if (msg.fileUrl != null) Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id)));
         },
         child: ClipRRect(
@@ -1070,20 +1030,6 @@ class MessageBubble extends StatelessWidget {
               : CachedNetworkImage(imageUrl: msg.fileUrl!, placeholder: (c, u) => const CircularProgressIndicator(), errorWidget: (c, u, e) => const Icon(Icons.broken_image)),
         ),
       );
-    }
-    // Simple placeholder for audio/files
-    if (msg.type == 'audio') {
-       final isPlaying = playingMessageId == msg.id;
-       return Row(
-         mainAxisSize: MainAxisSize.min,
-         children: [
-           IconButton(
-             icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: isMe ? Colors.white : primaryColor),
-             onPressed: () => isPlaying ? onPauseAudio(msg.id, "") : onPlayAudio(msg.fileUrl ?? ""),
-           ),
-           Text(isPlaying ? "${currentPosition.inSeconds}s / ${totalDuration.inSeconds}s" : "Voice Message", style: TextStyle(color: isMe ? Colors.white : Colors.black87))
-         ],
-       );
     }
     return const SizedBox.shrink(); 
   }
@@ -1102,7 +1048,6 @@ class ChatInputArea extends StatelessWidget {
   final ChatMessage? replyingTo;
   final ChatMessage? editingMessage;
   final String myUserId;
-  final bool isComposing; // ✅ Received from parent to control button state
   final VoidCallback onCancelReply;
   final VoidCallback onCancelEdit;
   final VoidCallback onStartRecording;
@@ -1115,7 +1060,7 @@ class ChatInputArea extends StatelessWidget {
   const ChatInputArea({
     super.key, required this.controller, required this.focusNode, required this.isDark, required this.primaryColor,
     required this.isRecording, required this.recordDuration, required this.replyingTo, required this.editingMessage,
-    required this.myUserId, required this.isComposing, required this.onCancelReply, required this.onCancelEdit, required this.onStartRecording,
+    required this.myUserId, required this.onCancelReply, required this.onCancelEdit, required this.onStartRecording,
     required this.onStopRecording, required this.onCancelRecording, required this.onSendMessage, required this.onAttachmentMenu,
     required this.onTyping
   });
@@ -1171,21 +1116,13 @@ class ChatInputArea extends StatelessWidget {
                    ),
                  ),
                  const SizedBox(width: 8),
-                 // ✅ FIXED BUTTON LOGIC: Separated gestures to avoid conflict
                  GestureDetector(
-                   onLongPress: isComposing ? null : onStartRecording, // Only allow record if NOT composing
-                   onTap: () {
-                      if (isComposing) {
-                        onSendMessage();
-                      } else {
-                        // Optional feedback if user taps mic without holding
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hold to record"), duration: Duration(milliseconds: 500)));
-                      }
-                   },
+                   onLongPress: onStartRecording,
+                   onTap: onSendMessage,
                    child: Container(
                      padding: const EdgeInsets.all(12),
                      decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-                     child: Icon(isComposing ? Icons.send_rounded : Icons.mic, color: Colors.white, size: 20),
+                     child: Icon(controller.text.isEmpty ? Icons.mic : Icons.send_rounded, color: Colors.white, size: 20),
                    ),
                  ),
                ],
