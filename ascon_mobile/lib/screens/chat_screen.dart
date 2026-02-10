@@ -161,14 +161,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     
     if (!mounted) return;
 
-    if (error == null || type == 'text') {
+    if (error == null) {
       setState(() {
         _replyingTo = null;
         _textController.clear();
       });
       _scrollToBottom();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      // ✅ Now correctly shows error for ALL types (text, image, file)
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 

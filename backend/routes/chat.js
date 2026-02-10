@@ -20,10 +20,7 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
     let resourceType = "raw";
-    // Check if it's an image
     if (file.mimetype.startsWith("image/")) resourceType = "image";
-
-    // Explicitly check for document types to treat as 'raw'
     if (
       file.originalname.match(
         /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|csv)$/i,
@@ -38,7 +35,6 @@ const storage = new CloudinaryStorage({
     const extension = file.originalname.split(".").pop();
 
     let publicId = `${nameWithoutExt}-${Date.now()}`;
-
     if (resourceType === "raw" && extension) {
       publicId += `.${extension}`;
     }
@@ -69,12 +65,12 @@ router.get("/unread-status", verify, async (req, res) => {
     });
     res.status(200).json({ hasUnread: !!hasUnread });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
 // ---------------------------------------------------------
-// 2. GET ALL CONVERSATIONS (✅ UPDATED: With Unread Count)
+// 2. GET ALL CONVERSATIONS
 // ---------------------------------------------------------
 router.get("/", verify, async (req, res) => {
   try {
@@ -107,16 +103,13 @@ router.get("/", verify, async (req, res) => {
     profiles.forEach((p) => (profileMap[p.userId.toString()] = p));
     auths.forEach((a) => (authMap[a._id.toString()] = a));
 
-    // ✅ Use Promise.all to fetch unread counts asynchronously
     const enrichedChats = await Promise.all(
       chats.map(async (chat) => {
-        // Group Logic
         if (chat.isGroup && chat.groupId) {
           chat.groupName = chat.groupId.name;
           chat.groupIcon = chat.groupId.icon;
         }
 
-        // Direct Message Logic
         const enrichedParticipants = chat.participants.map((pId) => {
           const idStr = pId.toString();
           const profile = profileMap[idStr];
@@ -135,7 +128,6 @@ router.get("/", verify, async (req, res) => {
           };
         });
 
-        // Filter Ghost Chats
         const otherUser = enrichedParticipants.find(
           (p) => p._id !== req.user._id,
         );
@@ -143,34 +135,37 @@ router.get("/", verify, async (req, res) => {
           return null;
         }
 
-        // ✅ NEW: Calculate Unread Count for THIS user
         const unreadCount = await Message.countDocuments({
           conversationId: chat._id,
-          sender: { $ne: req.user._id }, // Sender is NOT me
+          sender: { $ne: req.user._id },
           isRead: false,
         });
 
         return {
           ...chat,
           participants: enrichedParticipants,
-          unreadCount: unreadCount, // Return the count
+          unreadCount: unreadCount,
         };
       }),
     );
 
     const validChats = enrichedChats.filter((chat) => chat !== null);
-
     res.json({ success: true, data: validChats });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
 // ---------------------------------------------------------
-// 3. START OR GET CONVERSATION
+// 3. START OR GET CONVERSATION (✅ FIXED RETURN OBJECT)
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId, groupId } = req.body;
+
+  if (!receiverId && !groupId) {
+    return res.status(400).json({ message: "Missing receiverId or groupId" });
+  }
+
   try {
     let chat;
     if (groupId) {
@@ -178,9 +173,11 @@ router.post("/start", verify, async (req, res) => {
       if (!chat) {
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
+
         let initialParticipants = group.members || [];
         if (!initialParticipants.some((id) => id.toString() === req.user._id))
           initialParticipants.push(req.user._id);
+
         chat = new Conversation({
           isGroup: true,
           groupId: groupId,
@@ -209,18 +206,33 @@ router.post("/start", verify, async (req, res) => {
         }
       }
     } else {
+      // 1-on-1 Chat
       chat = await Conversation.findOne({
         isGroup: false,
         participants: { $all: [req.user._id, receiverId] },
       });
+
       if (!chat) {
         chat = new Conversation({ participants: [req.user._id, receiverId] });
         await chat.save();
       }
     }
-    res.status(200).json({ success: true, data: chat });
+
+    // ✅ FORCE OBJECT CONVERSION TO ENSURE _id IS PRESENT
+    const chatObj = chat.toObject ? chat.toObject() : chat;
+
+    // Explicit debug log to verify ID exists on server
+    if (!chatObj._id) {
+      console.error("CRITICAL: Conversation created but has no _id", chatObj);
+      return res
+        .status(500)
+        .json({ message: "Internal Error: Chat ID missing" });
+    }
+
+    res.status(200).json({ success: true, data: chatObj });
   } catch (err) {
-    res.status(500).json(err);
+    console.error("Chat Start Error:", err);
+    res.status(500).json({ message: err.message || "Failed to start chat" });
   }
 });
 
@@ -278,7 +290,7 @@ router.post("/delete-multiple", verify, async (req, res) => {
     }
     res.status(200).json({ success: true });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -310,7 +322,7 @@ async function _emitDeleteEvent(
 }
 
 // ---------------------------------------------------------
-// 5. GET MESSAGES (With Profile Names)
+// 5. GET MESSAGES
 // ---------------------------------------------------------
 router.get("/:conversationId", verify, async (req, res) => {
   try {
@@ -377,12 +389,12 @@ router.get("/:conversationId", verify, async (req, res) => {
 
     res.status(200).json({ success: true, data: enrichedMessages.reverse() });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
 // ---------------------------------------------------------
-// 6. SEND MESSAGE (✅ UPDATED: Enhanced Notifications)
+// 6. SEND MESSAGE
 // ---------------------------------------------------------
 router.post(
   "/:conversationId",
@@ -462,7 +474,6 @@ router.post(
         lastMessageAt: Date.now(),
       });
 
-      // ✅ NOTIFICATION LOGIC
       if (conversation.isGroup && conversation.groupId) {
         req.io.to(conversation.groupId.toString()).emit("new_message", {
           message: messageObj,
@@ -515,7 +526,8 @@ router.post(
 
       res.status(200).json(messageObj);
     } catch (err) {
-      res.status(500).json(err);
+      console.error("Send Message Error:", err);
+      res.status(500).json({ message: err.message });
     }
   },
 );
@@ -550,7 +562,7 @@ router.put("/read/:conversationId", verify, async (req, res) => {
     }
     res.status(200).json({ success: true });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -566,7 +578,7 @@ router.delete("/conversation/:conversationId", verify, async (req, res) => {
       await Message.deleteMany({ conversationId: req.params.conversationId });
     res.status(200).json({ message: "Deleted." });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -576,28 +588,28 @@ router.delete("/conversation/:conversationId", verify, async (req, res) => {
 router.put("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
-    if (!msg) return res.status(404).json("Not found");
+    if (!msg) return res.status(404).json({ message: "Not found" });
     if (msg.sender.toString() !== req.user._id)
-      return res.status(403).json("Unauthorized");
+      return res.status(403).json({ message: "Unauthorized" });
     msg.text = req.body.text;
     msg.isEdited = true;
     await msg.save();
     res.status(200).json(msg);
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
 router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
-    if (!msg) return res.status(404).json("Not found");
+    if (!msg) return res.status(404).json({ message: "Not found" });
     await Message.findByIdAndDelete(req.params.id);
     const conversation = await Conversation.findById(msg.conversationId);
     _emitDeleteEvent(req, msg.conversationId, [msg._id], true, conversation);
     res.status(200).json({ message: "Deleted" });
   } catch (err) {
-    res.status(500).json(err);
+    res.status(500).json({ message: err.message });
   }
 });
 

@@ -129,7 +129,12 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     if (state.conversationId != null) {
       await loadMessages(initial: true);
     } else {
-      await _findOrCreateConversation();
+      // Attempt init, but don't crash if it fails (lazy init)
+      try {
+        await _findOrCreateConversation();
+      } catch (e) {
+        debugPrint("Initial chat creation check failed: $e");
+      }
     }
 
     _setupSocketListeners();
@@ -151,23 +156,36 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ UPDATED: Returns ID so sendMessage can use it
+  // ✅ UPDATED: Robust Fallback for ID and Logging
   Future<String?> _findOrCreateConversation() async {
     try {
       final result = await _api.post('/api/chat/start', {
         'receiverId': receiverId, 
         'groupId': isGroup ? groupId : null
       });
-      if (result['success'] == true) {
-        final newId = result['data']['_id'];
+      
+      if (result['success'] == true && result['data'] != null) {
+        // ✅ Try both _id and id
+        final newId = result['data']['_id'] ?? result['data']['id'];
+        
+        if (newId == null) {
+          // Log the full payload to see what we actually got
+          debugPrint("❌ CRITICAL: ID Missing. Full Response: ${result['data']}");
+          throw Exception("Server returned success but ID is missing in response.");
+        }
+
         if (mounted) {
-          state = state.copyWith(conversationId: newId);
+          state = state.copyWith(conversationId: newId.toString());
           await loadMessages(initial: true);
         }
-        return newId;
+        return newId.toString();
+      } else {
+        throw Exception(result['message'] ?? "Unknown server error");
       }
-    } catch (_) {}
-    return null;
+    } catch (e) {
+      debugPrint("❌ Chat Initialization Error: $e");
+      rethrow; 
+    }
   }
 
   Future<void> loadMessages({bool initial = false}) async {
@@ -243,7 +261,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ UPDATED: Returns String? error (null = success)
+  // ✅ UPDATED: Captures errors and displays them
   Future<String?> sendMessage({
     String? text, 
     String? filePath, 
@@ -258,8 +276,14 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     // 1. AUTO-INITIALIZE CHAT if missing
     String? currentConvId = state.conversationId;
     if (currentConvId == null) {
-      currentConvId = await _findOrCreateConversation();
-      if (currentConvId == null || !mounted) return "Chat initialization failed";
+      try {
+        currentConvId = await _findOrCreateConversation();
+      } catch (e) {
+        // Return clear error message for Snackbar
+        return "Chat Init Failed: ${e.toString().replaceAll('Exception: ', '')}";
+      }
+      
+      if (currentConvId == null) return "Could not start conversation";
     }
 
     final token = await _auth.getToken();
@@ -295,7 +319,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       var request = http.MultipartRequest('POST', url);
       request.headers['auth-token'] = token; 
 
-      request.fields['text'] = text ?? ""; // Ensure not null
+      request.fields['text'] = text ?? ""; 
       request.fields['type'] = type;
       if (replyToId != null) request.fields['replyToId'] = replyToId;
 
@@ -308,7 +332,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
-      if (!mounted) return null; // Assume success if user left
+      if (!mounted) return null; 
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         try {
@@ -323,11 +347,16 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
       } else {
         _markMessageError(tempId);
-        return "Failed: ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          return "Failed: ${errBody['message'] ?? response.statusCode}";
+        } catch (_) {
+          return "Failed: ${response.statusCode}";
+        }
       }
     } catch (e) {
       if (mounted) _markMessageError(tempId);
-      return "Connection error";
+      return "Connection error: ${e.toString()}";
     }
   }
 
