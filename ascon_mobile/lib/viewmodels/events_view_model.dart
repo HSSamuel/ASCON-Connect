@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config.dart';
@@ -11,17 +9,48 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 
-class EventsViewModel extends ChangeNotifier {
+// ✅ 1. IMMUTABLE STATE
+class EventsState {
+  final List<dynamic> events;
+  final bool isLoading;
+  final bool isPosting;
+  final bool isAdmin;
+  final String? errorMessage;
+
+  const EventsState({
+    this.events = const [],
+    this.isLoading = true,
+    this.isPosting = false,
+    this.isAdmin = false,
+    this.errorMessage,
+  });
+
+  EventsState copyWith({
+    List<dynamic>? events,
+    bool? isLoading,
+    bool? isPosting,
+    bool? isAdmin,
+    String? errorMessage,
+  }) {
+    return EventsState(
+      events: events ?? this.events,
+      isLoading: isLoading ?? this.isLoading,
+      isPosting: isPosting ?? this.isPosting,
+      isAdmin: isAdmin ?? this.isAdmin,
+      errorMessage: errorMessage,
+    );
+  }
+}
+
+// ✅ 2. STATE NOTIFIER
+class EventsNotifier extends StateNotifier<EventsState> {
   final DataService _dataService = DataService();
   final ApiClient _api = ApiClient();
   final AuthService _authService = AuthService();
 
-  List<dynamic> events = [];
-  bool isLoading = true;
-  bool isAdmin = false;
-  
-  // State for Create Event Sheet
-  bool isPosting = false;
+  EventsNotifier() : super(const EventsState()) {
+    init();
+  }
 
   void init() {
     checkAdmin();
@@ -29,33 +58,40 @@ class EventsViewModel extends ChangeNotifier {
   }
 
   Future<void> checkAdmin() async {
-    isAdmin = await _authService.isAdmin;
-    notifyListeners();
+    final bool adminStatus = await _authService.isAdmin;
+    state = state.copyWith(isAdmin: adminStatus);
   }
 
-  Future<void> loadEvents() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> loadEvents({bool silent = false}) async {
+    if (!silent) state = state.copyWith(isLoading: true, errorMessage: null);
+    
     try {
-      events = await _dataService.fetchEvents();
-    } catch (_) {
-      // Handle error silently or expose error string
-    } finally {
-      isLoading = false;
-      notifyListeners();
+      final fetchedEvents = await _dataService.fetchEvents();
+      // Reverse chronological sort if API doesn't guarantee it
+      fetchedEvents.sort((a, b) {
+        final da = DateTime.tryParse(a['date'] ?? '') ?? DateTime(2000);
+        final db = DateTime.tryParse(b['date'] ?? '') ?? DateTime(2000);
+        return db.compareTo(da);
+      });
+
+      if (mounted) {
+        state = state.copyWith(isLoading: false, events: fetchedEvents);
+      }
+    } catch (e) {
+      if (mounted) {
+        state = state.copyWith(isLoading: false, errorMessage: "Could not load events.");
+      }
     }
   }
 
   Future<bool> deleteEvent(String eventId) async {
-    isLoading = true;
-    notifyListeners();
+    state = state.copyWith(isLoading: true);
     try {
       await _api.delete('/api/events/$eventId');
-      await loadEvents(); // Reload list
+      await loadEvents(silent: true);
       return true;
     } catch (e) {
-      isLoading = false;
-      notifyListeners();
+      state = state.copyWith(isLoading: false, errorMessage: "Failed to delete event.");
       return false;
     }
   }
@@ -69,8 +105,7 @@ class EventsViewModel extends ChangeNotifier {
     required DateTime date,
     XFile? image,
   }) async {
-    isPosting = true;
-    notifyListeners();
+    state = state.copyWith(isPosting: true);
 
     try {
       final token = await _authService.getToken();
@@ -100,18 +135,23 @@ class EventsViewModel extends ChangeNotifier {
       var response = await request.send();
       final respStr = await response.stream.bytesToString();
 
+      state = state.copyWith(isPosting: false);
+
       if (response.statusCode == 201) {
-        await loadEvents(); // Refresh list on success
-        return null; // Success (no error message)
+        await loadEvents(silent: true);
+        return null; // Success
       } else {
         final errorJson = jsonDecode(respStr);
         return errorJson['message'] ?? "Upload failed";
       }
     } catch (e) {
-      return "Connection Error";
-    } finally {
-      isPosting = false;
-      notifyListeners();
+      state = state.copyWith(isPosting: false);
+      return "Connection Error: ${e.toString()}";
     }
   }
 }
+
+// ✅ 3. PROVIDER
+final eventsProvider = StateNotifierProvider.autoDispose<EventsNotifier, EventsState>((ref) {
+  return EventsNotifier();
+});

@@ -5,7 +5,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
-const rateLimit = require("express-rate-limit");
+// const rateLimit = require("express-rate-limit"); // REMOVED
 const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
@@ -37,6 +37,8 @@ app.use(
   }),
 );
 
+// RATE LIMITER REMOVED PER REQUEST
+/*
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -49,6 +51,7 @@ const limiter = rateLimit({
   },
 });
 app.use("/api", limiter);
+*/
 
 // ==========================================
 // 📖 API DOCUMENTATION

@@ -1,81 +1,31 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ RIVERPOD
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../services/data_service.dart';
-import '../services/auth_service.dart';
+import '../viewmodels/events_view_model.dart';
 import '../widgets/shimmer_utils.dart'; 
 import 'event_detail_screen.dart';
 
-class EventsScreen extends StatefulWidget {
+class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});
 
   @override
-  State<EventsScreen> createState() => _EventsScreenState();
+  ConsumerState<EventsScreen> createState() => _EventsScreenState();
 }
 
-class _EventsScreenState extends State<EventsScreen> {
-  final DataService _dataService = DataService();
+class _EventsScreenState extends ConsumerState<EventsScreen> {
   final TextEditingController _searchController = TextEditingController();
-
-  List<dynamic> _allEvents = [];
-  List<dynamic> _filteredEvents = [];
-  List<dynamic> _featuredEvents = [];
-  
-  bool _isLoading = true;
   String _selectedCategory = "All";
-  
-  // News added as requested
   final List<String> _categories = ["All", "News", "Reunion", "Webinar", "Workshop", "General"];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadEvents();
-  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadEvents() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-    
-    try {
-      final events = await _dataService.fetchEvents();
-      if (mounted) {
-        setState(() {
-          _allEvents = events;
-          _filteredEvents = events;
-          _featuredEvents = events.take(3).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _filterEvents() {
-    final query = _searchController.text.toLowerCase();
-    
-    setState(() {
-      _filteredEvents = _allEvents.where((event) {
-        final title = (event['title'] ?? "").toString().toLowerCase();
-        final type = (event['type'] ?? "General").toString();
-        
-        final matchesSearch = title.contains(query);
-        final matchesCategory = _selectedCategory == "All" || type == _selectedCategory;
-
-        return matchesSearch && matchesCategory;
-      }).toList();
-    });
   }
 
   Future<void> _addToCalendar(Map<String, dynamic> event) async {
@@ -107,19 +57,35 @@ class _EventsScreenState extends State<EventsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ WATCH PROVIDER STATE
+    final eventsState = ref.watch(eventsProvider);
+    final allEvents = eventsState.events;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
-    // Calculate card width ONCE per frame here
-    final screenWidth = MediaQuery.of(context).size.width;
-    // Formula: (ScreenWidth - ListPaddingLeft - ListPaddingRight - CardMargin) / 2
-    double cardWidth = (screenWidth - 48) / 2;
-    if (cardWidth < 140) cardWidth = 140; // Safety floor
+    // Filter Logic (Local to View)
+    final query = _searchController.text.toLowerCase();
+    final filteredEvents = allEvents.where((event) {
+      final title = (event['title'] ?? "").toString().toLowerCase();
+      final type = (event['type'] ?? "General").toString();
+      
+      final matchesSearch = title.contains(query);
+      final matchesCategory = _selectedCategory == "All" || type == _selectedCategory;
 
-    final bool showFeatured = _featuredEvents.isNotEmpty && _searchController.text.isEmpty;
+      return matchesSearch && matchesCategory;
+    }).toList();
+
+    final featuredEvents = allEvents.take(3).toList();
+    final bool showFeatured = featuredEvents.isNotEmpty && _searchController.text.isEmpty;
+
+    // Calculate card width
+    final screenWidth = MediaQuery.of(context).size.width;
+    double cardWidth = (screenWidth - 48) / 2;
+    if (cardWidth < 140) cardWidth = 140; 
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -151,7 +117,7 @@ class _EventsScreenState extends State<EventsScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _searchController,
-                    onChanged: (val) => _filterEvents(),
+                    onChanged: (val) => setState(() {}), // Trigger rebuild to filter
                     decoration: InputDecoration(
                       hintText: "Find events...",
                       prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
@@ -167,10 +133,10 @@ class _EventsScreenState extends State<EventsScreen> {
 
             // 2. SCROLLABLE CONTENT
             Expanded(
-              child: _isLoading
+              child: eventsState.isLoading
                   ? const EventListSkeleton()
                   : RefreshIndicator(
-                      onRefresh: _loadEvents,
+                      onRefresh: () async => ref.read(eventsProvider.notifier).loadEvents(),
                       color: primaryColor,
                       child: CustomScrollView(
                         slivers: [
@@ -189,11 +155,11 @@ class _EventsScreenState extends State<EventsScreen> {
                                     child: ListView.separated(
                                       scrollDirection: Axis.horizontal,
                                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                                      itemCount: _featuredEvents.length,
+                                      itemCount: featuredEvents.length,
                                       separatorBuilder: (c, i) => const SizedBox(width: 16), 
                                       itemBuilder: (context, index) => _buildFeaturedCard(
                                         context, 
-                                        _featuredEvents[index], 
+                                        featuredEvents[index], 
                                         cardWidth 
                                       ),
                                     ),
@@ -202,14 +168,13 @@ class _EventsScreenState extends State<EventsScreen> {
                               ),
                             ),
 
-                          // B. CATEGORY CHIPS (WRAPPED)
-                          // ✅ CHANGED: Replaced SingleChildScrollView+Row with Wrap for responsiveness
+                          // B. CATEGORY CHIPS
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
                               child: Wrap(
-                                spacing: 8.0, // Horizontal gap
-                                runSpacing: 10.0, // Vertical gap
+                                spacing: 8.0, 
+                                runSpacing: 10.0,
                                 children: _categories.map((cat) {
                                   final isSelected = _selectedCategory == cat;
                                   return ChoiceChip(
@@ -223,7 +188,6 @@ class _EventsScreenState extends State<EventsScreen> {
                                     onSelected: (val) {
                                       setState(() {
                                         _selectedCategory = cat;
-                                        _filterEvents();
                                       });
                                     },
                                   );
@@ -232,8 +196,8 @@ class _EventsScreenState extends State<EventsScreen> {
                             ),
                           ),
 
-                          // C. ALL EVENTS LIST
-                          if (_filteredEvents.isEmpty)
+                          // C. EVENTS LIST
+                          if (filteredEvents.isEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.all(40.0),
@@ -243,8 +207,8 @@ class _EventsScreenState extends State<EventsScreen> {
                           else
                             SliverList(
                               delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildEventRow(_filteredEvents[index]),
-                                childCount: _filteredEvents.length,
+                                (context, index) => _buildEventRow(filteredEvents[index]),
+                                childCount: filteredEvents.length,
                               ),
                             ),
                             
@@ -281,13 +245,11 @@ class _EventsScreenState extends State<EventsScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            // Image Background
             Positioned.fill(
               child: image != null 
                 ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover)
                 : Container(color: Colors.grey[300], child: const Icon(Icons.event, size: 50, color: Colors.grey)),
             ),
-            // Gradient Overlay
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -298,11 +260,10 @@ class _EventsScreenState extends State<EventsScreen> {
                 ),
               ),
             ),
-            // Text Content
             Positioned(
               bottom: 12, left: 10, right: 10,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center, // Center Alignment
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
@@ -312,15 +273,14 @@ class _EventsScreenState extends State<EventsScreen> {
                   const SizedBox(height: 4),
                   Text(
                     title,
-                    maxLines: 4, // More lines
-                    textAlign: TextAlign.center, // Center text
+                    maxLines: 4, 
+                    textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.lato(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
             ),
-            // Tap Ripple
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
@@ -373,7 +333,6 @@ class _EventsScreenState extends State<EventsScreen> {
           padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
-              // Date Box
               Container(
                 width: 50, height: 50,
                 decoration: BoxDecoration(
@@ -389,8 +348,6 @@ class _EventsScreenState extends State<EventsScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              
-              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,8 +368,6 @@ class _EventsScreenState extends State<EventsScreen> {
                   ],
                 ),
               ),
-
-              // Calendar Button
               IconButton(
                 icon: const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.blue),
                 onPressed: () => _addToCalendar(event),

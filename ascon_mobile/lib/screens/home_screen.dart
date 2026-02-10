@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ IMPORT RIVERPOD
 
 import '../main.dart';
 import '../router.dart'; 
@@ -21,7 +22,7 @@ import '../widgets/celebration_card.dart';
 import '../widgets/active_poll_card.dart'; 
 import '../widgets/chapter_card.dart';     
 import '../widgets/digital_id_card.dart';
-import '../widgets/shimmer_utils.dart'; // ✅ ADDED: Shimmer Import
+import '../widgets/shimmer_utils.dart';
 
 import '../viewmodels/dashboard_view_model.dart';
 import '../services/socket_service.dart'; 
@@ -129,8 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final int currentIndex = widget.navigationShell.currentIndex;
 
-    // 2. CHECK INTERNAL STACK: If current tab has screens to pop, pop them first!
-    // This relies on the GlobalKeys being exported correctly in router.dart
+    // 2. CHECK INTERNAL STACK
     GlobalKey<NavigatorState>? currentNavigatorKey;
     switch (currentIndex) {
       case 0: currentNavigatorKey = homeNavKey; break;
@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         currentNavigatorKey.currentState != null && 
         currentNavigatorKey.currentState!.canPop()) {
       currentNavigatorKey.currentState!.pop();
-      return; // ✅ Stop here, we just went back one screen within the tab
+      return; 
     }
 
     // 3. If NOT on Dashboard (Tab 0) and stack is empty, go to Dashboard
@@ -165,7 +165,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      return; // Do NOT exit yet
+      return; 
     }
 
     // 5. Exit App
@@ -184,7 +184,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final showAppBar = uiIndex == 0;
 
     return PopScope(
-      // ✅ LOGIC: Always block the system pop. We will handle ALL back events manually.
       canPop: false, 
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
@@ -322,22 +321,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-class DashboardView extends StatefulWidget {
+// ✅ CHANGED TO CONSUMER STATEFUL WIDGET
+class DashboardView extends ConsumerStatefulWidget {
   final String? userName; 
   const DashboardView({super.key, this.userName});
 
   @override
-  State<DashboardView> createState() => _DashboardViewState();
+  ConsumerState<DashboardView> createState() => _DashboardViewState();
 }
 
-class _DashboardViewState extends State<DashboardView> {
-  final DashboardViewModel _viewModel = DashboardViewModel();
+class _DashboardViewState extends ConsumerState<DashboardView> {
   String _displayName = "Alumni";
 
   @override
   void initState() {
     super.initState();
-    _viewModel.loadData();
+    // ✅ Load Data via Provider
+    // Using Future.microtask to avoid "setState during build" errors
+    Future.microtask(() => ref.read(dashboardProvider.notifier).loadData());
     _loadName();
   }
 
@@ -399,200 +400,217 @@ class _DashboardViewState extends State<DashboardView> {
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
 
-    return ListenableBuilder(
-      listenable: _viewModel,
-      builder: (context, child) {
-        
-        // ✅ 1. SKELETON LOADER
-        // If data is loading and we have no alumni list (initial load), show skeleton
-        if (_viewModel.isLoading && _viewModel.topAlumni.isEmpty) {
-           return Scaffold(
-             backgroundColor: scaffoldBg,
-             body: const SafeArea(child: DashboardSkeleton()), // Calls the utility we made
-           );
-        }
+    // ✅ WATCH STATE
+    final dashboardState = ref.watch(dashboardProvider);
 
-        return Scaffold(
-          backgroundColor: scaffoldBg,
-          body: SafeArea(
-            child: RefreshIndicator(
-              onRefresh: () async => await _viewModel.loadData(),
-              color: primaryColor,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 0️⃣ MAIN HEADER (ID CARD)
-                    DigitalIDCard(
-                      userName: _displayName,
-                      programme: _viewModel.programme,
-                      year: _viewModel.year,
-                      alumniID: _viewModel.alumniID,
-                      imageUrl: _viewModel.profileImage,
+    // ✅ SHOW ERROR SNACKBAR IF NEEDED
+    if (dashboardState.errorMessage != null) {
+      // Use a post-frame callback to show snackbar to avoid build collisions, 
+      // or handle it in a listener. Since we are in build, we shouldn't trigger side effects directly.
+      // Better: The UI below can show a retry button or an error banner.
+    }
+
+    // ✅ 1. SKELETON LOADER
+    // If data is loading and we have no alumni list (initial load), show skeleton
+    if (dashboardState.isLoading && dashboardState.topAlumni.isEmpty) {
+       return Scaffold(
+         backgroundColor: scaffoldBg,
+         body: const SafeArea(child: DashboardSkeleton()), 
+       );
+    }
+
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      body: SafeArea(
+        child: RefreshIndicator(
+          // ✅ REFRESH ACTION
+          onRefresh: () async => await ref.read(dashboardProvider.notifier).loadData(isRefresh: true),
+          color: primaryColor,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ✅ ERROR BANNER (Optional UX improvement)
+                if (dashboardState.errorMessage != null)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.redAccent,
+                    child: Text(
+                      dashboardState.errorMessage!,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      textAlign: TextAlign.center,
                     ),
+                  ),
 
-                    // ✅ 1. PROFILE COMPLETION (Compact & Auto-Refresh)
-                    if (!_viewModel.isLoading && !_viewModel.isProfileComplete)
-                      _buildProfileAlert(context, primaryColor),
+                // 0️⃣ MAIN HEADER (ID CARD)
+                DigitalIDCard(
+                  userName: _displayName,
+                  programme: dashboardState.programme,
+                  year: dashboardState.year,
+                  alumniID: dashboardState.alumniID,
+                  imageUrl: dashboardState.profileImage,
+                ),
 
-                    // ✅ 2. CHAPTERS (Compact)
-                    const ChapterCard(),
+                // ✅ 1. PROFILE COMPLETION (Compact & Auto-Refresh)
+                if (!dashboardState.isLoading && !dashboardState.isProfileComplete)
+                  _buildProfileAlert(context, primaryColor, dashboardState.profileCompletionPercent),
 
-                    // ✅ 3. CELEBRATION
-                    const CelebrationWidget(),
+                // ✅ 2. CHAPTERS (Compact)
+                const ChapterCard(),
 
-                    const SizedBox(height: 10),
+                // ✅ 3. CELEBRATION
+                const CelebrationWidget(),
 
-                    // 4. ALUMNI NETWORK
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Alumni Network", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
-                          Icon(Icons.shuffle, size: 16, color: Colors.grey[400]), 
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // ✅ FIXED: Only show spinner if we already have data but are refreshing quietly
-                    if (_viewModel.isLoading && _viewModel.topAlumni.isNotEmpty)
-                      const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
-                    else if (_viewModel.topAlumni.isEmpty && !_viewModel.isLoading)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text("No recently active alumni found.", style: GoogleFonts.lato(color: Colors.grey)),
-                      )
-                    else
-                      SizedBox(
-                        height: 90, 
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _viewModel.topAlumni.length,
-                          itemBuilder: (context, index) {
-                            final alumni = _viewModel.topAlumni[index];
-                            final String name = alumni['fullName'] ?? "User";
-                            final String img = alumni['profilePicture'] ?? "";
-                            final String firstName = name.split(" ")[0];
+                const SizedBox(height: 10),
 
-                            return GestureDetector(
-                              onTap: () {
-                                Navigator.of(context, rootNavigator: true).push(
-                                  MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
-                                );
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 20.0),
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor.withOpacity(0.5), width: 2)),
-                                      child: CircleAvatar(
-                                        radius: 28,
-                                        backgroundColor: Colors.grey[200],
-                                        child: ClipOval(child: SizedBox(width: 56, height: 56, child: _buildSafeImage(img, fallbackIcon: Icons.person))),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(firstName, style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w500, color: textColor)),
-                                  ],
-                                ),
-                              ),
+                // 4. ALUMNI NETWORK
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Alumni Network", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                      Icon(Icons.shuffle, size: 16, color: Colors.grey[400]), 
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // ✅ FIXED: Using state data
+                if (dashboardState.isLoading && dashboardState.topAlumni.isNotEmpty)
+                  const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+                else if (dashboardState.topAlumni.isEmpty && !dashboardState.isLoading)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text("No recently active alumni found.", style: GoogleFonts.lato(color: Colors.grey)),
+                  )
+                else
+                  SizedBox(
+                    height: 90, 
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: dashboardState.topAlumni.length,
+                      itemBuilder: (context, index) {
+                        final alumni = dashboardState.topAlumni[index];
+                        final String name = alumni['fullName'] ?? "User";
+                        final String img = alumni['profilePicture'] ?? "";
+                        final String firstName = name.split(" ")[0];
+
+                        return GestureDetector(
+                          onTap: () {
+                            Navigator.of(context, rootNavigator: true).push(
+                              MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumni))
                             );
                           },
-                        ),
-                      ),
-                    
-                    const SizedBox(height: 25),
-
-                    // 6. UPCOMING EVENTS
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Recent & Upcoming Events", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
-                          Row(
-                            children: [
-                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle)),
-                              const SizedBox(width: 4),
-                              Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF4CAF50).withOpacity(0.5), shape: BoxShape.circle)),
-                            ],
-                          )
-                        ],
-                      ),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 20.0),
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor.withOpacity(0.5), width: 2)),
+                                  child: CircleAvatar(
+                                    radius: 28,
+                                    backgroundColor: Colors.grey[200],
+                                    child: ClipOval(child: SizedBox(width: 56, height: 56, child: _buildSafeImage(img, fallbackIcon: Icons.person))),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(firstName, style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w500, color: textColor)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    const SizedBox(height: 12),
+                  ),
+                
+                const SizedBox(height: 25),
 
-                    if (_viewModel.isLoading && _viewModel.events.isNotEmpty)
-                      const SizedBox.shrink()
-                    else if (_viewModel.events.isEmpty && !_viewModel.isLoading)
-                      _buildEmptyState("No upcoming events")
-                    else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _viewModel.events.length,
-                        separatorBuilder: (c, i) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) => _buildUpcomingEventCard(context, _viewModel.events[index]),
-                      ),
-
-                    const SizedBox(height: 25),
-
-                    // 7. NEWS
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // 6. UPCOMING EVENTS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Recent & Upcoming Events", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
+                      Row(
                         children: [
-                          Text("Programme Updates", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
-                          Row(
-                            children: [
-                              Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF607D8B), shape: BoxShape.circle)),
-                              const SizedBox(width: 4),
-                              Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF607D8B).withOpacity(0.5), shape: BoxShape.circle)),
-                            ],
-                          )
+                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF4CAF50), shape: BoxShape.circle)),
+                          const SizedBox(width: 4),
+                          Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF4CAF50).withOpacity(0.5), shape: BoxShape.circle)),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    if (_viewModel.isLoading && _viewModel.programmes.isNotEmpty)
-                      const SizedBox.shrink()
-                    else if (_viewModel.programmes.isEmpty && !_viewModel.isLoading)
-                      _buildEmptyState("No updates available")
-                    else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _viewModel.programmes.length > 3 ? 3 : _viewModel.programmes.length, 
-                        separatorBuilder: (c, i) => const SizedBox(height: 16),
-                        itemBuilder: (context, index) => _buildNewsUpdateCard(context, _viewModel.programmes[index]),
-                      ),
-
-                    const SizedBox(height: 30),
-                  ],
+                      )
+                    ],
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+
+                if (dashboardState.isLoading && dashboardState.events.isNotEmpty)
+                  const SizedBox.shrink()
+                else if (dashboardState.events.isEmpty && !dashboardState.isLoading)
+                  _buildEmptyState("No upcoming events")
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: dashboardState.events.length,
+                    separatorBuilder: (c, i) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) => _buildUpcomingEventCard(context, dashboardState.events[index]),
+                  ),
+
+                const SizedBox(height: 25),
+
+                // 7. NEWS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Programme Updates", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
+                      Row(
+                        children: [
+                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF607D8B), shape: BoxShape.circle)),
+                          const SizedBox(width: 4),
+                          Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF607D8B).withOpacity(0.5), shape: BoxShape.circle)),
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                if (dashboardState.isLoading && dashboardState.programmes.isNotEmpty)
+                  const SizedBox.shrink()
+                else if (dashboardState.programmes.isEmpty && !dashboardState.isLoading)
+                  _buildEmptyState("No updates available")
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: dashboardState.programmes.length > 3 ? 3 : dashboardState.programmes.length, 
+                    separatorBuilder: (c, i) => const SizedBox(height: 16),
+                    itemBuilder: (context, index) => _buildNewsUpdateCard(context, dashboardState.programmes[index]),
+                  ),
+
+                const SizedBox(height: 30),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  // ✅ FIXED: Using context.go to switch tabs
-  Widget _buildProfileAlert(BuildContext context, Color primaryColor) {
+  // ✅ FIXED: Accepting percent as argument
+  Widget _buildProfileAlert(BuildContext context, Color primaryColor, double percent) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final percent = _viewModel.profileCompletionPercent;
     
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 5, 16, 10),
@@ -641,7 +659,6 @@ class _DashboardViewState extends State<DashboardView> {
           ),
           ElevatedButton(
             onPressed: () {
-              // ✅ GoRouter switches tabs automatically
               context.go('/profile'); 
             },
             style: ElevatedButton.styleFrom(

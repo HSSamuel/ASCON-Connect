@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io'; // ✅ Added for SocketException
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -108,7 +109,6 @@ class AuthService {
         );
 
         await NotificationService().init();
-        // ✅ EXPLICIT SYNC WITH RETRY (Race condition fix)
         await NotificationService().syncToken(retry: true); 
       }
       return result;
@@ -152,7 +152,6 @@ class AuthService {
         );
         
         await NotificationService().init();
-        // ✅ EXPLICIT SYNC WITH RETRY
         await NotificationService().syncToken(retry: true); 
       }
 
@@ -183,7 +182,6 @@ class AuthService {
         );
         
         await NotificationService().init();
-        // ✅ EXPLICIT SYNC WITH RETRY
         await NotificationService().syncToken(retry: true); 
       }
       return result;
@@ -380,7 +378,15 @@ class AuthService {
     );
   }
 
+  // ✅ IMPROVED ERROR HANDLING
   String _cleanError(Object e) {
-    return e.toString().replaceAll("Exception: ", "");
+    String error = e.toString();
+    if (error.contains("SocketException") || error.contains("Network is unreachable")) {
+      return "No internet connection. Please check your network.";
+    }
+    if (error.contains("TimeoutException")) {
+      return "Server took too long to respond.";
+    }
+    return error.replaceAll("Exception: ", "").replaceAll("ApiException: ", "");
   }
 }

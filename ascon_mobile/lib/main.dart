@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart'; 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; 
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ IMPORT RIVERPOD
 
 import 'services/notification_service.dart';
 import 'services/socket_service.dart'; 
@@ -59,7 +60,8 @@ void main() async {
        await NotificationService().init();
     }
 
-    runApp(const MyApp());
+    // ✅ WRAP APP IN PROVIDER SCOPE FOR RIVERPOD
+    runApp(const ProviderScope(child: MyApp()));
   }, (error, stack) {
     // ========================================================
     // ✅ NOISE FILTER: Silence harmless Web/Async errors

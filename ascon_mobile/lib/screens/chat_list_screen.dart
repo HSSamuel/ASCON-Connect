@@ -1,183 +1,33 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:timeago/timeago.dart' as timeago;
 
-import '../services/api_client.dart';
-import '../services/auth_service.dart';
-import '../services/socket_service.dart';
+import '../viewmodels/chat_view_model.dart';
 import '../widgets/shimmer_utils.dart';
 import 'chat_screen.dart';
 
-class ChatListScreen extends StatefulWidget {
+class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
 
   @override
-  State<ChatListScreen> createState() => _ChatListScreenState();
+  ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends State<ChatListScreen> {
-  final ApiClient _api = ApiClient();
-  final AuthService _auth = AuthService();
-  final SocketService _socket = SocketService();
-  
-  List<dynamic> _conversations = [];
-  List<dynamic> _filteredConversations = [];
-  List<dynamic> _onlineUsers = []; 
-  
-  bool _isLoading = true;
-  String _myId = "";
+class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   final TextEditingController _searchController = TextEditingController();
-
-  final Map<String, bool> _typingStatus = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _initData();
-    _setupSocket();
-  }
 
   @override
   void dispose() {
-    final socket = _socket.socket;
-    socket?.off('new_message');
-    socket?.off('messages_read'); // ✅ Clean up listener
-    socket?.off('typing_start');
-    socket?.off('typing_stop');
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _initData() async {
-    _myId = await _auth.currentUserId ?? "";
-    await _loadConversations();
-  }
-
-  Future<void> _loadConversations() async {
-    if (!mounted) return;
-    try {
-      final res = await _api.get('/api/chat'); 
-      
-      if (mounted && res['success'] == true) {
-        final List<dynamic> data = res['data'];
-        
-        setState(() {
-          _conversations = data;
-          _filteredConversations = data;
-          _isLoading = false;
-          
-          _onlineUsers = data.where((c) {
-             final other = _getOtherParticipant(c);
-             return other['isOnline'] == true;
-          }).take(10).toList();
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _setupSocket() {
-    final socket = _socket.socket;
-    if (socket == null) return;
-
-    // 1. Live Message Updates (Optimistic)
-    socket.on('new_message', (data) {
-      if (!mounted) return;
-      _handleIncomingMessage(data);
-    });
-
-    // 2. ✅ NEW: Listen for read receipts to clear badges
-    socket.on('messages_read', (data) {
-      if (!mounted) return;
-      final convId = data['conversationId'];
-      final index = _conversations.indexWhere((c) => c['_id'] == convId);
-      if (index != -1) {
-        setState(() {
-          _conversations[index]['unreadCount'] = 0;
-        });
-      }
-    });
-
-    // 3. Typing Indicators
-    socket.on('typing_start', (data) {
-      if (mounted) setState(() => _typingStatus[data['conversationId']] = true);
-    });
-
-    socket.on('typing_stop', (data) {
-      if (mounted) setState(() => _typingStatus[data['conversationId']] = false);
-    });
-  }
-
-  void _handleIncomingMessage(dynamic data) {
-    final convId = data['conversationId'];
-    final index = _conversations.indexWhere((c) => c['_id'] == convId);
-
-    if (index != -1) {
-      setState(() {
-        var chat = _conversations.removeAt(index);
-        
-        chat['lastMessage'] = data['message']['text'] ?? "Media";
-        chat['lastMessageAt'] = data['message']['createdAt'];
-        chat['lastMessageObj'] = data['message']; 
-
-        // Increment unread count if not from me
-        if (data['message']['senderId'] != _myId) {
-          chat['unreadCount'] = (chat['unreadCount'] ?? 0) + 1;
-        }
-
-        _conversations.insert(0, chat);
-        
-        if (_searchController.text.isNotEmpty) {
-          _onSearchChanged(_searchController.text);
-        } else {
-          _filteredConversations = _conversations;
-        }
-      });
-    } else {
-      _loadConversations(); 
-    }
-  }
-
-  void _onSearchChanged(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredConversations = _conversations;
-      } else {
-        _filteredConversations = _conversations.where((c) {
-          final other = _getOtherParticipant(c);
-          final name = (other['fullName'] ?? other['name'] ?? "").toString().toLowerCase();
-          
-          String lastMsgText = "";
-          if (c['lastMessage'] is Map) {
-            lastMsgText = c['lastMessage']['text'] ?? "";
-          } else {
-            lastMsgText = c['lastMessage'].toString();
-          }
-          
-          return name.contains(query.toLowerCase()) || lastMsgText.toLowerCase().contains(query.toLowerCase());
-        }).toList();
-      }
-    });
-  }
-
-  Future<void> _deleteConversation(String id) async {
-    try {
-      setState(() {
-        _conversations.removeWhere((c) => c['_id'] == id);
-        _filteredConversations.removeWhere((c) => c['_id'] == id);
-      });
-      await _api.delete('/api/chat/conversation/$id');
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not delete chat")));
-    }
-  }
-
-  Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation) {
+  // Duplicate helper purely for UI building logic here
+  Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation, String myId) {
     if (conversation['isGroup'] == true) {
       final group = conversation['groupId'];
       if (group is Map) {
@@ -195,7 +45,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
     final participants = conversation['participants'] as List;
     final other = participants.firstWhere(
-      (p) => p['_id'] != _myId,
+      (p) => p['_id'] != myId,
       orElse: () => {'fullName': 'Unknown User', 'profilePicture': ''},
     );
     return other;
@@ -203,6 +53,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final chatState = ref.watch(chatProvider);
+    final notifier = ref.read(chatProvider.notifier);
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
@@ -229,7 +82,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _searchController,
-                    onChanged: _onSearchChanged,
+                    onChanged: notifier.searchConversations,
                     decoration: InputDecoration(
                       hintText: "Search chats...",
                       prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
@@ -245,17 +98,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
             // 2. CONTENT
             Expanded(
-              child: _isLoading 
+              child: chatState.isLoading 
                 ? const ChatListSkeleton() 
                 : RefreshIndicator(
-                    onRefresh: _loadConversations,
+                    onRefresh: () async => notifier.loadConversations(),
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // A. ACTIVE NOW RAIL
-                          if (_onlineUsers.isNotEmpty) ...[
+                          if (chatState.onlineUsers.isNotEmpty) ...[
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
                               child: Text("Active Now", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
@@ -265,9 +118,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               child: ListView.builder(
                                 scrollDirection: Axis.horizontal,
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: _onlineUsers.length,
+                                itemCount: chatState.onlineUsers.length,
                                 itemBuilder: (context, index) {
-                                  final user = _getOtherParticipant(_onlineUsers[index]);
+                                  final user = _getOtherParticipant(chatState.onlineUsers[index], chatState.myId);
                                   return _buildActiveUserBubble(user);
                                 },
                               ),
@@ -280,7 +133,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             child: Text("Recent", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
                           ),
                           
-                          if (_filteredConversations.isEmpty)
+                          if (chatState.filteredConversations.isEmpty)
                             Padding(
                               padding: const EdgeInsets.all(40.0),
                               child: Center(child: Column(
@@ -295,9 +148,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             ListView.separated(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _filteredConversations.length,
+                              itemCount: chatState.filteredConversations.length,
                               separatorBuilder: (c, i) => Divider(height: 1, indent: 80, color: Colors.grey.withOpacity(0.1)),
-                              itemBuilder: (context, index) => _buildChatTile(_filteredConversations[index]),
+                              itemBuilder: (context, index) => _buildChatTile(chatState.filteredConversations[index], chatState.myId, chatState.typingStatus, notifier),
                             ),
                             
                           const SizedBox(height: 20),
@@ -361,8 +214,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  Widget _buildChatTile(Map<String, dynamic> chat) {
-    final other = _getOtherParticipant(chat);
+  Widget _buildChatTile(Map<String, dynamic> chat, String myId, Map<String, bool> typingStatus, ChatNotifier notifier) {
+    final other = _getOtherParticipant(chat, myId);
     final String convId = chat['_id'];
     
     dynamic lastMsgObj = chat['lastMessage']; 
@@ -378,12 +231,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
       lastMessageText = lastMsgObj;
     }
 
-    // ✅ FIXED: unreadCount is now fetched from Backend
     final int unreadCount = chat['unreadCount'] ?? 0;
     final bool isOnline = other['isOnline'] == true;
-    final bool isTyping = _typingStatus[convId] ?? false;
+    final bool isTyping = typingStatus[convId] ?? false;
     final String time = _formatTime(chat['lastMessageAt']);
-    final bool isMe = senderId == _myId;
+    final bool isMe = senderId == myId;
 
     return Dismissible(
       key: Key(convId),
@@ -407,12 +259,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         );
       },
-      onDismissed: (direction) => _deleteConversation(convId),
+      onDismissed: (direction) => notifier.deleteConversation(convId),
       child: InkWell(
         onTap: () {
-          setState(() {
-             chat['unreadCount'] = 0;
-          });
+          // Temporarily clear badge locally, provider update comes from socket
           _openChat(other, convId);
         },
         child: Padding(
@@ -511,7 +361,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               ),
                         ),
                         
-                        // ✅ UNREAD BADGE DISPLAY
                         if (unreadCount > 0)
                           Container(
                             margin: const EdgeInsets.only(left: 8),
@@ -542,7 +391,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     if (now.difference(date).inDays == 0 && now.day == date.day) {
       return DateFormat('h:mm a').format(date); 
     } else if (now.difference(date).inDays < 7) {
-      return DateFormat('E').format(date); // Mon
+      return DateFormat('E').format(date); 
     } else {
       return DateFormat('dd/MM').format(date); 
     }
@@ -561,6 +410,6 @@ class _ChatListScreenState extends State<ChatListScreen> {
           conversationId: conversationId,
         ),
       ),
-    ).then((_) => _loadConversations()); 
+    ).then((_) => ref.read(chatProvider.notifier).loadConversations()); 
   }
 }
