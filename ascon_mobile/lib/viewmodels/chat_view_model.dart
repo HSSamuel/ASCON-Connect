@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart'; // ✅ FIX: Added legacy import for StateNotifier
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/socket_service.dart';
@@ -8,7 +9,7 @@ import '../services/socket_service.dart';
 class ChatState {
   final List<dynamic> conversations;
   final List<dynamic> filteredConversations;
-  final List<dynamic> onlineUsers;
+  final List<dynamic> onlineUsers; // ✅ ADDED
   final bool isLoading;
   final String myId;
   final Map<String, bool> typingStatus;
@@ -16,7 +17,7 @@ class ChatState {
   const ChatState({
     this.conversations = const [],
     this.filteredConversations = const [],
-    this.onlineUsers = const [],
+    this.onlineUsers = const [], // ✅ ADDED
     this.isLoading = true,
     this.myId = "",
     this.typingStatus = const {},
@@ -57,9 +58,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _setupSocket();
   }
 
+  // ✅ ADDED: Alias/Restored method for UI compatibility
   Future<void> loadConversations() async {
     try {
-      final res = await _api.get('/api/chat');
+      final res = await _api.get('/api/chat/conversations'); // ✅ Correct Endpoint
       
       if (res['success'] == true) {
         final body = res['data'];
@@ -71,7 +73,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
              data = body['data'];
            } else {
              debugPrint("⚠️ Unexpected data format: body['data'] is ${body['data'].runtimeType}");
-             // Fallback: If it's a Map, maybe it's a single object or error? Treat as empty to avoid crash.
              data = [];
            }
         } else if (body is List) {
@@ -80,6 +81,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         
         debugPrint("✅ Loaded ${data.length} conversations");
 
+        // ✅ Logic to populate onlineUsers list for the horizontal rail
         final online = data.where((c) {
            try {
              // Safe conversion for helper
@@ -109,6 +111,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
+  // ✅ ADDED: Alias/Restored method for UI compatibility
   void searchConversations(String query) {
     if (query.isEmpty) {
       state = state.copyWith(filteredConversations: state.conversations);

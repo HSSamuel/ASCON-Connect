@@ -60,7 +60,8 @@ class NotificationService {
 
       await _localNotifications.initialize(
         initSettings,
-        onDidReceiveNotificationResponse: (response) {
+        // ✅ FIX: Use onDidReceiveNotificationResponse for v20+
+        onDidReceiveNotificationResponse: (NotificationResponse response) {
           if (response.payload != null) {
             handleNavigation(jsonDecode(response.payload!));
           }
@@ -118,11 +119,11 @@ class NotificationService {
       syncToken(tokenOverride: newToken, retry: true); 
     });
 
-    // Initial Token Sync: We retry here assuming this might be a fresh app launch with a session
+    // Initial Token Sync
     await syncToken(retry: true);
   }
 
-  // ✅ NEW: Helper to check current permission status without prompting
+  // Helper to check current permission status without prompting
   Future<AuthorizationStatus> getAuthorizationStatus() async {
     final settings = await _firebaseMessaging.getNotificationSettings();
     return settings.authorizationStatus;
@@ -136,7 +137,6 @@ class NotificationService {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       debugPrint('✅ User granted notifications');
-      // ✅ FIX: Don't retry/wait here. We are likely on the Permission Screen (No Session yet).
       await syncToken(retry: false); 
     } else {
       debugPrint('❌ User declined notifications');
@@ -290,32 +290,27 @@ class NotificationService {
       formattedTitle,
       body,
       platformDetails,
+      // ✅ FIX: Named parameter for payload
       payload: jsonEncode(message.data), 
     );
   }
 
-  // ✅ UPDATED: Added [retry] parameter to control the 1.5s wait
   Future<void> syncToken({String? tokenOverride, bool retry = false}) async {
     try {
       debugPrint("🔄 NotificationService: Starting Token Sync...");
 
       String? fcmToken;
       
-      // 1. Use Override if provided (Rotation)
       if (tokenOverride != null) {
         fcmToken = tokenOverride;
-      } 
-      // 2. Fetch for Web
-      else if (kIsWeb) {
+      } else if (kIsWeb) {
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
         if (vapidKey != null && vapidKey.isNotEmpty) {
           fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
         } else {
           return;
         }
-      } 
-      // 3. Fetch for Mobile
-      else {
+      } else {
         fcmToken = await _firebaseMessaging.getToken();
       }
 
@@ -323,14 +318,11 @@ class NotificationService {
 
       String? authToken = await _storage.read(key: 'auth_token');
 
-      // Fallback to SharedPreferences if secure storage is empty
       if (authToken == null) {
         final prefs = await SharedPreferences.getInstance();
         authToken = prefs.getString('auth_token');
       }
 
-      // ✅ FIX: Only wait if retry is TRUE (Login Flow). 
-      // If retry is FALSE (Permission Flow), return immediately to avoid UI delay.
       if (authToken == null && retry) {
         debugPrint("⏳ Auth Token not found yet. Retrying in 1.5s...");
         await Future.delayed(const Duration(milliseconds: 1500));

@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
-import '../services/api_client.dart'; // Import to check ApiException
+import '../services/api_client.dart'; 
+import 'package:flutter_riverpod/legacy.dart';
 
 // ✅ 1. IMMUTABLE STATE CLASS
 class DashboardState {

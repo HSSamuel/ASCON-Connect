@@ -135,6 +135,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                   final rawChat = chatState.onlineUsers[index];
                                   if (rawChat is Map) {
                                     final chat = Map<String, dynamic>.from(rawChat);
+                                    // Based on ViewModel logic, 'chat' here is the conversation map.
+                                    // We need to extract the user from it.
                                     final user = _getOtherParticipant(chat, chatState.myId);
                                     return _buildActiveUserBubble(user);
                                   }

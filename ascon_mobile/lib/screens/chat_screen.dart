@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
-import 'package:flutter_riverpod/flutter_riverpod.dart'; 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+// ✅ ADD THIS IMPORT
+import 'package:flutter_riverpod/legacy.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -16,7 +18,6 @@ import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:open_file/open_file.dart'; 
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
@@ -87,6 +88,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
+  // ✅ THIS NOW WORKS WITH THE LEGACY IMPORT
   AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
@@ -687,7 +689,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           setState(() { _editingMessage = msg; _replyingTo = null; _textController.text = msg.text; });
                           _focusNode.requestFocus();
                         },
-                        onDelete: (id) { _toggleSelection(id); _deleteSelectedMessages(); }, // ✅ Call updated dialog
+                        onDelete: (id) { _toggleSelection(id); _deleteSelectedMessages(); }, 
                         onPlayAudio: (url) async {
                           if (url.startsWith('http')) { await _audioPlayer.play(UrlSource(url)); } 
                           else { await _audioPlayer.play(DeviceFileSource(url)); }

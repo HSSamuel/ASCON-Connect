@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart'; // ✅ FIX: Required for StateNotifier in v3
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
@@ -11,7 +12,6 @@ import '../services/auth_service.dart';
 import '../models/chat_objects.dart';
 import '../config.dart';
 
-// ✅ STATE CLASS
 class ChatDetailState {
   final List<ChatMessage> messages;
   final bool isLoading;
@@ -95,7 +95,6 @@ class ChatProviderArgs {
   int get hashCode => Object.hash(receiverId, isGroup, groupId, conversationId);
 }
 
-// ✅ NOTIFIER
 class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final ApiClient _api = ApiClient();
   final AuthService _auth = AuthService();
@@ -297,10 +296,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ DELETION LOGIC (Me vs Everyone)
   Future<void> deleteMessages(List<String> ids, {required bool deleteForEveryone}) async {
     try {
-      // Optimistic Update: If deleting for ME, remove immediately
       if (!deleteForEveryone && mounted) {
          final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
          state = state.copyWith(messages: updated);
@@ -472,27 +469,21 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     });
 
-    // ✅ HANDLE BOTH DELETION TYPES
     socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == state.conversationId) {
         List<dynamic> ids = data['messageIds'];
         bool isHardDelete = data['isHardDelete'] == true;
 
         if (isHardDelete) {
-           // If deleted for everyone, we REPLACE content
            final updated = state.messages.map((m) {
              if (ids.contains(m.id)) {
                m.isDeleted = true;
                m.text = "🚫 This message was deleted";
-               // You can also nullify file fields if they are exposed in the model
              }
              return m;
            }).toList();
            state = state.copyWith(messages: updated);
         } else {
-           // If deleted for me (or other person deleted for themselves), 
-           // usually we don't get a socket event for 'deleted for me' unless it's sync.
-           // But if we do receive it (e.g. from multi-device sync), we remove it.
            final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
            state = state.copyWith(messages: updated);
         }

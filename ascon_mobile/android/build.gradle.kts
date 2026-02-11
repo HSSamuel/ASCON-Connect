@@ -5,7 +5,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // ✅ CRITICAL: This allows the app to recognize google-services.json
+        // ✅ This allows the app to recognize google-services.json
         classpath("com.google.gms:google-services:4.4.1")
     }
 }
@@ -14,6 +14,12 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+
+    // ✅ THIS BLOCK SILENCE WARNINGS
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Xlint:-options")     // Silences "source value 8 is obsolete"
+        options.compilerArgs.add("-Xlint:-deprecation") // Silences "VIBRATOR_SERVICE... has been deprecated"
     }
 }
 

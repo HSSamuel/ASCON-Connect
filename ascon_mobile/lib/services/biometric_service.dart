@@ -8,11 +8,10 @@ class BiometricService {
   Future<bool> get isBiometricAvailable async {
     if (kIsWeb) return false;
     try {
-      final bool canAuthenticateWithBiometrics = await _auth.canCheckBiometrics;
-      final bool canAuthenticate =
-          canAuthenticateWithBiometrics || await _auth.isDeviceSupported();
+      final bool canCheck = await _auth.canCheckBiometrics;
+      final bool isSupported = await _auth.isDeviceSupported();
       
-      if (!canAuthenticate) return false;
+      if (!canCheck && !isSupported) return false;
 
       final List<BiometricType> availableBiometrics =
           await _auth.getAvailableBiometrics();
@@ -28,11 +27,10 @@ class BiometricService {
     try {
       return await _auth.authenticate(
         localizedReason: 'Scan your fingerprint or face to log in',
-        // ✅ Correct Syntax for version ^2.3.0 / ^3.0.0
+        // ✅ CORRECT PARAMETER USAGE FOR V3
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: true,
-          useErrorDialogs: true,
         ),
       );
     } on PlatformException catch (e) {
