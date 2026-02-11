@@ -7,7 +7,6 @@ const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const logger = require("../utils/logger");
-const CallHistory = require("../models/CallHistory");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 let io;

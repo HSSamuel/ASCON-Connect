@@ -2059,3 +2059,7 @@
 {"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-11 15:39:12"}
 {"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-11 15:39:12"}
 {"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-11 15:39:14"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-11 16:28:49"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-11 16:28:50"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-11 16:28:51"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-11 16:28:54"}
