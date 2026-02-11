@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
+// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/socket_service.dart';
@@ -49,7 +49,6 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
     try {
       final profile = await _dataService.fetchProfile();
       
-      // ✅ FIX: Use '?' for safe access
       final isOnline = profile?['isOnline'] == true;
       final lastSeen = profile?['lastSeen'];
       final percent = _calculateCompletion(profile ?? {});
@@ -64,7 +63,6 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
         );
       }
       
-      // ✅ FIX: Safe access
       if (profile?['_id'] != null) {
         _listenToSocket(profile!['_id']);
       }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart'; // ✅ FIX: Required for StateNotifier in v3
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 

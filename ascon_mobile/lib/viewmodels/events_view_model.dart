@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart';
+// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -10,7 +10,6 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/data_service.dart';
 
-// ✅ 1. IMMUTABLE STATE
 class EventsState {
   final List<dynamic> events;
   final bool isLoading;
@@ -43,7 +42,6 @@ class EventsState {
   }
 }
 
-// ✅ 2. STATE NOTIFIER
 class EventsNotifier extends StateNotifier<EventsState> {
   final DataService _dataService = DataService();
   final ApiClient _api = ApiClient();
@@ -68,7 +66,6 @@ class EventsNotifier extends StateNotifier<EventsState> {
     
     try {
       final fetchedEvents = await _dataService.fetchEvents();
-      // Reverse chronological sort if API doesn't guarantee it
       fetchedEvents.sort((a, b) {
         final da = DateTime.tryParse(a['date'] ?? '') ?? DateTime(2000);
         final db = DateTime.tryParse(b['date'] ?? '') ?? DateTime(2000);
@@ -140,7 +137,7 @@ class EventsNotifier extends StateNotifier<EventsState> {
 
       if (response.statusCode == 201) {
         await loadEvents(silent: true);
-        return null; // Success
+        return null; 
       } else {
         final errorJson = jsonDecode(respStr);
         return errorJson['message'] ?? "Upload failed";
@@ -152,7 +149,6 @@ class EventsNotifier extends StateNotifier<EventsState> {
   }
 }
 
-// ✅ 3. PROVIDER
 final eventsProvider = StateNotifierProvider.autoDispose<EventsNotifier, EventsState>((ref) {
   return EventsNotifier();
 });

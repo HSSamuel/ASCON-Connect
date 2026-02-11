@@ -20,7 +20,6 @@ import '../screens/chat_screen.dart';
 import '../screens/login_screen.dart'; 
 import '../services/socket_service.dart';
 
-// Background handler must be a top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("🌙 Background Message: ${message.messageId}");
@@ -46,10 +45,9 @@ class NotificationService {
     if (_isInitialized) return; 
     _isInitialized = true;
 
-    // 1. Setup Local Notifications (Android/iOS)
     if (!kIsWeb) {
       await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-        alert: false, // We manually show local notifications for better control
+        alert: false, 
         badge: true,
         sound: true,
       );
@@ -58,7 +56,6 @@ class NotificationService {
       const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
       const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
-      // ✅ INITIALIZE: Using standard v18+ signature
       await _localNotifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
@@ -68,7 +65,6 @@ class NotificationService {
         },
       );
 
-      // Create Android Channel
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         AppConfig.notificationChannelId, 
         AppConfig.notificationChannelName,
@@ -84,12 +80,10 @@ class NotificationService {
           ?.createNotificationChannel(channel);
     }
 
-    // 2. Setup Listeners
     if (!kIsWeb) {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
-    // Foreground Message Listener
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("🔔 Foreground Message: ${message.notification?.title}");
       if (message.notification != null) {
@@ -99,13 +93,11 @@ class NotificationService {
       }
     });
 
-    // App Opened from Background Listener
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       debugPrint("🚀 App Opened from Notification: ${message.data}");
       handleNavigation(message.data);
     });
 
-    // App Opened from Terminated State Listener
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,23 +105,19 @@ class NotificationService {
       });
     }
 
-    // Token Rotation Listener
     _firebaseMessaging.onTokenRefresh.listen((newToken) {
       debugPrint("🔄 Token Rotated: $newToken");
       syncToken(tokenOverride: newToken, retry: true); 
     });
 
-    // Initial Token Sync
     await syncToken(retry: true);
   }
 
-  // Helper to check current permission status without prompting
   Future<AuthorizationStatus> getAuthorizationStatus() async {
     final settings = await _firebaseMessaging.getNotificationSettings();
     return settings.authorizationStatus;
   }
 
-  // Request Permission (Standard Dialog)
   Future<void> requestPermission() async {
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true, badge: true, sound: true, provisional: false,
@@ -143,7 +131,6 @@ class NotificationService {
     }
   }
 
-  // Global Navigation Handler
   Future<void> handleNavigation(Map<String, dynamic> data) async {
     final route = data['route'];
     final type = data['type']; 
@@ -157,7 +144,6 @@ class NotificationService {
       token = prefs.getString('auth_token');
     }
 
-    // If not logged in, redirect to login
     if (token == null) {
       debugPrint("🔒 User logged out. Redirecting to Login with pending navigation.");
       navigatorKey.currentState?.pushAndRemoveUntil(
@@ -171,11 +157,9 @@ class NotificationService {
 
     debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
 
-    // Slight delay to ensure context is ready if app just woke up
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
 
-      // Handle Chat Messages
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
         final senderId = data['senderId']; 
@@ -212,7 +196,6 @@ class NotificationService {
         return;
       }
 
-      // Handle Mentorship
       if (route == 'mentorship_requests') {
         navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
@@ -220,7 +203,6 @@ class NotificationService {
         return;
       }
 
-      // Handle Content Details
       if (id != null) {
         if (route == 'event_detail') {
           navigatorKey.currentState?.push(
@@ -251,7 +233,6 @@ class NotificationService {
     });
   }
 
-  // Display Local Notification
   Future<void> _showLocalNotification(RemoteMessage message) async {
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
@@ -285,12 +266,11 @@ class NotificationService {
 
     final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
-    // ✅ FIXED: Using NAMED PARAMETERS for version 18+
     await _localNotifications.show(
-      id: message.hashCode,
-      title: formattedTitle,
-      body: body,
-      notificationDetails: platformDetails,
+      message.hashCode, 
+      formattedTitle,   
+      body,             
+      platformDetails,  
       payload: jsonEncode(message.data), 
     );
   }
@@ -324,7 +304,6 @@ class NotificationService {
       }
 
       if (authToken == null && retry) {
-        debugPrint("⏳ Auth Token not found yet. Retrying in 1.5s...");
         await Future.delayed(const Duration(milliseconds: 1500));
         authToken = await _storage.read(key: 'auth_token');
         
@@ -345,11 +324,7 @@ class NotificationService {
 
         if (response.statusCode == 200) {
            debugPrint("✅ Token synced successfully to Backend!");
-        } else {
-           debugPrint("⚠️ Backend rejected token: ${response.statusCode} - ${response.body}");
         }
-      } else {
-        debugPrint("ℹ️ Skipped Token Sync (No Session).");
       }
     } catch (e) {
       debugPrint("❌ Error syncing token: $e");

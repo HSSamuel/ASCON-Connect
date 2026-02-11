@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart'; // ✅ FIX: Added legacy import for StateNotifier
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/socket_service.dart';
@@ -9,7 +8,7 @@ import '../services/socket_service.dart';
 class ChatState {
   final List<dynamic> conversations;
   final List<dynamic> filteredConversations;
-  final List<dynamic> onlineUsers; // ✅ ADDED
+  final List<dynamic> onlineUsers; 
   final bool isLoading;
   final String myId;
   final Map<String, bool> typingStatus;
@@ -17,7 +16,7 @@ class ChatState {
   const ChatState({
     this.conversations = const [],
     this.filteredConversations = const [],
-    this.onlineUsers = const [], // ✅ ADDED
+    this.onlineUsers = const [], 
     this.isLoading = true,
     this.myId = "",
     this.typingStatus = const {},
@@ -58,16 +57,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
     _setupSocket();
   }
 
-  // ✅ ADDED: Alias/Restored method for UI compatibility
   Future<void> loadConversations() async {
     try {
-      final res = await _api.get('/api/chat/conversations'); // ✅ Correct Endpoint
+      final res = await _api.get('/api/chat/conversations');
       
       if (res['success'] == true) {
         final body = res['data'];
         List<dynamic> data = [];
 
-        // ✅ STRICT TYPE CHECKING to prevent _JsonMap error
         if (body is Map && body.containsKey('data')) {
            if (body['data'] is List) {
              data = body['data'];
@@ -81,10 +78,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
         
         debugPrint("✅ Loaded ${data.length} conversations");
 
-        // ✅ Logic to populate onlineUsers list for the horizontal rail
         final online = data.where((c) {
            try {
-             // Safe conversion for helper
              final mapC = c is Map ? Map<String, dynamic>.from(c) : <String, dynamic>{};
              final other = _getOtherParticipant(mapC, state.myId);
              return other['isOnline'] == true;
@@ -111,7 +106,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  // ✅ ADDED: Alias/Restored method for UI compatibility
   void searchConversations(String query) {
     if (query.isEmpty) {
       state = state.copyWith(filteredConversations: state.conversations);
@@ -226,7 +220,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
       orElse: () => {'fullName': 'Unknown User', 'profilePicture': ''},
     );
     
-    // Safety handling if other is null
     if (other == null) return {'fullName': 'Unknown User', 'profilePicture': ''};
     
     return Map<String, dynamic>.from(other as Map);

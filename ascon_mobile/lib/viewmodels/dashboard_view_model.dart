@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
-import 'package:flutter_riverpod/legacy.dart';
 
-// ✅ 1. IMMUTABLE STATE CLASS
 class DashboardState {
   final bool isLoading;
   final String? errorMessage;
@@ -52,7 +51,7 @@ class DashboardState {
   }) {
     return DashboardState(
       isLoading: isLoading ?? this.isLoading,
-      errorMessage: errorMessage, // Note: Passing null here WILL clear the error if you pass it explicitly
+      errorMessage: errorMessage,
       events: events ?? this.events,
       programmes: programmes ?? this.programmes,
       topAlumni: topAlumni ?? this.topAlumni,
@@ -67,35 +66,28 @@ class DashboardState {
   }
 }
 
-// ✅ 2. STATE NOTIFIER (Logic Layer)
 class DashboardNotifier extends StateNotifier<DashboardState> {
   final DataService _dataService = DataService();
   final AuthService _authService = AuthService();
 
   DashboardNotifier() : super(const DashboardState());
 
-  /// Loads all necessary data for the dashboard
   Future<void> loadData({bool isRefresh = false}) async {
-    // If it's a pull-to-refresh, don't show full loading screen, just update state quietly
     if (!isRefresh) state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      // 1. Load Local Data First
       final prefs = await SharedPreferences.getInstance();
       String localAlumniID = prefs.getString('alumni_id') ?? "PENDING";
 
-      // Get Current User ID to filter self out
       final String? myId = await _authService.currentUserId;
 
-      // 2. Fetch API Data in Parallel
       final results = await Future.wait([
-        _dataService.fetchEvents(),                  // Index 0
-        _authService.getProgrammes(),                // Index 1
-        _dataService.fetchProfile(),                 // Index 2
-        _dataService.fetchDirectory(query: ""),      // Index 3
+        _dataService.fetchEvents(),                  
+        _authService.getProgrammes(),                
+        _dataService.fetchProfile(),                 
+        _dataService.fetchDirectory(query: ""),      
       ]);
 
-      // 3. Process Events (Sort Newest First)
       var fetchedEvents = List.from(results[0] as List);
       fetchedEvents.sort((a, b) {
         final idA = a['_id'] ?? a['id'] ?? '';
@@ -103,7 +95,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         return idB.toString().compareTo(idA.toString());
       });
 
-      // 4. Process Programmes (Sort Newest First)
       var fetchedProgrammes = List.from(results[1] as List);
       fetchedProgrammes.sort((a, b) {
         final idA = a['_id'] ?? a['id'] ?? '';
@@ -111,7 +102,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         return idB.toString().compareTo(idA.toString());
       });
 
-      // 5. Process Profile Data
       String profileImage = "";
       String programme = "Member";
       String year = "....";
@@ -142,7 +132,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         }
       }
 
-      // 6. Process Alumni Network (Randomized)
       var fetchedAlumni = List.from(results[3] as List);
 
       if (myId != null) {
@@ -155,11 +144,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       fetchedAlumni.shuffle(); 
       final topAlumni = fetchedAlumni.take(8).toList(); 
 
-      // ✅ UPDATE STATE SUCCESS
       if (mounted) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: null, // Clear any previous error
+          errorMessage: null, 
           events: fetchedEvents,
           programmes: fetchedProgrammes,
           topAlumni: topAlumni,
@@ -176,7 +164,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     } catch (e) {
       debugPrint("⚠️ Error loading dashboard data: $e");
       
-      // ✅ IMPROVED ERROR MESSAGES
       String readableError = "Something went wrong. Please try again.";
       
       if (e is ApiException) {
@@ -201,7 +188,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
   }
 }
 
-// ✅ 3. PROVIDER DEFINITION
 final dashboardProvider = StateNotifierProvider.autoDispose<DashboardNotifier, DashboardState>((ref) {
   return DashboardNotifier();
 });

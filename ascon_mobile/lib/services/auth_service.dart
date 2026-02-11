@@ -22,7 +22,6 @@ class AuthService {
   static String? _tokenCache;
   final _secureStorage = StorageConfig.storage;
 
-  // ✅ FIX: Standard Constructor for GoogleSignIn v6+
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
   );
@@ -157,7 +156,6 @@ class AuthService {
     try {
       String? tokenToSend = idToken;
 
-      // Mobile Flow
       if (tokenToSend == null && !kIsWeb) {
         try {
           final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();

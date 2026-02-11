@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/legacy.dart';
+// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 
 import '../config.dart';
 import '../services/api_client.dart';
@@ -140,21 +140,17 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
     }
   }
 
-  // ✅ FIXED: Robust parsing for Comments
   Future<List<dynamic>> fetchComments(String postId) async {
     try {
       final res = await _api.get('/api/updates/$postId');
       
       if (res['success'] == true) {
-        // 1. Check if 'data' is the post object directly
         dynamic postData = res['data'];
 
-        // 2. Check if it's nested (ApiClient wrapping)
         if (postData is Map && postData.containsKey('data')) {
           postData = postData['data'];
         }
 
-        // 3. Extract comments list
         if (postData is Map && postData['comments'] != null) {
           return List.from(postData['comments']);
         }
@@ -165,18 +161,15 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
     return [];
   }
 
-  // ✅ FIXED: Robust parsing for Likers
   Future<List<dynamic>> fetchLikers(String postId) async {
     try {
       final res = await _api.get('/api/updates/$postId/likes');
       
       if (res['success'] == true) {
-        // 1. Direct List?
         if (res['data'] is List) {
           return List.from(res['data']);
         } 
         
-        // 2. Nested List inside Map?
         if (res['data'] is Map && res['data']['data'] is List) {
           return List.from(res['data']['data']);
         }

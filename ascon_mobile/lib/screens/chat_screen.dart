@@ -86,7 +86,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
-  // ✅ FIXED: Removed explicit type to allow Riverpod 2.x inference
+  // Fixed: Implicit return type for provider to support Riverpod 2.x
   get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
@@ -421,11 +421,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  // Shows Modal Bottom Sheet for Delete Options
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
     
-    // Check if ALL selected messages are MINE
     final state = ref.read(_provider);
     final bool canDeleteForEveryone = idsToDelete.every((id) {
       final msg = state.messages.firstWhere(

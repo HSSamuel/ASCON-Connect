@@ -2,12 +2,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_riverpod/legacy.dart';
+// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import '../services/api_client.dart';
 import '../services/data_service.dart';
 import '../services/socket_service.dart';
 
-// ✅ 1. IMMUTABLE STATE
 class DirectoryState {
   final List<dynamic> allAlumni;
   final List<dynamic> searchResults;
@@ -22,8 +21,7 @@ class DirectoryState {
   final bool hasRecommendations;
   final bool shouldShowPopup;
   
-  // ✅ Replaced boolean flags with a single Source of Truth
-  final String activeFilter; // "All", "Mentors", "Classmates", "Near Me"
+  final String activeFilter; 
   final String nearMeFilter;
 
   const DirectoryState({
@@ -75,7 +73,6 @@ class DirectoryState {
   }
 }
 
-// ✅ 2. NOTIFIER
 class DirectoryNotifier extends StateNotifier<DirectoryState> {
   final ApiClient _api = ApiClient();
   final DataService _dataService = DataService();
@@ -86,7 +83,7 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
   }
 
   void init() {
-    loadDirectory(); // Default "All"
+    loadDirectory();
     loadRecommendations();
     loadSmartMatches();
   }
@@ -97,7 +94,6 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
     super.dispose();
   }
 
-  // ✅ MAIN FILTER SWITCHER
   void setFilter(String filter) {
     state = state.copyWith(activeFilter: filter);
     
@@ -114,7 +110,6 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
     try {
       String endpoint = '/api/directory?search=$query';
       
-      // ✅ Apply Backend Filters based on active tab
       if (state.activeFilter == "Mentors") endpoint += '&mentorship=true';
       if (state.activeFilter == "Classmates") endpoint += '&classmates=true';
 
@@ -147,7 +142,6 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
 
   void onSearchChanged(String query) {
     if (state.activeFilter == "Near Me") {
-       // Local filtering for Near Me list if needed
        return; 
     }
 
@@ -243,12 +237,10 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
 
   void _listenToSocket() {
     _statusSubscription = SocketService().userStatusStream.listen((data) {
-      // Logic to update online status in list
     });
   }
 }
 
-// ✅ 3. PROVIDER
 final directoryProvider = StateNotifierProvider.autoDispose<DirectoryNotifier, DirectoryState>((ref) {
   return DirectoryNotifier();
 });
