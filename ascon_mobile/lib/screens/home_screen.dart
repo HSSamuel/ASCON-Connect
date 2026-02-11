@@ -17,8 +17,6 @@ import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
-// ✅ Import Notifications Screen (Ensure you have this file created from the previous response)
-import 'notifications_screen.dart';
 
 import '../widgets/celebration_card.dart';
 import '../widgets/active_poll_card.dart'; 
@@ -209,16 +207,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
-                // ✅ ADDED: Notification Bell Icon (For Missed Calls & Alerts)
-                IconButton(
-                  icon: Icon(Icons.notifications_none_rounded, color: isDark ? Colors.white : primaryColor, size: 24),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                    );
-                  },
-                ),
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
