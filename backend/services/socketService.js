@@ -2,21 +2,22 @@
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
-const jwt = require("jsonwebtoken"); // ✅ Import JWT
+const jwt = require("jsonwebtoken");
 const UserAuth = require("../models/UserAuth");
-const UserProfile = require("../models/UserProfile"); // ✅ Import Profile for caller name
+const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const logger = require("../utils/logger");
-const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ Import Notification Handler
+const CallHistory = require("../models/CallHistory");
+const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 let io;
 const onlineUsers = new Map(); // userId -> Set<socketId>
-const disconnectTimers = new Map(); // userId -> TimeoutID (Wait 5s before marking offline)
+const disconnectTimers = new Map(); // userId -> TimeoutID
 
 const initializeSocket = async (server) => {
   const ioConfig = {
     cors: {
-      origin: "*", // Allow all origins (Adjust for production if needed)
+      origin: "*",
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -27,7 +28,7 @@ const initializeSocket = async (server) => {
   io = new Server(server, ioConfig);
 
   // ==========================================
-  // 1. REDIS ADAPTER SETUP (Scalability)
+  // 1. REDIS ADAPTER SETUP
   // ==========================================
   if (process.env.USE_REDIS === "true") {
     logger.info("🔌 Redis Enabled. Attempting to connect...");
@@ -55,31 +56,24 @@ const initializeSocket = async (server) => {
   }
 
   // ==========================================
-  // 2. AUTHENTICATION MIDDLEWARE (SECURED)
+  // 2. AUTHENTICATION MIDDLEWARE
   // ==========================================
   io.use(async (socket, next) => {
     try {
-      // 1. Extract Token from Handshake Auth or Headers
       const token =
         socket.handshake.auth?.token ||
         socket.handshake.headers?.["auth-token"] ||
         socket.handshake.headers?.authorization?.split(" ")[1];
 
       if (!token) {
-        logger.warn(`🚫 Socket Connection Rejected: No Token (${socket.id})`);
         return next(new Error("Authentication error: Token required"));
       }
 
-      // 2. Verify Token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // 3. Attach User ID to Socket
       socket.userId = decoded._id;
 
-      logger.info(`🔑 Socket Authenticated: ${socket.userId}`);
       return next();
     } catch (err) {
-      logger.error(`🚫 Socket Auth Failed: ${err.message}`);
       return next(new Error("Authentication error: Invalid Token"));
     }
   });
@@ -88,63 +82,53 @@ const initializeSocket = async (server) => {
   // 3. EVENT HANDLERS
   // ==========================================
   io.on("connection", async (socket) => {
-    const userId = socket.userId; // Guaranteed by middleware
-
+    const userId = socket.userId;
     logger.info(`🔌 Socket Connected: ${socket.id} (User: ${userId})`);
 
-    // A. JOIN USER ROOM (Immediate Private Messaging)
+    // A. JOIN USER ROOM
     socket.join(userId);
 
-    // B. JOIN GROUP ROOMS (Fixes Group Message Delivery)
+    // B. JOIN GROUP ROOMS
     try {
       const userGroups = await Group.find({ members: userId }).select("_id");
       if (userGroups && userGroups.length > 0) {
         userGroups.forEach((group) => {
-          const groupId = group._id.toString();
-          socket.join(groupId);
+          socket.join(group._id.toString());
         });
       }
     } catch (err) {
-      logger.error(`Error joining group rooms for ${userId}: ${err.message}`);
+      logger.error(`Error joining group rooms: ${err.message}`);
     }
 
-    // C. DYNAMIC ROOM MANAGEMENT
-    socket.on("join_room", (room) => {
-      socket.join(room);
-      logger.info(`Socket ${socket.id} joined room ${room}`);
-    });
-
-    socket.on("leave_room", (room) => {
-      socket.leave(room);
-      logger.info(`Socket ${socket.id} left room ${room}`);
-    });
+    socket.on("join_room", (room) => socket.join(room));
+    socket.on("leave_room", (room) => socket.leave(room));
 
     // ==========================================
     // D. WEBRTC SIGNALING (VOICE CALLS)
     // ==========================================
 
-    // 1. Initiate Call (UPDATED FOR MISSED CALLS)
+    // 1. Initiate Call (FIXED)
     socket.on("call_user", async (data) => {
       const receiverId = data.userToCall;
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
-      // Check if receiver is ONLINE in our Map
+      // ✅ FIX: ALWAYS emit the event first (Fire-and-forget logic)
+      // This ensures if the socket is alive but not tracked, it still rings.
+      io.to(receiverId).emit("call_made", {
+        offer: data.offer,
+        socket: socket.id,
+        callerId: socket.userId,
+      });
+
+      // Check "official" online status for Notification fallback
       const isReceiverOnline =
         onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
 
-      if (isReceiverOnline) {
-        // ✅ Online: Ring them immediately
-        io.to(receiverId).emit("call_made", {
-          offer: data.offer,
-          socket: socket.id,
-          callerId: socket.userId, // Sent so receiver knows who is calling
-        });
-      } else {
-        // ❌ Offline: Handle Missed Call Notification
-        logger.info(`📴 User ${receiverId} is offline. Logging missed call.`);
-
+      if (!isReceiverOnline) {
+        logger.info(
+          `📴 User ${receiverId} appears offline. Sending Push Notification.`,
+        );
         try {
-          // Fetch caller name for the notification text
           const callerProfile = await UserProfile.findOne({
             userId: socket.userId,
           }).select("fullName");
@@ -154,17 +138,16 @@ const initializeSocket = async (server) => {
 
           await sendPersonalNotification(
             receiverId,
-            "Missed Call 📞",
-            `You missed a call from ${callerName}`,
+            "Incoming Call 📞",
+            `${callerName} is calling you...`,
             {
-              type: "missed_call",
+              type: "call_incoming", // Changed to trigger ring if app wakes up
               callerId: socket.userId,
               callerName: callerName,
-              route: "notifications", // Directs user to notification list
             },
           );
         } catch (err) {
-          logger.error(`Failed to log missed call: ${err.message}`);
+          logger.error(`Failed to send call notification: ${err.message}`);
         }
       }
     });
@@ -178,14 +161,13 @@ const initializeSocket = async (server) => {
       });
     });
 
-    // 3. Exchange ICE Candidates (Connectivity)
+    // 3. ICE Candidates
     socket.on("ice_candidate", (data) => {
       io.to(data.to).emit("ice_candidate_received", {
         candidate: data.candidate,
       });
     });
 
-    // Handle standard connection logic (Status, Typing, Logout)
     handleConnection(socket, userId);
   });
 
@@ -196,20 +178,15 @@ const initializeSocket = async (server) => {
 // 4. CONNECTION & STATUS LOGIC
 // ==========================================
 const handleConnection = (socket, userId) => {
-  // --- Online Status Logic ---
-
-  // If user was pending disconnect, cancel it (reconnected quickly)
   if (disconnectTimers.has(userId)) {
     clearTimeout(disconnectTimers.get(userId));
     disconnectTimers.delete(userId);
   }
 
-  // Track socket count for this user
   if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
   const previousSocketCount = onlineUsers.get(userId).size;
   onlineUsers.get(userId).add(socket.id);
 
-  // If this is the first socket, mark user as ONLINE
   if (previousSocketCount === 0) {
     UserAuth.findByIdAndUpdate(userId, { isOnline: true }).catch((e) =>
       logger.error(e),
@@ -218,7 +195,6 @@ const handleConnection = (socket, userId) => {
     logger.info(`🟢 User ${userId} is now Online`);
   }
 
-  // --- Check Status Event ---
   socket.on("check_user_status", async ({ userId: targetId }) => {
     if (!targetId) return;
     const isOnline =
@@ -230,23 +206,20 @@ const handleConnection = (socket, userId) => {
         const user = await UserAuth.findById(targetId).select("lastSeen");
         if (user) lastSeen = user.lastSeen;
       } catch (e) {
-        logger.error(`Status check error for user ${targetId}: ${e.message}`);
+        logger.error(e.message);
       }
     }
     socket.emit("user_status_result", { userId: targetId, isOnline, lastSeen });
   });
 
-  // --- Typing Events ---
   socket.on("typing", (data) => {
     if (data.groupId) {
-      // Broadcast to group room, excluding sender
       socket.to(data.groupId).emit("typing_start", {
         conversationId: data.conversationId,
         senderId: socket.userId,
         isGroup: true,
       });
     } else if (data.receiverId) {
-      // Broadcast to user room
       io.to(data.receiverId).emit("typing_start", {
         conversationId: data.conversationId,
         senderId: socket.userId,
@@ -269,11 +242,9 @@ const handleConnection = (socket, userId) => {
     }
   });
 
-  // --- Explicit Logout ---
   socket.on("user_logout", async () => {
     logger.info(`👋 User ${userId} logging out explicitly`);
     cleanupUser(userId);
-
     try {
       const lastSeen = new Date();
       await UserAuth.findByIdAndUpdate(userId, { isOnline: false, lastSeen });
@@ -283,7 +254,6 @@ const handleConnection = (socket, userId) => {
     }
   });
 
-  // --- Disconnect ---
   socket.on("disconnect", () => {
     if (!onlineUsers.has(userId)) return;
 
@@ -292,7 +262,6 @@ const handleConnection = (socket, userId) => {
 
     if (userSockets.size > 0) return;
 
-    // Grace Period (5 seconds) to prevent flickering on page refresh
     const timer = setTimeout(async () => {
       if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
         try {

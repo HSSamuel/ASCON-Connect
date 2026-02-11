@@ -45,7 +45,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
     _initCall();
   }
 
-  // ✅ LISTEN FOR ANSWER & ICE CANDIDATES
+  // LISTEN FOR ANSWER & ICE CANDIDATES
   void _setupSignalListeners() {
     _callSubscription = _socketService.callEvents.listen((event) async {
       final type = event['type'];
@@ -58,13 +58,24 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
           await _callService.handleAnswer(data['answer']);
         }
       } else if (type == 'ice_candidate') {
-        // debugPrint("❄️ Adding ICE Candidate");
         await _callService.handleIceCandidate(data['candidate']);
       }
     });
   }
 
   Future<void> _initCall() async {
+    // ✅ FIX: Ensure socket is connected before starting
+    if (SocketService().socket == null || !SocketService().socket!.connected) {
+       setState(() => _status = "Connecting to Server...");
+       await SocketService().initSocket();
+       // Wait up to 3 seconds for connection
+       int retries = 0;
+       while ((SocketService().socket == null || !SocketService().socket!.connected) && retries < 30) {
+         await Future.delayed(const Duration(milliseconds: 100));
+         retries++;
+       }
+    }
+
     try {
       if (widget.isCaller) {
         setState(() => _status = "Calling...");
@@ -79,7 +90,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
     } catch (e) {
       debugPrint("Call Init Error: $e");
       if (mounted) {
-        setState(() => _status = "Call Failed");
+        setState(() => _status = "Call Failed: ${e.toString()}");
       }
     }
   }
@@ -98,7 +109,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. PREMIUM BACKGROUND (Brand Gradient)
+          // 1. PREMIUM BACKGROUND
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -169,7 +180,7 @@ class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateM
                 Text(
                   _status,
                   style: GoogleFonts.lato(
-                    color: (_status == "Call Failed") ? Colors.redAccent : Colors.white54,
+                    color: (_status.contains("Failed")) ? Colors.redAccent : Colors.white54,
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
                     letterSpacing: 1.0,

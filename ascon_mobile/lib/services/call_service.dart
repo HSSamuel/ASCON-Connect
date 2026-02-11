@@ -1,15 +1,18 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; 
-import 'package:permission_handler/permission_handler.dart'; // ✅ Added
+import 'package:permission_handler/permission_handler.dart'; 
 import 'socket_service.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO; // Added for type definition
 
 class CallService {
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
   
-  final _socket = SocketService().socket;
+  // ✅ FIX: Use a getter to access the current active socket instance.
+  // Previously: final _socket = SocketService().socket; (This caused the bug)
+  IO.Socket? get _socket => SocketService().socket;
 
-  // ✅ Request Permissions Helper
+  // Request Permissions Helper
   Future<bool> _checkPermissions() async {
     var status = await Permission.microphone.request();
     return status.isGranted;
@@ -123,7 +126,7 @@ class CallService {
     }
   }
 
-  // ✅ Toggle Mute
+  // Toggle Mute
   void toggleMute(bool mute) {
     if (_localStream != null) {
       _localStream!.getAudioTracks().forEach((track) {
@@ -132,7 +135,7 @@ class CallService {
     }
   }
 
-  // ✅ Toggle Speaker (Basic Implementation)
+  // Toggle Speaker
   void toggleSpeaker(bool enable) {
     if (_localStream != null) {
       _localStream!.getAudioTracks().forEach((track) {
