@@ -59,7 +59,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> loadConversations() async {
     try {
-      final res = await _api.get('/api/chat/conversations');
+      // ✅ FIX: Changed endpoint from '/api/chat/conversations' to '/api/chat'
+      // This matches `router.get("/", ...)` in the backend.
+      final res = await _api.get('/api/chat');
       
       if (res['success'] == true) {
         final body = res['data'];

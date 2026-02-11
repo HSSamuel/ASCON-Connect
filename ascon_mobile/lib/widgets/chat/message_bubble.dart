@@ -28,7 +28,8 @@ class MessageBubble extends StatelessWidget {
   final Function(String) onToggleSelection;
   final Function(String, String) onReply;
   final Function(String) onEdit;
-  final Function(String) onDelete;
+  // Updated: onDelete now accepts (id, deleteForEveryone)
+  final Function(String, bool) onDelete; 
   final Function(String) onPlayAudio;
   final Function(String, String) onPauseAudio;
   final Function(Duration) onSeekAudio;
@@ -54,10 +55,77 @@ class MessageBubble extends StatelessWidget {
     }
   }
 
+  void _showOptions(BuildContext context) {
+    final bool isDeletedContent = msg.isDeleted || msg.text.contains("This message was deleted");
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isDeletedContent) ...[
+              ListTile(
+                leading: const Icon(Icons.reply),
+                title: const Text("Reply"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onReply(msg.id, msg.text);
+                },
+              ),
+              if (isMe && msg.type == 'text')
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: const Text("Edit"),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onEdit(msg.id);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text("Copy"),
+                onTap: () {
+                  // Copy logic here if needed
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+            
+            const Divider(),
+
+            if (isMe && !isDeletedContent)
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text("Delete for Everyone"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onDelete(msg.id, true); // true = delete for everyone
+                },
+              ),
+            
+            // "Clear Trace" allows removing the "This message was deleted" bubble
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: Text(isDeletedContent ? "Clear Trace" : "Delete for Me"),
+              onTap: () {
+                Navigator.pop(ctx);
+                onDelete(msg.id, false); // false = delete for me (or clear trace)
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final time = DateFormat('h:mm a').format(msg.createdAt);
     
+    // ✅ CHECK DELETED STATUS
+    final bool isDeletedMessage = msg.isDeleted || msg.text.contains("This message was deleted");
+
     // ✅ VISUAL FIX: Handle Error Status
     IconData statusIcon;
     Color statusColor;
@@ -91,7 +159,14 @@ class MessageBubble extends StatelessWidget {
       confirmDismiss: (d) async { onSwipeReply(msg.id); return false; },
       background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: Colors.transparent, child: Icon(Icons.reply, color: primaryColor)),
       child: GestureDetector(
-        onLongPress: () => onToggleSelection(msg.id),
+        // ✅ UPDATED: Long press shows smart options now, unless in selection mode
+        onLongPress: () {
+          if (isSelectionMode) {
+            onToggleSelection(msg.id);
+          } else {
+            _showOptions(context);
+          }
+        },
         onTap: () { if (isSelectionMode) onToggleSelection(msg.id); },
         child: Container(
           color: isSelected ? primaryColor.withOpacity(0.2) : Colors.transparent,
@@ -110,9 +185,15 @@ class MessageBubble extends StatelessWidget {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       gradient: isMe 
-                          ? LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.85)], begin: Alignment.topLeft, end: Alignment.bottomRight)
+                          ? (isDeletedMessage 
+                              ? LinearGradient(colors: [Colors.grey[400]!, Colors.grey[600]!]) 
+                              : LinearGradient(colors: [primaryColor, primaryColor.withOpacity(0.85)], begin: Alignment.topLeft, end: Alignment.bottomRight))
                           : null,
-                      color: isMe ? null : (isDark ? Colors.grey[800] : Colors.white),
+                      color: isMe 
+                          ? null 
+                          : (isDeletedMessage 
+                              ? (isDark ? Colors.grey[800] : Colors.grey[300]) 
+                              : (isDark ? Colors.grey[800] : Colors.white)),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(18),
                         topRight: const Radius.circular(18),
@@ -124,7 +205,7 @@ class MessageBubble extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (msg.replyToId != null) 
+                        if (msg.replyToId != null && !isDeletedMessage) 
                           Container(
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.all(8),
@@ -132,13 +213,23 @@ class MessageBubble extends StatelessWidget {
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(msg.replyToSenderName ?? "Reply", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)), Text(msg.replyToText ?? "Message", maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))]),
                           ),
                         
-                        if (msg.fileUrl != null || msg.localBytes != null)
+                        if ((msg.fileUrl != null || msg.localBytes != null) && !isDeletedMessage)
                            _buildMediaContent(context),
 
                         if (msg.text.isNotEmpty)
                           Padding(
                             padding: (msg.type == 'image' || msg.type == 'file' || msg.type == 'audio') ? const EdgeInsets.only(top: 8) : EdgeInsets.zero,
-                            child: Text(msg.text, style: GoogleFonts.lato(fontSize: 15, color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87))),
+                            // ✅ APPLY ITALICS FOR DELETED MESSAGES
+                            child: Text(
+                              msg.text, 
+                              style: GoogleFonts.lato(
+                                fontSize: 15, 
+                                fontStyle: isDeletedMessage ? FontStyle.italic : FontStyle.normal,
+                                color: isMe 
+                                  ? (isDeletedMessage ? Colors.white70 : Colors.white) 
+                                  : (isDark ? (isDeletedMessage ? Colors.grey : Colors.white) : (isDeletedMessage ? Colors.grey[600] : Colors.black87))
+                              )
+                            ),
                           ),
                       ],
                     ),

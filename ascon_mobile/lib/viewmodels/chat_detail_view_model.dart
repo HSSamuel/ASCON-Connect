@@ -220,6 +220,12 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
+  Future<void> refreshMessages() async {
+    if (state.conversationId != null) {
+      await loadMessages(initial: false); // Reloads without full loading spinner if desired
+    }
+  }
+
   Future<void> loadMessages({bool initial = false}) async {
     if (state.conversationId == null) return;
     if (initial && mounted) state = state.copyWith(isLoading: true);
@@ -297,9 +303,23 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   Future<void> deleteMessages(List<String> ids, {required bool deleteForEveryone}) async {
     try {
-      if (!deleteForEveryone && mounted) {
-         final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
-         state = state.copyWith(messages: updated);
+      // ✅ OPTIMISTIC UI UPDATE
+      if (mounted) {
+        if (deleteForEveryone) {
+          // Mark as deleted (Italicize)
+          final updated = state.messages.map((m) {
+            if (ids.contains(m.id)) {
+              m.isDeleted = true;
+              m.text = "🚫 This message was deleted";
+            }
+            return m;
+          }).toList();
+          state = state.copyWith(messages: updated);
+        } else {
+          // "Delete for Me" OR "Clear Trace" -> Remove from list entirely
+          final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
+          state = state.copyWith(messages: updated);
+        }
       }
 
       await _api.post('/api/chat/delete-multiple', {
@@ -308,6 +328,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       });
     } catch (e) {
       debugPrint("Delete failed: $e");
+      refreshMessages(); // Revert on error
     }
   }
 
@@ -404,10 +425,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   void _markMessageError(String tempId) {
     if (!mounted) return;
-    final updated = state.messages.map((m) {
-      if (m.id == tempId) m.status = MessageStatus.error;
-      return m;
-    }).toList();
+    final updated = state.messages.map((m) => m.id == tempId ? (m..status = MessageStatus.error) : m).toList();
     state = state.copyWith(messages: updated);
   }
 
@@ -468,6 +486,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     });
 
+    // ✅ LISTEN FOR DELETED MESSAGES & AUTO-REFRESH
     socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == state.conversationId) {
         List<dynamic> ids = data['messageIds'];

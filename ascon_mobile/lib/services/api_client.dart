@@ -25,8 +25,8 @@ class ApiClient {
   // ✅ ENCRYPTED VAULT FOR TOKENS
   final _secureStorage = StorageConfig.storage;
 
-  // Increased timeout for slower networks
-  static const Duration _timeoutDuration = Duration(seconds: 90);
+  // Optimized timeout for mobile networks (30s is standard)
+  static const Duration _timeoutDuration = Duration(seconds: 30);
 
   // Callback to handle token refresh
   Future<String?> Function()? onTokenRefresh;
@@ -56,40 +56,52 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
-    final headers = await _getSecureHeaders();
-    final response = await _request(() => http.post(
-      Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: headers,
-      body: jsonEncode(body),
-    ));
+    // ✅ FIX: Move header generation INSIDE the closure so retries pick up new tokens
+    final response = await _request(() async {
+      final headers = await _getSecureHeaders();
+      return http.post(
+        Uri.parse('${AppConfig.baseUrl}$endpoint'),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+    });
     return response as Map<String, dynamic>; 
   }
 
   Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body) async {
-    final headers = await _getSecureHeaders();
-    final response = await _request(() => http.put(
-      Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: headers,
-      body: jsonEncode(body),
-    ));
+    // ✅ FIX: Move header generation INSIDE the closure
+    final response = await _request(() async {
+      final headers = await _getSecureHeaders();
+      return http.put(
+        Uri.parse('${AppConfig.baseUrl}$endpoint'),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+    });
     return response as Map<String, dynamic>;
   }
 
   Future<dynamic> get(String endpoint) async {
-    final headers = await _getSecureHeaders();
-    return _request(() => http.get(
-      Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: headers,
-    ));
+    // ✅ FIX: Move header generation INSIDE the closure
+    return _request(() async {
+      final headers = await _getSecureHeaders();
+      return http.get(
+        Uri.parse('${AppConfig.baseUrl}$endpoint'),
+        headers: headers,
+      );
+    });
   }
 
-  // ✅ NEW: DELETE METHOD (Added for Chat Deletion)
+  // ✅ DELETE METHOD
   Future<dynamic> delete(String endpoint) async {
-    final headers = await _getSecureHeaders();
-    return _request(() => http.delete(
-      Uri.parse('${AppConfig.baseUrl}$endpoint'),
-      headers: headers,
-    ));
+    // ✅ FIX: Move header generation INSIDE the closure
+    return _request(() async {
+      final headers = await _getSecureHeaders();
+      return http.delete(
+        Uri.parse('${AppConfig.baseUrl}$endpoint'),
+        headers: headers,
+      );
+    });
   }
 
   Future<dynamic> _request(Future<http.Response> Function() req) async {
@@ -98,7 +110,7 @@ class ApiClient {
 
       // ✅ CRITICAL FIX: Handle Race Condition for 401
       if (response.statusCode == 401 && onTokenRefresh != null) {
-        print("🔄 401 Detected.");
+        print("🔄 401 Detected. Attempting Refresh...");
 
         String? newToken;
 
@@ -132,7 +144,7 @@ class ApiClient {
         // If we got a valid token (either from our refresh or the waiting one), retry
         if (newToken != null) {
           print("✅ Token Refreshed. Retrying Request...");
-          // No need to call setAuthToken, the new req() will fetch headers again
+          // This call to req() will now re-execute _getSecureHeaders() and use the NEW token
           response = await req().timeout(_timeoutDuration); 
         }
       }

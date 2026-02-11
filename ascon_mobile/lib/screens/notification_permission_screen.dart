@@ -111,7 +111,7 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
                           children: [
                             // Main Image Card
                             Container(
-                              height: 280,
+                              height: 420, // ✅ INCREASED HEIGHT
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: cardBg,
@@ -131,14 +131,14 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
                                   children: [
                                     // Placeholder / Asset Image
                                     Image.asset(
-                                      'assets/images/alumni_group.png', // ✅ Ensure this asset exists!
+                                      'assets/images/alumni_group.png',
                                       fit: BoxFit.cover,
                                       errorBuilder: (c, o, s) => Container(
                                         color: Colors.grey[200],
                                         child: Icon(Icons.groups_rounded, size: 100, color: Colors.grey[400]),
                                       ),
                                     ),
-                                    // Gradient Overlay (for text readability if needed)
+                                    // Gradient Overlay
                                     Container(
                                       decoration: BoxDecoration(
                                         gradient: LinearGradient(
@@ -157,9 +157,10 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
                             ),
 
                             // Floating Notification Badge (Pulsing)
+                            // ✅ FIXED: Used 'right' instead of invalid 'center' parameter
                             Positioned(
-                              top: 22,
-                              right: 22,
+                              top: 15, 
+                              right: 15, 
                               child: ScaleTransition(
                                 scale: Tween(begin: 1.0, end: 1.1).animate(_pulseController),
                                 child: Container(

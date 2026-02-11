@@ -63,7 +63,8 @@ router.post("/save-token", verify, async (req, res) => {
 // ==========================================
 // 2. GET NOTIFICATIONS (Filters out Deleted)
 // ==========================================
-router.get("/my-notifications", verify, async (req, res) => {
+// ✅ FIXED: Changed route from "/my-notifications" to "/" to match mobile app
+router.get("/", verify, async (req, res) => {
   try {
     const notifications = await Notification.find({
       $or: [{ recipientId: req.user._id }, { isBroadcast: true }],

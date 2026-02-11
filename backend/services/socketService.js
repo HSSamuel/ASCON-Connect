@@ -4,8 +4,10 @@ const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 const jwt = require("jsonwebtoken"); // ✅ Import JWT
 const UserAuth = require("../models/UserAuth");
+const UserProfile = require("../models/UserProfile"); // ✅ Import Profile for caller name
 const Group = require("../models/Group");
 const logger = require("../utils/logger");
+const { sendPersonalNotification } = require("../utils/notificationHandler"); // ✅ Import Notification Handler
 
 let io;
 const onlineUsers = new Map(); // userId -> Set<socketId>
@@ -121,16 +123,50 @@ const initializeSocket = async (server) => {
     // D. WEBRTC SIGNALING (VOICE CALLS)
     // ==========================================
 
-    // 1. Initiate Call
-    socket.on("call_user", (data) => {
-      logger.info(
-        `📞 Call initiated by ${socket.userId} to ${data.userToCall}`,
-      );
-      io.to(data.userToCall).emit("call_made", {
-        offer: data.offer,
-        socket: socket.id,
-        callerId: socket.userId, // Sent so receiver knows who is calling
-      });
+    // 1. Initiate Call (UPDATED FOR MISSED CALLS)
+    socket.on("call_user", async (data) => {
+      const receiverId = data.userToCall;
+      logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
+
+      // Check if receiver is ONLINE in our Map
+      const isReceiverOnline =
+        onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
+
+      if (isReceiverOnline) {
+        // ✅ Online: Ring them immediately
+        io.to(receiverId).emit("call_made", {
+          offer: data.offer,
+          socket: socket.id,
+          callerId: socket.userId, // Sent so receiver knows who is calling
+        });
+      } else {
+        // ❌ Offline: Handle Missed Call Notification
+        logger.info(`📴 User ${receiverId} is offline. Logging missed call.`);
+
+        try {
+          // Fetch caller name for the notification text
+          const callerProfile = await UserProfile.findOne({
+            userId: socket.userId,
+          }).select("fullName");
+          const callerName = callerProfile
+            ? callerProfile.fullName
+            : "Unknown Caller";
+
+          await sendPersonalNotification(
+            receiverId,
+            "Missed Call 📞",
+            `You missed a call from ${callerName}`,
+            {
+              type: "missed_call",
+              callerId: socket.userId,
+              callerName: callerName,
+              route: "notifications", // Directs user to notification list
+            },
+          );
+        } catch (err) {
+          logger.error(`Failed to log missed call: ${err.message}`);
+        }
+      }
     });
 
     // 2. Answer Call

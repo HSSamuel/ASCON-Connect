@@ -86,8 +86,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
-  // Fixed: Implicit return type for provider to support Riverpod 2.x
-  get _provider => chatDetailProvider(
+  // ✅ FIXED: Explicit type definition so ref.listen knows what state it is watching
+  AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
       isGroup: widget.isGroup,
@@ -504,6 +504,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final state = ref.watch(_provider);
     final notifier = ref.read(_provider.notifier);
 
+    // ✅ AUTO-SCROLL when new messages arrive
+    ref.listen(_provider, (previous, next) {
+      if (next.messages.length > (previous?.messages.length ?? 0)) {
+        _scrollToBottom();
+      }
+    });
+
     if (state.isKicked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -627,77 +634,86 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                ActivePollCard(groupId: widget.groupId),
 
             Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                itemCount: state.messages.length,
-                itemBuilder: (context, index) {
-                  final msg = state.messages[index];
-                  bool showDate = false;
-                  if (index == 0) {
-                    showDate = true;
-                  } else {
-                    final prevMsg = state.messages[index - 1];
-                    if (msg.createdAt.day != prevMsg.createdAt.day || msg.createdAt.month != prevMsg.createdAt.month) {
-                      showDate = true;
-                    }
-                  }
-
-                  String dateLabel = "";
-                  if (showDate) {
-                    final now = DateTime.now();
-                    final diff = now.difference(msg.createdAt).inDays;
-                    if (diff == 0 && now.day == msg.createdAt.day) dateLabel = "Today";
-                    else if (diff == 1) dateLabel = "Yesterday";
-                    else dateLabel = DateFormat("MMM d, y").format(msg.createdAt);
-                  }
-
-                  return Column(
-                    children: [
-                      if (showDate) _buildDateHeader(dateLabel),
-                      
-                      MessageBubble(
-                        msg: msg,
-                        myUserId: state.myUserId,
-                        isMe: msg.senderId == state.myUserId,
-                        isDark: isDark,
-                        primaryColor: primaryColor,
-                        isSelectionMode: _isSelectionMode,
-                        isSelected: _selectedMessageIds.contains(msg.id),
-                        playingMessageId: _playingMessageId,
-                        currentPosition: _currentPosition,
-                        totalDuration: _totalDuration,
-                        downloadingFileId: _downloadingFileId,
-                        isAdmin: widget.isGroup && state.groupAdminIds.contains(msg.senderId),
-                        
-                        showSenderName: widget.isGroup && msg.senderId != state.myUserId,
-                        
-                        onSwipeReply: (id) {
-                          setState(() { _replyingTo = msg; _editingMessage = null; });
-                          _focusNode.requestFocus();
-                        },
-                        onToggleSelection: _toggleSelection,
-                        onReply: (id, _) {
-                          setState(() { _replyingTo = msg; _editingMessage = null; });
-                          _focusNode.requestFocus();
-                        },
-                        onEdit: (id) {
-                          setState(() { _editingMessage = msg; _replyingTo = null; _textController.text = msg.text; });
-                          _focusNode.requestFocus();
-                        },
-                        onDelete: (id) { _toggleSelection(id); _deleteSelectedMessages(); }, 
-                        onPlayAudio: (url) async {
-                          if (url.startsWith('http')) { await _audioPlayer.play(UrlSource(url)); } 
-                          else { await _audioPlayer.play(DeviceFileSource(url)); }
-                          setState(() => _playingMessageId = msg.id);
-                        },
-                        onPauseAudio: (id, _) async { await _audioPlayer.pause(); setState(() => _playingMessageId = null); },
-                        onSeekAudio: (pos) => _audioPlayer.seek(pos),
-                        onDownloadFile: (url, name) => _downloadAndOpenWith(msg.id, url, name),
-                      ),
-                    ],
-                  );
+              // ✅ SWIPE TO REFRESH
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await notifier.refreshMessages();
                 },
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                  itemCount: state.messages.length,
+                  itemBuilder: (context, index) {
+                    final msg = state.messages[index];
+                    bool showDate = false;
+                    if (index == 0) {
+                      showDate = true;
+                    } else {
+                      final prevMsg = state.messages[index - 1];
+                      if (msg.createdAt.day != prevMsg.createdAt.day || msg.createdAt.month != prevMsg.createdAt.month) {
+                        showDate = true;
+                      }
+                    }
+
+                    String dateLabel = "";
+                    if (showDate) {
+                      final now = DateTime.now();
+                      final diff = now.difference(msg.createdAt).inDays;
+                      if (diff == 0 && now.day == msg.createdAt.day) dateLabel = "Today";
+                      else if (diff == 1) dateLabel = "Yesterday";
+                      else dateLabel = DateFormat("MMM d, y").format(msg.createdAt);
+                    }
+
+                    return Column(
+                      children: [
+                        if (showDate) _buildDateHeader(dateLabel),
+                        
+                        MessageBubble(
+                          msg: msg,
+                          myUserId: state.myUserId,
+                          isMe: msg.senderId == state.myUserId,
+                          isDark: isDark,
+                          primaryColor: primaryColor,
+                          isSelectionMode: _isSelectionMode,
+                          isSelected: _selectedMessageIds.contains(msg.id),
+                          playingMessageId: _playingMessageId,
+                          currentPosition: _currentPosition,
+                          totalDuration: _totalDuration,
+                          downloadingFileId: _downloadingFileId,
+                          isAdmin: widget.isGroup && state.groupAdminIds.contains(msg.senderId),
+                          
+                          showSenderName: widget.isGroup && msg.senderId != state.myUserId,
+                          
+                          onSwipeReply: (id) {
+                            setState(() { _replyingTo = msg; _editingMessage = null; });
+                            _focusNode.requestFocus();
+                          },
+                          onToggleSelection: _toggleSelection,
+                          onReply: (id, _) {
+                            setState(() { _replyingTo = msg; _editingMessage = null; });
+                            _focusNode.requestFocus();
+                          },
+                          onEdit: (id) {
+                            setState(() { _editingMessage = msg; _replyingTo = null; _textController.text = msg.text; });
+                            _focusNode.requestFocus();
+                          },
+                          // ✅ UPDATED: Trigger deletion via notifier
+                          onDelete: (id, deleteForEveryone) { 
+                            notifier.deleteMessages([id], deleteForEveryone: deleteForEveryone);
+                          }, 
+                          onPlayAudio: (url) async {
+                            if (url.startsWith('http')) { await _audioPlayer.play(UrlSource(url)); } 
+                            else { await _audioPlayer.play(DeviceFileSource(url)); }
+                            setState(() => _playingMessageId = msg.id);
+                          },
+                          onPauseAudio: (id, _) async { await _audioPlayer.pause(); setState(() => _playingMessageId = null); },
+                          onSeekAudio: (pos) => _audioPlayer.seek(pos),
+                          onDownloadFile: (url, name) => _downloadAndOpenWith(msg.id, url, name),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
             

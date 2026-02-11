@@ -48,7 +48,10 @@ class SocketService with WidgetsBindingObserver {
       _currentUserId = await _storage.read(key: "userId");
     }
 
-    if (token == null || _currentUserId == null) return;
+    if (token == null || _currentUserId == null) {
+      debugPrint("⚠️ Socket Init Skipped: Missing Token or UserId");
+      return;
+    }
 
     String socketUrl = AppConfig.baseUrl;
     if (socketUrl.endsWith('/')) socketUrl = socketUrl.substring(0, socketUrl.length - 1);
@@ -86,6 +89,7 @@ class SocketService with WidgetsBindingObserver {
     socket!.onConnect((_) {
       debugPrint('✅ Socket Connected');
       if (_currentUserId != null) {
+        // Ensure backend knows we are here (Double check)
         socket!.emit("user_connected", _currentUserId);
       }
     });
@@ -111,18 +115,23 @@ class SocketService with WidgetsBindingObserver {
 
     // 1. INCOMING CALL (Global Navigation)
     socket!.on('call_made', (data) {
-      debugPrint("📞 Incoming Call Detected: $data");
-      if (rootNavigatorKey.currentState != null) {
-        rootNavigatorKey.currentState!.push(
+      debugPrint("📞 INCOMING CALL RECEIVED! Payload: $data");
+      
+      final currentState = rootNavigatorKey.currentState;
+      if (currentState != null) {
+        debugPrint("🚀 Navigating to CallScreen...");
+        currentState.push(
           MaterialPageRoute(
             builder: (_) => CallScreen(
               remoteName: "Incoming Call...", 
-              remoteId: data['callerId'],
+              remoteId: data['callerId'] ?? "Unknown",
               isCaller: false,
               offer: data['offer'],
             ),
           ),
         );
+      } else {
+        debugPrint("❌ Navigator State is NULL. Cannot open Call Screen.");
       }
     });
 
@@ -134,7 +143,6 @@ class SocketService with WidgetsBindingObserver {
 
     // 3. ICE CANDIDATE (Connectivity)
     socket!.on('ice_candidate_received', (data) {
-      // debugPrint("❄️ ICE Candidate Received");
       _callEventsController.add({'type': 'ice_candidate', 'data': data});
     });
 
