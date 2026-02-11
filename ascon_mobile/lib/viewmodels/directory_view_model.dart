@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Required for StateNotifierProvider
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_client.dart';
 import '../services/data_service.dart';
@@ -20,7 +20,9 @@ class DirectoryState {
   final bool isLoadingNearMe;
   final bool hasRecommendations;
   final bool shouldShowPopup;
-  final bool showMentorsOnly;
+  
+  // ✅ Replaced boolean flags with a single Source of Truth
+  final String activeFilter; // "All", "Mentors", "Classmates", "Near Me"
   final String nearMeFilter;
 
   const DirectoryState({
@@ -35,7 +37,7 @@ class DirectoryState {
     this.isLoadingNearMe = false,
     this.hasRecommendations = false,
     this.shouldShowPopup = false,
-    this.showMentorsOnly = false,
+    this.activeFilter = "All",
     this.nearMeFilter = "",
   });
 
@@ -51,7 +53,7 @@ class DirectoryState {
     bool? isLoadingNearMe,
     bool? hasRecommendations,
     bool? shouldShowPopup,
-    bool? showMentorsOnly,
+    String? activeFilter,
     String? nearMeFilter,
   }) {
     return DirectoryState(
@@ -66,7 +68,7 @@ class DirectoryState {
       isLoadingNearMe: isLoadingNearMe ?? this.isLoadingNearMe,
       hasRecommendations: hasRecommendations ?? this.hasRecommendations,
       shouldShowPopup: shouldShowPopup ?? this.shouldShowPopup,
-      showMentorsOnly: showMentorsOnly ?? this.showMentorsOnly,
+      activeFilter: activeFilter ?? this.activeFilter,
       nearMeFilter: nearMeFilter ?? this.nearMeFilter,
     );
   }
@@ -83,11 +85,9 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
   }
 
   void init() {
-    loadDirectory();
+    loadDirectory(); // Default "All"
     loadRecommendations();
     loadSmartMatches();
-    loadNearMe();
-    _listenToSocket();
   }
 
   @override
@@ -96,12 +96,26 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
     super.dispose();
   }
 
+  // ✅ MAIN FILTER SWITCHER
+  void setFilter(String filter) {
+    state = state.copyWith(activeFilter: filter);
+    
+    if (filter == "Near Me") {
+      loadNearMe();
+    } else {
+      loadDirectory(); 
+    }
+  }
+
   Future<void> loadDirectory({String query = ""}) async {
     state = state.copyWith(isLoadingDirectory: true);
 
     try {
       String endpoint = '/api/directory?search=$query';
-      if (state.showMentorsOnly) endpoint += '&mentorship=true';
+      
+      // ✅ Apply Backend Filters based on active tab
+      if (state.activeFilter == "Mentors") endpoint += '&mentorship=true';
+      if (state.activeFilter == "Classmates") endpoint += '&classmates=true';
 
       final response = await _api.get(endpoint);
 
@@ -115,25 +129,28 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
           list = rawData['data'];
         }
 
-        // Apply local filtering if searching to be snappy
-        // But here we rely on API mostly. 
-        // Let's ensure groupedAlumni is built from the fetched list
-        state = state.copyWith(
-          allAlumni: list,
-          searchResults: list,
-          groupedAlumni: _groupUsersByYear(list),
-          isLoadingDirectory: false,
-        );
+        if (mounted) {
+          state = state.copyWith(
+            allAlumni: list,
+            searchResults: list,
+            groupedAlumni: _groupUsersByYear(list),
+            isLoadingDirectory: false,
+          );
+        }
       }
     } catch (e) {
       debugPrint("Directory Load Error: $e");
-      state = state.copyWith(isLoadingDirectory: false);
+      if (mounted) state = state.copyWith(isLoadingDirectory: false);
     }
   }
 
   void onSearchChanged(String query) {
+    if (state.activeFilter == "Near Me") {
+       // Local filtering for Near Me list if needed
+       return; 
+    }
+
     if (query.isEmpty) {
-      // Restore full list
       state = state.copyWith(
         searchResults: state.allAlumni,
         groupedAlumni: _groupUsersByYear(state.allAlumni)
@@ -153,11 +170,6 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
         groupedAlumni: _groupUsersByYear(filtered)
       );
     }
-  }
-
-  void toggleMentorsOnly(bool value, String currentSearch) {
-    state = state.copyWith(showMentorsOnly: value);
-    loadDirectory(query: currentSearch);
   }
 
   Future<void> loadRecommendations() async {
@@ -192,9 +204,9 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
     state = state.copyWith(isLoadingMatches: true);
     try {
       final matches = await _dataService.fetchSmartMatches();
-      state = state.copyWith(smartMatches: matches, isLoadingMatches: false);
+      if (mounted) state = state.copyWith(smartMatches: matches, isLoadingMatches: false);
     } catch (_) {
-      state = state.copyWith(isLoadingMatches: false);
+      if (mounted) state = state.copyWith(isLoadingMatches: false);
     }
   }
 
@@ -202,9 +214,9 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
     state = state.copyWith(isLoadingNearMe: true);
     try {
       final nearby = await _dataService.fetchAlumniNearMe(city: city);
-      state = state.copyWith(nearbyAlumni: nearby, isLoadingNearMe: false);
+      if (mounted) state = state.copyWith(nearbyAlumni: nearby, isLoadingNearMe: false);
     } catch (_) {
-      state = state.copyWith(isLoadingNearMe: false);
+      if (mounted) state = state.copyWith(isLoadingNearMe: false);
     }
   }
 
@@ -219,7 +231,7 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
       if (!groups.containsKey(year)) groups[year] = [];
       groups[year]!.add(user);
     }
-    // Sort keys descending (newest year first)
+    
     var sortedKeys = groups.keys.toList()..sort((a, b) {
       if (a == 'Others') return 1;
       if (b == 'Others') return -1;
@@ -230,13 +242,12 @@ class DirectoryNotifier extends StateNotifier<DirectoryState> {
 
   void _listenToSocket() {
     _statusSubscription = SocketService().userStatusStream.listen((data) {
-      // In a real app, update state.allAlumni with new status
-      // state = state.copyWith(...)
+      // Logic to update online status in list
     });
   }
 }
 
-// ✅ 3. PROVIDER (GLOBAL DEFINITION)
+// ✅ 3. PROVIDER
 final directoryProvider = StateNotifierProvider.autoDispose<DirectoryNotifier, DirectoryState>((ref) {
   return DirectoryNotifier();
 });

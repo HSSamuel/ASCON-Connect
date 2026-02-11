@@ -68,6 +68,33 @@ class ChatDetailState {
   }
 }
 
+class ChatProviderArgs {
+  final String receiverId;
+  final bool isGroup;
+  final String? groupId;
+  final String? conversationId;
+
+  ChatProviderArgs({
+    required this.receiverId,
+    required this.isGroup,
+    this.groupId,
+    this.conversationId,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ChatProviderArgs &&
+        other.receiverId == receiverId &&
+        other.isGroup == isGroup &&
+        other.groupId == groupId &&
+        other.conversationId == conversationId;
+  }
+
+  @override
+  int get hashCode => Object.hash(receiverId, isGroup, groupId, conversationId);
+}
+
 // ✅ NOTIFIER
 class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final ApiClient _api = ApiClient();
@@ -78,7 +105,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   final bool isGroup;
   final String? groupId;
 
-  Timer? _statusTimer;
+  Timer? _statusHeartbeat;
+  Timer? _typingExpiryTimer; 
   StreamSubscription? _statusSubscription;
 
   ChatDetailNotifier({
@@ -98,9 +126,11 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   @override
   void dispose() {
-    _statusTimer?.cancel();
+    _statusHeartbeat?.cancel();
+    _typingExpiryTimer?.cancel();
     _statusSubscription?.cancel();
-    _stopTyping();
+    sendStopTyping();
+    
     if (isGroup && groupId != null) {
       _socket.socket?.emit('leave_room', groupId);
     }
@@ -117,19 +147,21 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   Future<void> _init() async {
     final myId = await _auth.currentUserId ?? "";
-    if (mounted) state = state.copyWith(myUserId: myId);
+    if (!mounted) return;
+    state = state.copyWith(myUserId: myId);
 
     if (isGroup && groupId != null) {
       _socket.socket?.emit('join_room', groupId);
-      _fetchGroupAdmins();
+      await _fetchGroupAdmins();
     } else {
-      if (!state.isPeerOnline) _startStatusPolling();
+      _startStatusHeartbeat();
     }
+
+    if (!mounted) return;
 
     if (state.conversationId != null) {
       await loadMessages(initial: true);
     } else {
-      // Attempt init, but don't crash if it fails (lazy init)
       try {
         await _findOrCreateConversation();
       } catch (e) {
@@ -137,15 +169,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     }
 
-    _setupSocketListeners();
+    if (mounted) _setupSocketListeners();
   }
 
   Future<void> _fetchGroupAdmins() async {
     if (groupId == null) return;
     try {
       final result = await _api.get('/api/groups/$groupId/info');
+      if (!mounted) return;
+      
       if (result['success'] == true) {
-        final data = result['data']; // Check if this also needs ['data'] depending on backend
+        final data = result['data']; 
         final List<dynamic> admins = (data is Map && data.containsKey('data')) ? data['data']['admins'] : data['admins'] ?? [];
         if (mounted) {
           state = state.copyWith(groupAdminIds: admins.map((e) => e.toString()).toList());
@@ -156,7 +190,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ UPDATED: Correctly parses the nested API response
   Future<String?> _findOrCreateConversation() async {
     try {
       final result = await _api.post('/api/chat/start', {
@@ -164,23 +197,20 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         'groupId': isGroup ? groupId : null
       });
       
+      if (!mounted) return null;
+
       if (result['success'] == true && result['data'] != null) {
-        final body = result['data']; // This is the API body: {success: true, data: {...}}
-        
-        // Check if the body itself has a 'data' field (Double wrapping)
+        final body = result['data'];
         final innerData = (body is Map && body.containsKey('data')) ? body['data'] : body;
-        
-        // Try both _id and id
         final newId = innerData['_id'] ?? innerData['id'];
         
         if (newId == null) {
-          debugPrint("❌ CRITICAL: ID Missing. Parsed Body: $innerData");
-          throw Exception("Server returned success but ID is missing in response.");
+          throw Exception("Server returned success but ID is missing.");
         }
 
         if (mounted) {
           state = state.copyWith(conversationId: newId.toString());
-          await loadMessages(initial: true);
+          loadMessages(initial: true);
         }
         return newId.toString();
       } else {
@@ -198,15 +228,14 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
     try {
       final result = await _api.get('/api/chat/${state.conversationId}');
-      
+      if (!mounted) return;
+
       if (result['success'] == true) {
-        // ✅ Handle nested data for GET requests too
         final body = result['data'];
         final rawList = (body is Map && body.containsKey('data')) ? body['data'] : body;
 
         if (rawList is List) {
           final newMessages = rawList.map((m) => ChatMessage.fromJson(m)).toList();
-          
           if (mounted) {
             state = state.copyWith(
               messages: newMessages,
@@ -220,36 +249,28 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         if (mounted) state = state.copyWith(isKicked: true);
       }
     } catch (e) {
-      debugPrint("Load Messages Error: $e");
       if (mounted) state = state.copyWith(isLoading: false);
     }
   }
 
   Future<void> loadMoreMessages() async {
     if (!mounted || state.isLoadingMore || !state.hasMoreMessages || state.messages.isEmpty || state.conversationId == null) return;
-    
     state = state.copyWith(isLoadingMore: true);
     String oldestId = state.messages.first.id;
-    
     try {
       final result = await _api.get('/api/chat/${state.conversationId}?beforeId=$oldestId');
+      if (!mounted) return;
       if (result['success'] == true) {
-        // ✅ Handle nested data here as well
         final body = result['data'];
         final rawList = (body is Map && body.containsKey('data')) ? body['data'] : body;
-
         if (rawList is List) {
           final olderMessages = rawList.map((m) => ChatMessage.fromJson(m)).toList();
-          
           if (mounted) {
-            if (olderMessages.isEmpty) {
-              state = state.copyWith(hasMoreMessages: false, isLoadingMore: false);
-            } else {
-              state = state.copyWith(
-                messages: [...olderMessages, ...state.messages],
-                isLoadingMore: false
-              );
-            }
+            state = state.copyWith(
+              messages: [...olderMessages, ...state.messages],
+              hasMoreMessages: olderMessages.isNotEmpty,
+              isLoadingMore: false
+            );
           }
         }
       }
@@ -262,7 +283,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     try {
       await _api.put('/api/chat/message/$messageId', {'text': newText});
       if (!mounted) return true;
-
       final updated = state.messages.map((m) {
         if (m.id == messageId) {
           m.text = newText;
@@ -277,7 +297,24 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  // ✅ UPDATED: Captures errors and displays them
+  // ✅ DELETION LOGIC (Me vs Everyone)
+  Future<void> deleteMessages(List<String> ids, {required bool deleteForEveryone}) async {
+    try {
+      // Optimistic Update: If deleting for ME, remove immediately
+      if (!deleteForEveryone && mounted) {
+         final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
+         state = state.copyWith(messages: updated);
+      }
+
+      await _api.post('/api/chat/delete-multiple', {
+        'messageIds': ids, 
+        'deleteForEveryone': deleteForEveryone
+      });
+    } catch (e) {
+      debugPrint("Delete failed: $e");
+    }
+  }
+
   Future<String?> sendMessage({
     String? text, 
     String? filePath, 
@@ -289,20 +326,20 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   }) async {
     if (!mounted) return "View disposed";
 
-    // 1. AUTO-INITIALIZE CHAT if missing
     String? currentConvId = state.conversationId;
     if (currentConvId == null) {
       try {
         currentConvId = await _findOrCreateConversation();
       } catch (e) {
-        return "Chat Init Failed: ${e.toString().replaceAll('Exception: ', '')}";
+        return "Init Failed";
       }
-      
-      if (currentConvId == null) return "Could not start conversation";
+      if (!mounted) return "View disposed";
+      if (currentConvId == null) return "Start chat failed";
     }
 
     final token = await _auth.getToken();
-    if (token == null) return "Authentication error";
+    if (!mounted) return "View disposed";
+    if (token == null) return "Auth error";
 
     final tempId = DateTime.now().millisecondsSinceEpoch.toString();
     final tempMessage = ChatMessage(
@@ -321,7 +358,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       status: MessageStatus.sending,
     );
 
-    // Optimistic Update
     state = state.copyWith(messages: [...state.messages, tempMessage]);
 
     try {
@@ -330,7 +366,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           : AppConfig.baseUrl;
 
       final url = Uri.parse('$baseUrl/api/chat/$currentConvId');
-      
       var request = http.MultipartRequest('POST', url);
       request.headers['auth-token'] = token; 
 
@@ -341,7 +376,9 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       if (fileBytes != null) {
         request.files.add(http.MultipartFile.fromBytes('file', fileBytes, filename: fileName ?? 'upload'));
       } else if (filePath != null) {
-        request.files.add(await http.MultipartFile.fromPath('file', filePath));
+        final multipartFile = await http.MultipartFile.fromPath('file', filePath);
+        if (!mounted) { _markMessageError(tempId); return "View disposed"; }
+        request.files.add(multipartFile);
       }
 
       var streamedResponse = await request.send();
@@ -349,38 +386,30 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
       if (!mounted) return null; 
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
+      if (response.statusCode >= 200 && response.statusCode < 300) {
         try {
           final data = jsonDecode(response.body);
           final realMessage = ChatMessage.fromJson(data);
-          
           final updated = state.messages.map((m) => m.id == tempId ? realMessage : m).toList();
           state = state.copyWith(messages: updated);
-          return null; // Success
+          return null; 
         } catch (e) {
-          return "Server response error";
+          return "Server error";
         }
       } else {
         _markMessageError(tempId);
-        try {
-          final errBody = jsonDecode(response.body);
-          return "Failed: ${errBody['message'] ?? response.statusCode}";
-        } catch (_) {
-          return "Failed: ${response.statusCode}";
-        }
+        return "Failed: ${response.statusCode}";
       }
     } catch (e) {
       if (mounted) _markMessageError(tempId);
-      return "Connection error: ${e.toString()}";
+      return "Connection error";
     }
   }
 
   void _markMessageError(String tempId) {
     if (!mounted) return;
     final updated = state.messages.map((m) {
-      if (m.id == tempId) {
-        m.status = MessageStatus.error;
-      }
+      if (m.id == tempId) m.status = MessageStatus.error;
       return m;
     }).toList();
     state = state.copyWith(messages: updated);
@@ -404,9 +433,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           if (newMessage.senderId == state.myUserId) return; 
           if (state.messages.any((m) => m.id == newMessage.id)) return;
 
+          _typingExpiryTimer?.cancel();
           state = state.copyWith(
             messages: [...state.messages, newMessage],
-            isPeerTyping: false
+            isPeerTyping: false 
           );
           _markRead();
         } catch (e) {
@@ -427,21 +457,45 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
     socket.on('typing_start', (data) {
       if (mounted && data['conversationId'] == state.conversationId && data['senderId'] != state.myUserId) {
+        _typingExpiryTimer?.cancel();
         state = state.copyWith(isPeerTyping: true);
+        _typingExpiryTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) state = state.copyWith(isPeerTyping: false);
+        });
       }
     });
 
     socket.on('typing_stop', (data) {
       if (mounted && data['conversationId'] == state.conversationId && data['senderId'] != state.myUserId) {
+        _typingExpiryTimer?.cancel();
         state = state.copyWith(isPeerTyping: false);
       }
     });
 
+    // ✅ HANDLE BOTH DELETION TYPES
     socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == state.conversationId) {
         List<dynamic> ids = data['messageIds'];
-        final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
-        state = state.copyWith(messages: updated);
+        bool isHardDelete = data['isHardDelete'] == true;
+
+        if (isHardDelete) {
+           // If deleted for everyone, we REPLACE content
+           final updated = state.messages.map((m) {
+             if (ids.contains(m.id)) {
+               m.isDeleted = true;
+               m.text = "🚫 This message was deleted";
+               // You can also nullify file fields if they are exposed in the model
+             }
+             return m;
+           }).toList();
+           state = state.copyWith(messages: updated);
+        } else {
+           // If deleted for me (or other person deleted for themselves), 
+           // usually we don't get a socket event for 'deleted for me' unless it's sync.
+           // But if we do receive it (e.g. from multi-device sync), we remove it.
+           final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
+           state = state.copyWith(messages: updated);
+        }
       }
     });
 
@@ -459,7 +513,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             isPeerOnline: data['isOnline'],
             peerLastSeen: !data['isOnline'] ? data['lastSeen'] : state.peerLastSeen
           );
-          if (data['isOnline']) _statusTimer?.cancel();
         }
       });
     }
@@ -475,7 +528,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
   }
 
-  void _stopTyping() {
+  void sendStopTyping() {
     try {
       if (state.conversationId != null) {
         _socket.socket?.emit('stop_typing', {
@@ -487,38 +540,28 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     } catch (_) {} 
   }
 
-  void _startStatusPolling() {
+  void _startStatusHeartbeat() {
     _checkStatusSafe();
-    _statusTimer?.cancel();
-    _statusTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _statusHeartbeat?.cancel();
+    _statusHeartbeat = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) {
-        _statusTimer?.cancel();
+        _statusHeartbeat?.cancel();
         return;
       }
-      if (!state.isPeerOnline) _checkStatusSafe();
+      _checkStatusSafe();
     });
   }
 
   void _checkStatusSafe() {
     if(!isGroup) _socket.checkUserStatus(receiverId);
   }
-  
-  Future<void> deleteMessages(List<String> ids) async {
-    final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
-    if (mounted) state = state.copyWith(messages: updated);
-    try {
-      await _api.post('/api/chat/delete-multiple', {'messageIds': ids, 'deleteForEveryone': false});
-    } catch (_) {}
-  }
 }
 
-final chatDetailProvider = StateNotifierProvider.family.autoDispose<ChatDetailNotifier, ChatDetailState, Map<String, dynamic>>((ref, args) {
+final chatDetailProvider = StateNotifierProvider.family.autoDispose<ChatDetailNotifier, ChatDetailState, ChatProviderArgs>((ref, args) {
   return ChatDetailNotifier(
-    receiverId: args['receiverId'],
-    isGroup: args['isGroup'] ?? false,
-    groupId: args['groupId'],
-    conversationId: args['conversationId'],
-    initialIsOnline: args['isOnline'] ?? false,
-    initialLastSeen: args['lastSeen'],
+    receiverId: args.receiverId,
+    isGroup: args.isGroup,
+    groupId: args.groupId,
+    conversationId: args.conversationId,
   );
 });

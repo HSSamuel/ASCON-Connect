@@ -2,6 +2,7 @@ const router = require("express").Router();
 const mongoose = require("mongoose");
 const UpdatePost = require("../models/UpdatePost");
 const UserProfile = require("../models/UserProfile");
+const UserAuth = require("../models/UserAuth"); // ✅ Added to fetch online status
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
@@ -74,7 +75,7 @@ router.get("/", verifyToken, async (req, res) => {
       const author = profileMap[post.authorId.toString()] || {};
       return {
         ...post,
-        authorId: post.authorId.toString(), // Force String for easy comparison
+        authorId: post.authorId.toString(),
         comments: post.comments || [],
         author: {
           _id: author.userId,
@@ -95,7 +96,7 @@ router.get("/", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 3. GET SINGLE POST (Detailed with Populated Comments)
+// 3. GET SINGLE POST (Detailed with Online Status)
 // =========================================================
 router.get("/:id", verifyToken, async (req, res) => {
   try {
@@ -107,19 +108,26 @@ router.get("/:id", verifyToken, async (req, res) => {
       userId: post.authorId,
     }).lean();
 
-    // 2. Fetch Comment Authors Safely
+    // 2. Fetch Comment Authors & Online Status
     const commentsList = post.comments || [];
-
-    // Safety check: Remove null IDs
     const commentUserIds = commentsList.map((c) => c.userId).filter((id) => id);
 
-    const commentProfiles = await UserProfile.find({
-      userId: { $in: commentUserIds },
-    }).lean();
+    // Run fetches in parallel for speed
+    const [commentProfiles, commentAuths] = await Promise.all([
+      UserProfile.find({ userId: { $in: commentUserIds } }).lean(),
+      UserAuth.find({ _id: { $in: commentUserIds } })
+        .select("isOnline")
+        .lean(),
+    ]);
 
     const commentProfileMap = {};
     commentProfiles.forEach((p) => {
       commentProfileMap[p.userId.toString()] = p;
+    });
+
+    const commentAuthMap = {};
+    commentAuths.forEach((a) => {
+      commentAuthMap[a._id.toString()] = a;
     });
 
     // 3. Construct Response
@@ -135,13 +143,18 @@ router.get("/:id", verifyToken, async (req, res) => {
         : false,
       comments: commentsList.map((c) => {
         if (!c.userId) return c;
+        const uidStr = c.userId.toString();
+        const cAuth = commentProfileMap[uidStr] || {};
+        const cStatus = commentAuthMap[uidStr] || {};
 
-        const cAuth = commentProfileMap[c.userId.toString()] || {};
         return {
           ...c,
           author: {
+            _id: c.userId, // Important for navigation
             fullName: cAuth.fullName || "Unknown",
             profilePicture: cAuth.profilePicture || "",
+            jobTitle: cAuth.jobTitle || "",
+            isOnline: cStatus.isOnline || false, // ✅ Added Online Status
           },
         };
       }),
@@ -172,7 +185,6 @@ router.put("/:id/like", verifyToken, async (req, res) => {
     } else {
       post.likes.push(userId);
 
-      // ✅ SEND NOTIFICATION (If not liking own post)
       if (post.authorId.toString() !== userId) {
         try {
           const likerProfile = await UserProfile.findOne({ userId });
@@ -202,13 +214,53 @@ router.put("/:id/like", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 5. ADD COMMENT (WITH NOTIFICATIONS)
+// ✅ GET POST LIKERS (With Online Status)
+// =========================================================
+router.get("/:id/likes", verifyToken, async (req, res) => {
+  try {
+    const post = await UpdatePost.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Fetch Profiles and Auth Status in parallel
+    const [profiles, auths] = await Promise.all([
+      UserProfile.find({ userId: { $in: post.likes } })
+        .select("userId fullName profilePicture jobTitle")
+        .lean(),
+      UserAuth.find({ _id: { $in: post.likes } })
+        .select("isOnline")
+        .lean(),
+    ]);
+
+    // Map Auth Status
+    const authMap = {};
+    auths.forEach((a) => {
+      authMap[a._id.toString()] = a;
+    });
+
+    // Merge Data
+    const enrichedLikers = profiles.map((p) => {
+      const uidStr = p.userId.toString();
+      return {
+        ...p,
+        _id: p.userId, // Ensure ID is accessible at root
+        isOnline: authMap[uidStr]?.isOnline || false, // ✅ Added Online Status
+      };
+    });
+
+    res.json({ success: true, data: enrichedLikers });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 5. ADD COMMENT
 // =========================================================
 router.post("/:id/comment", verifyToken, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text)
-      return res.status(400).json({ message: "Comment cannot be empty" });
+      return res.status(404).json({ message: "Comment cannot be empty" });
 
     const post = await UpdatePost.findById(req.params.id);
     if (!post) return res.status(404).json({ message: "Post not found" });
@@ -222,9 +274,10 @@ router.post("/:id/comment", verifyToken, async (req, res) => {
     post.comments.push(newComment);
     await post.save();
 
+    // Fetch author details immediately to return to UI
     const profile = await UserProfile.findOne({ userId: req.user._id });
+    const auth = await UserAuth.findById(req.user._id).select("isOnline");
 
-    // ✅ SEND NOTIFICATION to Post Author (if it's not their own comment)
     if (post.authorId.toString() !== req.user._id.toString()) {
       const commenterName = profile ? profile.fullName : "Someone";
       const commentPreview =
@@ -246,19 +299,19 @@ router.post("/:id/comment", verifyToken, async (req, res) => {
           "Failed to send comment notification:",
           notifyError.message,
         );
-        // Continue execution, do not fail request
       }
     }
 
-    // Return the formatted comment so UI can display it instantly
     res.status(201).json({
       success: true,
       comment: {
         ...newComment,
         _id: post.comments[post.comments.length - 1]._id,
         author: {
+          _id: req.user._id,
           fullName: profile?.fullName || "Me",
           profilePicture: profile?.profilePicture || "",
+          isOnline: auth?.isOnline || true, // Since they just posted, likely online
         },
       },
     });
@@ -279,7 +332,6 @@ router.delete("/:id/comments/:commentId", verifyToken, async (req, res) => {
     const comment = post.comments.id(commentId);
     if (!comment) return res.status(404).json({ message: "Comment not found" });
 
-    // Allow Admin, Post Author, or Comment Author to delete
     if (
       comment.userId.toString() !== req.user._id.toString() &&
       post.authorId.toString() !== req.user._id.toString() &&
@@ -311,7 +363,6 @@ router.put("/:id/comments/:commentId", verifyToken, async (req, res) => {
     const comment = post.comments.id(commentId);
     if (!comment) return res.status(404).json({ message: "Comment not found" });
 
-    // Only Comment Author can edit
     if (comment.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Unauthorized" });
     }
@@ -335,7 +386,6 @@ router.put("/:id", verifyToken, async (req, res) => {
 
     if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // Only Author can edit
     if (post.authorId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Unauthorized" });
     }

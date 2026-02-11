@@ -3,9 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 import '../../models/chat_objects.dart';
-import '../full_screen_image.dart'; // Ensure this exists
+import '../full_screen_image.dart'; 
 
 class MessageBubble extends StatelessWidget {
   final ChatMessage msg;
@@ -20,7 +22,6 @@ class MessageBubble extends StatelessWidget {
   final Duration totalDuration;
   final String? downloadingFileId;
   final bool isAdmin;
-  // ✅ FIX: Added this parameter
   final bool showSenderName;
   
   final Function(String) onSwipeReply;
@@ -41,11 +42,48 @@ class MessageBubble extends StatelessWidget {
     required this.onPlayAudio, required this.onPauseAudio, required this.onSeekAudio, required this.onDownloadFile
   });
 
+  Future<bool> _isFileDownloaded(String? fileName) async {
+    if (fileName == null) return false;
+    try {
+      final dir = await getTemporaryDirectory();
+      final safeFileName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_');
+      final file = File("${dir.path}/$safeFileName");
+      return await file.exists();
+    } catch (e) {
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final time = DateFormat('h:mm a').format(msg.createdAt);
-    final statusIcon = msg.status == MessageStatus.sending ? Icons.access_time : (msg.isRead ? Icons.done_all : Icons.check);
-    final statusColor = msg.status == MessageStatus.sending ? Colors.grey : (msg.isRead ? Colors.blue : Colors.grey);
+    
+    // ✅ VISUAL FIX: Handle Error Status
+    IconData statusIcon;
+    Color statusColor;
+
+    switch (msg.status) {
+      case MessageStatus.sending:
+        statusIcon = Icons.access_time;
+        statusColor = Colors.grey;
+        break;
+      case MessageStatus.sent:
+        statusIcon = Icons.check;
+        statusColor = Colors.grey;
+        break;
+      case MessageStatus.delivered:
+        statusIcon = Icons.done_all;
+        statusColor = Colors.grey;
+        break;
+      case MessageStatus.read:
+        statusIcon = Icons.done_all;
+        statusColor = Colors.blue;
+        break;
+      case MessageStatus.error:
+        statusIcon = Icons.error_outline;
+        statusColor = Colors.red;
+        break;
+    }
 
     return Dismissible(
       key: Key(msg.id),
@@ -98,7 +136,10 @@ class MessageBubble extends StatelessWidget {
                            _buildMediaContent(context),
 
                         if (msg.text.isNotEmpty)
-                          Text(msg.text, style: GoogleFonts.lato(fontSize: 15, color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87))),
+                          Padding(
+                            padding: (msg.type == 'image' || msg.type == 'file' || msg.type == 'audio') ? const EdgeInsets.only(top: 8) : EdgeInsets.zero,
+                            child: Text(msg.text, style: GoogleFonts.lato(fontSize: 15, color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87))),
+                          ),
                       ],
                     ),
                   ),
@@ -131,10 +172,105 @@ class MessageBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: msg.localBytes != null 
               ? Image.memory(msg.localBytes!, fit: BoxFit.cover)
-              : CachedNetworkImage(imageUrl: msg.fileUrl!, placeholder: (c, u) => const CircularProgressIndicator(), errorWidget: (c, u, e) => const Icon(Icons.broken_image)),
+              : CachedNetworkImage(
+                  imageUrl: msg.fileUrl!, 
+                  placeholder: (c, u) => const SizedBox(height: 150, child: Center(child: CircularProgressIndicator())), 
+                  errorWidget: (c, u, e) => const Icon(Icons.broken_image)
+                ),
+        ),
+      );
+    } 
+    else if (msg.type == 'audio') {
+      final isPlaying = playingMessageId == msg.id;
+      final duration = isPlaying ? totalDuration : Duration.zero;
+      final position = isPlaying ? currentPosition : Duration.zero;
+      
+      return Container(
+        width: 200,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () {
+                if (isPlaying) {
+                  onPauseAudio(msg.id, msg.fileUrl ?? "");
+                } else {
+                  onPlayAudio(msg.fileUrl ?? "");
+                }
+              },
+              child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, size: 32, color: isMe ? Colors.white : primaryColor),
+            ),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  trackHeight: 4,
+                  activeTrackColor: isMe ? Colors.white : primaryColor,
+                  inactiveTrackColor: Colors.grey,
+                  thumbColor: isMe ? Colors.white : primaryColor,
+                ),
+                child: Slider(
+                  value: position.inSeconds.toDouble(),
+                  max: (duration.inSeconds > 0) ? duration.inSeconds.toDouble() : 60.0,
+                  onChanged: (val) {
+                    if (isPlaying) onSeekAudio(Duration(seconds: val.toInt()));
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } 
+    else if (msg.type == 'file') {
+      final isDownloading = downloadingFileId == msg.id;
+      
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.withOpacity(0.3))
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.insert_drive_file, color: isMe ? Colors.white70 : Colors.grey[700], size: 30),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(msg.fileName ?? "Attachment", maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text("Document", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                ],
+              ),
+            ),
+            if (msg.fileUrl != null)
+              FutureBuilder<bool>(
+                future: _isFileDownloaded(msg.fileName),
+                builder: (context, snapshot) {
+                  final bool isDownloaded = snapshot.data ?? false;
+                  
+                  return GestureDetector(
+                    onTap: () => onDownloadFile(msg.fileUrl!, msg.fileName ?? "file"),
+                    child: isDownloading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(
+                          isDownloaded ? Icons.folder_open_rounded : Icons.download_rounded, 
+                          color: isMe ? Colors.white : primaryColor
+                        ),
+                  );
+                },
+              ),
+          ],
         ),
       );
     }
+
     return const SizedBox.shrink(); 
   }
 }

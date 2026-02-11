@@ -17,7 +17,7 @@ const escapeRegex = (string) => {
 // =========================================================
 router.get("/", verifyToken, async (req, res) => {
   try {
-    const { search, mentorship } = req.query;
+    const { search, mentorship, classmates } = req.query;
 
     let profileMatch = {};
     let settingsMatch = {};
@@ -25,6 +25,20 @@ router.get("/", verifyToken, async (req, res) => {
     // Filter by Mentorship Status
     if (mentorship === "true") {
       settingsMatch["settings.isOpenToMentorship"] = true;
+    }
+
+    // ✅ FIX: Filter by Classmates (Same Year)
+    if (classmates === "true") {
+      const currentUser = await UserProfile.findOne({
+        userId: req.user._id,
+      }).select("yearOfAttendance");
+      if (currentUser && currentUser.yearOfAttendance) {
+        profileMatch.yearOfAttendance = currentUser.yearOfAttendance;
+      } else {
+        // If user has no year, return empty or handle gracefully
+        // Here we ensure it won't match anything if year is missing
+        profileMatch.yearOfAttendance = -1;
+      }
     }
 
     // Search Logic (Profile Text Search)
@@ -110,7 +124,7 @@ router.get("/", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/smart-matches", verifyToken, async (req, res) => {
   try {
-    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id);
 
     const currentProfile = await UserProfile.findOne({ userId: currentUserId });
     if (!currentProfile)
@@ -122,7 +136,7 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
       : "";
 
     const topMatches = await UserProfile.aggregate([
-      { $match: { userId: { $ne: currentUserId } } }, // ✅ FIX: Correct Exclusion
+      { $match: { userId: { $ne: currentUserId } } },
       {
         $lookup: {
           from: "userauths",
@@ -221,7 +235,7 @@ router.get("/smart-matches", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/near-me", verifyToken, async (req, res) => {
   try {
-    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id);
     const { city } = req.query;
 
     // Fetch profile to get default location
@@ -243,10 +257,10 @@ router.get("/near-me", verifyToken, async (req, res) => {
     const nearbyUsers = await UserProfile.aggregate([
       {
         $match: {
-          userId: { $ne: currentUserId }, // ✅ FIX: Correct Exclusion
+          userId: { $ne: currentUserId },
           $or: [
             { city: { $regex: new RegExp(safeLocation, "i") } },
-            { state: { $regex: new RegExp(safeLocation, "i") } }, // ✅ Also check State
+            { state: { $regex: new RegExp(safeLocation, "i") } },
           ],
         },
       },
@@ -278,7 +292,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
           organization: 1,
           profilePicture: 1,
           city: 1,
-          state: 1, // ✅ Return State too
+          state: 1,
           phoneNumber: 1,
           email: "$auth.email",
           isOnline: "$auth.isOnline",
@@ -299,7 +313,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/recommendations", verifyToken, async (req, res) => {
   try {
-    const currentUserId = new mongoose.Types.ObjectId(req.user._id); // ✅ FIX: Cast to ObjectId
+    const currentUserId = new mongoose.Types.ObjectId(req.user._id);
 
     const currentProfile = await UserProfile.findOne({ userId: currentUserId });
     if (!currentProfile)
@@ -310,7 +324,7 @@ router.get("/recommendations", verifyToken, async (req, res) => {
     const matches = await UserProfile.aggregate([
       {
         $match: {
-          userId: { $ne: currentUserId }, // ✅ FIX: Correct Exclusion
+          userId: { $ne: currentUserId },
           $or: [{ yearOfAttendance }, { programmeTitle }],
         },
       },
@@ -366,7 +380,6 @@ router.get("/recommendations", verifyToken, async (req, res) => {
 // =========================================================
 router.get("/:userId", verifyToken, async (req, res) => {
   try {
-    // Parallel Fetching for instant response
     const [auth, profile, settings] = await Promise.all([
       UserAuth.findById(req.params.userId).select(
         "email isOnline lastSeen isVerified",
@@ -385,7 +398,7 @@ router.get("/:userId", verifyToken, async (req, res) => {
       lastSeen: auth.lastSeen,
       isVerified: auth.isVerified,
       ...profile.toObject(),
-      ...settings?.toObject(), // Handle possibly missing settings gracefully
+      ...settings?.toObject(),
     };
 
     res.json({ success: true, data: fullDetails });
@@ -432,7 +445,6 @@ router.get("/celebrations", verifyToken, async (req, res) => {
     const month = today.getMonth() + 1;
     const currentYear = today.getFullYear();
 
-    // 1. Birthdays (Existing Logic)
     const birthdays = await UserProfile.aggregate([
       {
         $project: {
@@ -447,8 +459,6 @@ router.get("/celebrations", verifyToken, async (req, res) => {
       { $match: { dobDay: day, dobMonth: month, isVisible: true } },
     ]);
 
-    // 2. ✅ NEW: Class Anniversaries (Milestones: 5, 10, 15... 50 years)
-    // We search for users whose class year results in a generic "0" or "5" delta
     const milestoneYears = [];
     for (let i = 5; i <= 60; i += 5) {
       milestoneYears.push(currentYear - i);
@@ -464,7 +474,7 @@ router.get("/celebrations", verifyToken, async (req, res) => {
         $group: {
           _id: "$yearOfAttendance",
           count: { $sum: 1 },
-          representativeImages: { $push: "$profilePicture" }, // Grab a few pics for the UI
+          representativeImages: { $push: "$profilePicture" },
         },
       },
       {
@@ -472,7 +482,7 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           year: "$_id",
           yearsAgo: { $subtract: [currentYear, "$_id"] },
           count: 1,
-          images: { $slice: ["$representativeImages", 3] }, // Show top 3 faces
+          images: { $slice: ["$representativeImages", 3] },
         },
       },
       { $sort: { year: -1 } },
@@ -482,7 +492,7 @@ router.get("/celebrations", verifyToken, async (req, res) => {
       success: true,
       data: {
         birthdays,
-        anniversaries, // e.g. [{ year: 2014, yearsAgo: 10, count: 42 }]
+        anniversaries,
       },
     });
   } catch (err) {

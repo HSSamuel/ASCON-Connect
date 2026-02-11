@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ RIVERPOD IMPORT
+import 'package:flutter_riverpod/flutter_riverpod.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 
-import '../viewmodels/directory_view_model.dart'; // ✅ Import Provider
+import '../viewmodels/directory_view_model.dart'; 
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../widgets/shimmer_utils.dart'; 
@@ -27,7 +27,6 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
   
   String? _myUserId;
   final List<String> _filters = ["All", "Mentors", "Classmates", "Near Me"];
-  String _currentFilter = "All"; // Local UI state for filter tab
   
   // Track expansion locally (UI state)
   final Set<String> _expandedSections = {}; 
@@ -61,7 +60,6 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ WATCH PROVIDER
     final state = ref.watch(directoryProvider);
     final notifier = ref.read(directoryProvider.notifier);
 
@@ -73,14 +71,67 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
 
     // Handle search expansion logic
     if (_searchController.text.isNotEmpty && !_expandedSections.contains("search_active")) {
-       // Expand all sections when searching starts
        _expandedSections.addAll(state.groupedAlumni.keys);
        _expandedSections.add("search_active"); 
     } else if (_searchController.text.isEmpty && _expandedSections.contains("search_active")) {
-       _expandedSections.clear(); // Collapse all when search clears
+       _expandedSections.clear(); 
     }
 
     final sortedKeys = state.groupedAlumni.keys.toList();
+
+    // ✅ FIX: Define content widget using IF/ELSE instead of nested ternary
+    Widget content;
+
+    if (state.activeFilter == "Near Me") {
+      // --- NEAR ME VIEW ---
+      if (state.isLoadingNearMe) {
+        content = const DirectorySkeleton();
+      } else if (state.nearbyAlumni.isEmpty) {
+        content = _buildEmptyState(context, "No alumni found nearby.");
+      } else {
+        content = ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: state.nearbyAlumni.length,
+          itemBuilder: (context, index) {
+            final rawUser = state.nearbyAlumni[index];
+            final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
+            return _buildAlumniCard(userMap, context, isDark, primaryColor, showLocation: true);
+          },
+        );
+      }
+    } else {
+      // --- STANDARD DIRECTORY VIEW (All, Mentors, Classmates) ---
+      if (state.isLoadingDirectory) {
+        content = const DirectorySkeleton();
+      } else if (sortedKeys.isEmpty) {
+        content = _buildEmptyState(context, "No alumni found.");
+      } else {
+        content = ListView.builder(
+          padding: const EdgeInsets.only(bottom: 40),
+          itemCount: sortedKeys.length,
+          itemBuilder: (context, index) {
+            final year = sortedKeys[index];
+            final users = state.groupedAlumni[year] ?? [];
+            final isExpanded = _expandedSections.contains(year);
+            
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildYearHeader(year, users.length, primaryColor, isDark, isExpanded),
+                if (isExpanded)
+                  ...users.map((rawUser) {
+                    final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: _buildAlumniCard(userMap, context, isDark, primaryColor),
+                    );
+                  }),
+              ],
+            );
+          },
+        );
+      }
+    }
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -125,13 +176,7 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: _filters.map((filter) {
-                        // Logic to check if this filter is active based on state
-                        bool isSelected = false;
-                        if (filter == "All" && !state.showMentorsOnly) isSelected = true;
-                        if (filter == "Mentors" && state.showMentorsOnly) isSelected = true;
-                        
-                        // Note: Classmates/Near Me logic would need VM support, simplified for now
-                        if (filter == _currentFilter) isSelected = true;
+                        final bool isSelected = state.activeFilter == filter;
 
                         return Padding(
                           padding: const EdgeInsets.only(right: 8.0),
@@ -147,9 +192,7 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
                               fontSize: 13
                             ),
                             onSelected: (val) {
-                              setState(() => _currentFilter = filter);
-                              if (filter == "Mentors") notifier.toggleMentorsOnly(true, _searchController.text);
-                              else notifier.toggleMentorsOnly(false, _searchController.text);
+                              if (val) notifier.setFilter(filter);
                             },
                           ),
                         );
@@ -160,37 +203,8 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
               ),
             ),
 
-            // 2. LIST
-            Expanded(
-              child: state.isLoadingDirectory 
-                ? const DirectorySkeleton()
-                : sortedKeys.isEmpty 
-                    ? _buildEmptyState(context)
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 40),
-                        itemCount: sortedKeys.length,
-                        itemBuilder: (context, index) {
-                          final year = sortedKeys[index];
-                          final users = state.groupedAlumni[year] ?? [];
-                          final isExpanded = _expandedSections.contains(year);
-                          
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Clickable Header
-                              _buildYearHeader(year, users.length, primaryColor, isDark, isExpanded),
-                              
-                              // Content
-                              if (isExpanded)
-                                ...users.map((user) => Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  child: _buildAlumniCard(user, context, isDark, primaryColor),
-                                )),
-                            ],
-                          );
-                        },
-                      ),
-            ),
+            // 2. LIST (Using the clean content widget)
+            Expanded(child: content),
           ],
         ),
       ),
@@ -232,11 +246,13 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
     );
   }
 
-  Widget _buildAlumniCard(Map<String, dynamic> user, BuildContext context, bool isDark, Color primaryColor) {
+  Widget _buildAlumniCard(Map<String, dynamic> user, BuildContext context, bool isDark, Color primaryColor, {bool showLocation = false}) {
     final String name = user['fullName'] ?? "Alumnus";
     final String job = user['jobTitle'] ?? "";
     final String org = user['organization'] ?? "";
     final String img = user['profilePicture'] ?? "";
+    final String city = user['city'] ?? "";
+    final String state = user['state'] ?? "";
     final bool isMentor = user['isOpenToMentorship'] == true;
     final String userId = user['userId'] ?? user['_id'];
     
@@ -249,6 +265,7 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
         );
       },
       child: Container(
+        margin: showLocation ? const EdgeInsets.only(bottom: 12) : null,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
@@ -297,6 +314,18 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
                     )
                   else 
                     Text("Alumni Member", style: GoogleFonts.lato(fontSize: 12, color: Colors.grey[400], fontStyle: FontStyle.italic)),
+                  
+                  if (showLocation && (city.isNotEmpty || state.isNotEmpty))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on, size: 12, color: primaryColor),
+                          const SizedBox(width: 4),
+                          Text("$city${(city.isNotEmpty && state.isNotEmpty) ? ', ' : ''}$state", style: TextStyle(fontSize: 11, color: primaryColor)),
+                        ],
+                      ),
+                    )
                 ],
               ),
             ),
@@ -319,14 +348,14 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(BuildContext context, String message) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.search_off, size: 60, color: Colors.grey[300]),
           const SizedBox(height: 16),
-          Text("No alumni found.", style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[500])),
+          Text(message, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[500])),
         ],
       ),
     );

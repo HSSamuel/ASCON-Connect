@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -51,7 +52,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> init() async {
     final id = await _auth.currentUserId ?? "";
-    state = state.copyWith(myId: id);
+    if (mounted) state = state.copyWith(myId: id);
     await loadConversations();
     _setupSocket();
   }
@@ -59,12 +60,35 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<void> loadConversations() async {
     try {
       final res = await _api.get('/api/chat');
+      
       if (res['success'] == true) {
-        final List<dynamic> data = res['data'];
+        final body = res['data'];
+        List<dynamic> data = [];
+
+        // ✅ STRICT TYPE CHECKING to prevent _JsonMap error
+        if (body is Map && body.containsKey('data')) {
+           if (body['data'] is List) {
+             data = body['data'];
+           } else {
+             debugPrint("⚠️ Unexpected data format: body['data'] is ${body['data'].runtimeType}");
+             // Fallback: If it's a Map, maybe it's a single object or error? Treat as empty to avoid crash.
+             data = [];
+           }
+        } else if (body is List) {
+           data = body;
+        }
         
+        debugPrint("✅ Loaded ${data.length} conversations");
+
         final online = data.where((c) {
-           final other = _getOtherParticipant(c, state.myId);
-           return other['isOnline'] == true;
+           try {
+             // Safe conversion for helper
+             final mapC = c is Map ? Map<String, dynamic>.from(c) : <String, dynamic>{};
+             final other = _getOtherParticipant(mapC, state.myId);
+             return other['isOnline'] == true;
+           } catch (e) {
+             return false;
+           }
         }).take(10).toList();
 
         if (mounted) {
@@ -75,8 +99,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
             isLoading: false
           );
         }
+      } else {
+        debugPrint("❌ Failed to load chats: ${res['message']}");
+        if (mounted) state = state.copyWith(isLoading: false);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint("⚠️ Chat Load Error: $e");
       if (mounted) state = state.copyWith(isLoading: false);
     }
   }
@@ -86,17 +114,22 @@ class ChatNotifier extends StateNotifier<ChatState> {
       state = state.copyWith(filteredConversations: state.conversations);
     } else {
       final filtered = state.conversations.where((c) {
-        final other = _getOtherParticipant(c, state.myId);
-        final name = (other['fullName'] ?? other['name'] ?? "").toString().toLowerCase();
-        
-        String lastMsgText = "";
-        if (c['lastMessage'] is Map) {
-          lastMsgText = c['lastMessage']['text'] ?? "";
-        } else {
-          lastMsgText = c['lastMessage'].toString();
+        try {
+          final mapC = c is Map ? Map<String, dynamic>.from(c) : <String, dynamic>{};
+          final other = _getOtherParticipant(mapC, state.myId);
+          final name = (other['fullName'] ?? other['name'] ?? "").toString().toLowerCase();
+          
+          String lastMsgText = "";
+          if (mapC['lastMessage'] is Map) {
+            lastMsgText = mapC['lastMessage']['text'] ?? "";
+          } else {
+            lastMsgText = mapC['lastMessage'].toString();
+          }
+          
+          return name.contains(query.toLowerCase()) || lastMsgText.toLowerCase().contains(query.toLowerCase());
+        } catch (e) {
+          return false;
         }
-        
-        return name.contains(query.toLowerCase()) || lastMsgText.toLowerCase().contains(query.toLowerCase());
       }).toList();
       state = state.copyWith(filteredConversations: filtered);
     }
@@ -168,7 +201,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
     }
   }
 
-  // Helper
   Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation, String myId) {
     if (conversation['isGroup'] == true) {
       final group = conversation['groupId'];
@@ -185,12 +217,16 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
     }
 
-    final participants = conversation['participants'] as List;
-    final other = participants.firstWhere(
+    final participants = conversation['participants'] as List?;
+    final other = participants?.firstWhere(
       (p) => p['_id'] != myId,
       orElse: () => {'fullName': 'Unknown User', 'profilePicture': ''},
     );
-    return other;
+    
+    // Safety handling if other is null
+    if (other == null) return {'fullName': 'Unknown User', 'profilePicture': ''};
+    
+    return Map<String, dynamic>.from(other as Map);
   }
 }
 

@@ -76,10 +76,14 @@ router.get("/", verify, async (req, res) => {
   try {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
-      lastMessage: { $exists: true, $ne: null, $ne: "" },
+      // Relaxed query: Allow chats created recently even if lastMessage is unset (rare but safe)
+      $or: [
+        { lastMessage: { $exists: true, $ne: null, $ne: "" } },
+        { isGroup: true }, // Always show groups
+      ],
     })
       .populate("groupId", "name icon")
-      .sort({ lastMessageAt: -1 })
+      .sort({ updatedAt: -1 }) // Sort by updated to show new chats too
       .lean();
 
     const allParticipantIds = new Set();
@@ -128,12 +132,16 @@ router.get("/", verify, async (req, res) => {
           };
         });
 
+        // ✅ FIX: Commented out the strict filter.
+        // Even if 'otherUser' doesn't exist (deleted), we show the chat so it's not hidden.
+        /*
         const otherUser = enrichedParticipants.find(
           (p) => p._id !== req.user._id,
         );
         if (!chat.isGroup && otherUser && !otherUser.exists) {
           return null;
         }
+        */
 
         const unreadCount = await Message.countDocuments({
           conversationId: chat._id,
@@ -157,7 +165,7 @@ router.get("/", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. START OR GET CONVERSATION (✅ FIXED RETURN OBJECT)
+// 3. START OR GET CONVERSATION
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId, groupId } = req.body;
@@ -181,12 +189,7 @@ router.post("/start", verify, async (req, res) => {
         chat = new Conversation({
           isGroup: true,
           groupId: groupId,
-          groupName: group.name,
           participants: initialParticipants,
-          groupAdmin:
-            group.admins && group.admins.length > 0
-              ? group.admins[0]
-              : req.user._id,
         });
         await chat.save();
       } else {
@@ -209,7 +212,7 @@ router.post("/start", verify, async (req, res) => {
       // 1-on-1 Chat
       chat = await Conversation.findOne({
         isGroup: false,
-        participants: { $all: [req.user._id, receiverId] },
+        participants: { $all: [req.user._id, receiverId], $size: 2 },
       });
 
       if (!chat) {
@@ -218,12 +221,9 @@ router.post("/start", verify, async (req, res) => {
       }
     }
 
-    // ✅ FORCE OBJECT CONVERSION TO ENSURE _id IS PRESENT
     const chatObj = chat.toObject ? chat.toObject() : chat;
 
-    // Explicit debug log to verify ID exists on server
     if (!chatObj._id) {
-      console.error("CRITICAL: Conversation created but has no _id", chatObj);
       return res
         .status(500)
         .json({ message: "Internal Error: Chat ID missing" });

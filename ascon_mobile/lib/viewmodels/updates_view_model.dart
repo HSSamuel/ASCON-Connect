@@ -124,7 +124,6 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
     state = state.copyWith(showMediaOnly: newValue, filteredPosts: newFiltered);
   }
 
-  // ✅ RESTORED: Edit Post
   Future<bool> editPost(String postId, String newText) async {
     state = state.copyWith(isLoading: true);
     try {
@@ -140,24 +139,57 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
     }
   }
 
-  // ✅ RESTORED: Comments
+  // ✅ FIXED: Robust parsing for Comments
   Future<List<dynamic>> fetchComments(String postId) async {
     try {
       final res = await _api.get('/api/updates/$postId');
+      
       if (res['success'] == true) {
-        final postData = res['data']['data'];
-        return postData != null ? List.from(postData['comments'] ?? []) : [];
+        // 1. Check if 'data' is the post object directly
+        dynamic postData = res['data'];
+
+        // 2. Check if it's nested (ApiClient wrapping)
+        if (postData is Map && postData.containsKey('data')) {
+          postData = postData['data'];
+        }
+
+        // 3. Extract comments list
+        if (postData is Map && postData['comments'] != null) {
+          return List.from(postData['comments']);
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint("Fetch Comments Error: $e");
+    }
     return [];
   }
 
-  // ✅ RESTORED: Post Comment
+  // ✅ FIXED: Robust parsing for Likers
+  Future<List<dynamic>> fetchLikers(String postId) async {
+    try {
+      final res = await _api.get('/api/updates/$postId/likes');
+      
+      if (res['success'] == true) {
+        // 1. Direct List?
+        if (res['data'] is List) {
+          return List.from(res['data']);
+        } 
+        
+        // 2. Nested List inside Map?
+        if (res['data'] is Map && res['data']['data'] is List) {
+          return List.from(res['data']['data']);
+        }
+      }
+    } catch (e) {
+      debugPrint("Fetch Likers Error: $e");
+    }
+    return [];
+  }
+
   Future<bool> postComment(String postId, String text) async {
     try {
       final res = await _api.post('/api/updates/$postId/comment', {'text': text});
       if (res['success'] == true) {
-        // Optimistically update comment count in the list if possible, or just reload
         await loadData(silent: true);
         return true;
       }

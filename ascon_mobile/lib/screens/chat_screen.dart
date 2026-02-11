@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ RIVERPOD
+import 'package:flutter_riverpod/flutter_riverpod.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -22,12 +22,13 @@ import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
 import '../services/api_client.dart'; 
-import '../viewmodels/chat_detail_view_model.dart'; // ✅ VM
+import '../viewmodels/chat_detail_view_model.dart'; 
 import '../models/chat_objects.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../utils/presence_formatter.dart';
-import 'group_info_screen.dart'; 
+import 'group_info_screen.dart';
+import 'alumni_detail_screen.dart'; 
 
 import '../widgets/full_screen_image.dart';
 import '../widgets/chat/poll_creation_sheet.dart';
@@ -72,6 +73,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   int _recordDuration = 0;
   Timer? _recordTimer;
   Timer? _typingDebounce;
+  bool _isTypingEmit = false;
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _playingMessageId; 
@@ -85,15 +87,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
-  // ✅ PROVIDER ACCESS
-  AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider({
-    'receiverId': widget.receiverId,
-    'isGroup': widget.isGroup,
-    'groupId': widget.groupId,
-    'conversationId': widget.conversationId,
-    'isOnline': widget.isOnline,
-    'lastSeen': widget.lastSeen,
-  });
+  AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
+    ChatProviderArgs(
+      receiverId: widget.receiverId,
+      isGroup: widget.isGroup,
+      groupId: widget.groupId,
+      conversationId: widget.conversationId,
+    )
+  );
 
   @override
   void initState() {
@@ -136,54 +137,100 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  // ✅ UPDATED: Call Provider
-  Future<void> _sendMessage({String? text, String? filePath, Uint8List? fileBytes, String? fileName, String type = 'text'}) async {
-    // 1. Edit Message
-    if (_editingMessage != null && type == 'text') {
-      await ref.read(_provider.notifier).editMessage(_editingMessage!.id, text ?? "");
-      setState(() {
-        _editingMessage = null;
-        _textController.clear();
-      });
-      return;
-    }
-
-    // 2. Send New Message
-    final error = await ref.read(_provider.notifier).sendMessage(
-      text: text, 
-      filePath: filePath, 
-      fileBytes: fileBytes, 
-      fileName: fileName, 
-      type: type, 
-      replyToId: _replyingTo?.id,
-      replyingToMessage: _replyingTo
-    );
-    
-    if (!mounted) return;
-
-    if (error == null) {
-      setState(() {
-        _replyingTo = null;
-        _textController.clear();
-      });
-      _scrollToBottom();
+  void _openDetails() {
+    if (widget.isGroup && widget.groupId != null) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => GroupInfoScreen(groupId: widget.groupId!, groupName: widget.receiverName)));
     } else {
-      // ✅ Now correctly shows error for ALL types (text, image, file)
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(error),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ));
+      final Map<String, dynamic> alumniData = {
+        'userId': widget.receiverId,
+        '_id': widget.receiverId,
+        'fullName': widget.receiverName,
+        'profilePicture': widget.receiverProfilePic,
+        'isOnline': widget.isOnline, 
+        'lastSeen': widget.lastSeen,
+      };
+      
+      Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumniData)));
+    }
+  }
+
+  Future<void> _sendMessage({String? text, String? filePath, Uint8List? fileBytes, String? fileName, String type = 'text'}) async {
+    try {
+      if (_isTypingEmit) {
+        _isTypingEmit = false;
+        _typingDebounce?.cancel();
+        ref.read(_provider.notifier).sendStopTyping();
+      }
+
+      if (_editingMessage != null && type == 'text') {
+        final success = await ref.read(_provider.notifier).editMessage(_editingMessage!.id, text ?? "");
+        
+        if (!mounted) return;
+        
+        if (success) {
+          setState(() {
+            _editingMessage = null;
+            _textController.clear();
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Failed to edit message"),
+            backgroundColor: Colors.red,
+          ));
+        }
+        return;
+      }
+
+      final error = await ref.read(_provider.notifier).sendMessage(
+        text: text, 
+        filePath: filePath, 
+        fileBytes: fileBytes, 
+        fileName: fileName, 
+        type: type, 
+        replyToId: _replyingTo?.id,
+        replyingToMessage: _replyingTo
+      );
+      
+      if (!mounted) return;
+
+      if (error == null) {
+        setState(() {
+          _replyingTo = null;
+          _textController.clear();
+        });
+        _scrollToBottom();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      debugPrint("Prevented Chat Crash: $e");
     }
   }
 
   void _handleTyping(String val) {
+    final notifier = ref.read(_provider.notifier);
+
     if (val.isNotEmpty) {
-      ref.read(_provider.notifier).sendTyping();
+      if (!_isTypingEmit) {
+        notifier.sendTyping();
+        _isTypingEmit = true;
+      }
+
       _typingDebounce?.cancel();
       _typingDebounce = Timer(const Duration(seconds: 2), () {
-         // Optionally stop typing
+         notifier.sendStopTyping();
+         _isTypingEmit = false;
       });
+    } else {
+      if (_isTypingEmit) {
+        notifier.sendStopTyping();
+        _isTypingEmit = false;
+        _typingDebounce?.cancel();
+      }
     }
   }
 
@@ -201,7 +248,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  // --- RECORDING ---
   Future<void> _startRecording() async {
     if (kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Voice recording not supported on Web yet.")));
@@ -248,18 +294,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     try {
-      setState(() => _downloadingFileId = messageId);
-
       final dir = await getTemporaryDirectory();
       final safeFileName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_');
       final savePath = "${dir.path}/$safeFileName"; 
+      final file = File(savePath);
+
+      if (await file.exists()) {
+        final result = await OpenFile.open(savePath);
+        if (result.type != ResultType.done) {
+           if (mounted) {
+             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+               content: Text("Could not open file: ${result.message}"),
+               backgroundColor: Colors.red,
+             ));
+           }
+        }
+        return; 
+      }
+
+      setState(() => _downloadingFileId = messageId);
 
       final response = await http.get(Uri.parse(url));
       
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        final file = File(savePath);
         await file.writeAsBytes(response.bodyBytes);
 
         final result = await OpenFile.open(savePath);
@@ -290,7 +349,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  // --- PICKERS ---
   Future<void> _pickImage(ImageSource source) async {
     final XFile? image = await _picker.pickImage(source: source, imageQuality: 70);
     if (image != null) {
@@ -363,13 +421,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  // ✅ UPDATED: Shows Modal Bottom Sheet for Delete Options
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
-    await ref.read(_provider.notifier).deleteMessages(idsToDelete);
-    setState(() {
-      _isSelectionMode = false;
-      _selectedMessageIds.clear();
+    
+    // Check if ALL selected messages are MINE
+    final state = ref.read(_provider);
+    final bool canDeleteForEveryone = idsToDelete.every((id) {
+      final msg = state.messages.firstWhere(
+        (m) => m.id == id, 
+        orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now())
+      );
+      return msg.senderId == state.myUserId;
     });
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canDeleteForEveryone)
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: const Text("Delete for everyone"),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    ref.read(_provider.notifier).deleteMessages(idsToDelete, deleteForEveryone: true);
+                    setState(() { _isSelectionMode = false; _selectedMessageIds.clear(); });
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.blue),
+                title: const Text("Delete for me"),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  ref.read(_provider.notifier).deleteMessages(idsToDelete, deleteForEveryone: false);
+                  setState(() { _isSelectionMode = false; _selectedMessageIds.clear(); });
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.close, color: Colors.grey),
+                title: const Text("Cancel"),
+                onTap: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildDateHeader(String dateStr) {
@@ -398,7 +506,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final state = ref.watch(_provider);
     final notifier = ref.read(_provider.notifier);
 
-    // Kicked Logic
     if (state.isKicked) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -443,6 +550,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               leading: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _isSelectionMode = false; _selectedMessageIds.clear(); })),
               title: Text("${_selectedMessageIds.length} Selected"),
               actions: [
+                if (_selectedMessageIds.length == 1)
+                  Builder(builder: (context) {
+                    final selectedId = _selectedMessageIds.first;
+                    final msg = state.messages.firstWhere(
+                      (m) => m.id == selectedId,
+                      orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now()), 
+                    );
+                    
+                    if (msg.id.isNotEmpty && msg.senderId == state.myUserId && msg.type == 'text') {
+                      return IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        onPressed: () {
+                          setState(() {
+                            _editingMessage = msg;
+                            _replyingTo = null; 
+                            _textController.text = msg.text;
+                            _isSelectionMode = false;
+                            _selectedMessageIds.clear();
+                          });
+                          _focusNode.requestFocus();
+                        },
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+
                 IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: _deleteSelectedMessages),
               ],
             )
@@ -452,39 +585,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             foregroundColor: isDark ? Colors.white : Colors.black,
             elevation: 1,
             shadowColor: Colors.black.withOpacity(0.05),
-            title: Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: (widget.receiverProfilePic != null && widget.receiverProfilePic!.isNotEmpty)
-                      ? CachedNetworkImageProvider(widget.receiverProfilePic!)
-                      : null,
-                  child: (widget.receiverProfilePic == null || widget.receiverProfilePic!.isEmpty)
-                      ? Text(widget.receiverName.substring(0, 1).toUpperCase(), style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold))
-                      : null,
-                ),
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.receiverName, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold)),
-                    if (!widget.isGroup)
-                      Text(
-                        _getStatusText(state.isPeerTyping, state.isPeerOnline, state.peerLastSeen), 
-                        style: TextStyle(fontSize: 11, color: state.isPeerOnline ? Colors.green : Colors.grey)
-                      ),
-                  ],
-                ),
-              ],
+            
+            title: GestureDetector(
+              onTap: _openDetails,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: (widget.receiverProfilePic != null && widget.receiverProfilePic!.isNotEmpty)
+                        ? CachedNetworkImageProvider(widget.receiverProfilePic!)
+                        : null,
+                    child: (widget.receiverProfilePic == null || widget.receiverProfilePic!.isEmpty)
+                        ? Text(widget.receiverName.substring(0, 1).toUpperCase(), style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold))
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.receiverName, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold)),
+                      if (!widget.isGroup)
+                        Text(
+                          _getStatusText(state.isPeerTyping, state.isPeerOnline, state.peerLastSeen), 
+                          style: TextStyle(fontSize: 11, color: state.isPeerOnline ? Colors.green : Colors.grey)
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             actions: [
               if (widget.isGroup && widget.groupId != null)
                 IconButton(
                   icon: const Icon(Icons.info_outline),
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => GroupInfoScreen(groupId: widget.groupId!, groupName: widget.receiverName)));
-                  },
+                  onPressed: _openDetails,
                 ),
             ],
           ),
@@ -552,7 +687,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           setState(() { _editingMessage = msg; _replyingTo = null; _textController.text = msg.text; });
                           _focusNode.requestFocus();
                         },
-                        onDelete: (id) { _toggleSelection(id); notifier.deleteMessages(_selectedMessageIds.toList()); setState(() => _isSelectionMode = false); },
+                        onDelete: (id) { _toggleSelection(id); _deleteSelectedMessages(); }, // ✅ Call updated dialog
                         onPlayAudio: (url) async {
                           if (url.startsWith('http')) { await _audioPlayer.play(UrlSource(url)); } 
                           else { await _audioPlayer.play(DeviceFileSource(url)); }

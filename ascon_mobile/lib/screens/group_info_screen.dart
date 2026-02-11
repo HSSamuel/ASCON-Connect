@@ -16,6 +16,7 @@ import '../services/api_client.dart';
 import '../services/socket_service.dart'; 
 import 'alumni_detail_screen.dart';
 import 'call_screen.dart'; 
+import '../widgets/full_screen_image.dart'; 
 
 class GroupInfoScreen extends StatefulWidget {
   final String groupId;
@@ -603,6 +604,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final String? iconUrl = _groupData?['icon'];
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;
+    final String heroTag = "group_icon_${widget.groupId}"; // ✅ Hero Tag
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -620,20 +622,41 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
+                          // 1. IMAGE LAYER (Bottom)
                           if (iconUrl != null && iconUrl.isNotEmpty)
-                            CachedNetworkImage(imageUrl: iconUrl, fit: BoxFit.cover)
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => FullScreenImage(
+                                      imageUrl: iconUrl,
+                                      heroTag: heroTag,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Hero(
+                                tag: heroTag,
+                                child: CachedNetworkImage(imageUrl: iconUrl, fit: BoxFit.cover),
+                              ),
+                            )
                           else
                             Container(color: Colors.teal.shade100, child: const Icon(Icons.groups, size: 80, color: Colors.teal)),
                           
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                                colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.8)],
+                          // 2. GRADIENT LAYER (Middle) - ✅ Wrapped with IgnorePointer
+                          IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                                  colors: [Colors.black.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.8)],
+                                ),
                               ),
                             ),
                           ),
                           
+                          // 3. TEXT LAYER (Top)
                           Positioned(
                             bottom: 20, left: 20, right: 80,
                             child: Column(

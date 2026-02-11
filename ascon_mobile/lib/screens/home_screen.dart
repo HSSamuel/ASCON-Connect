@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart'; 
 import 'package:go_router/go_router.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ IMPORT RIVERPOD
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../main.dart';
 import '../router.dart'; 
@@ -114,15 +114,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _goBranch(int index) {
+    // ✅ FEATURE: Tap "Home" to refresh dashboard
+    if (index == widget.navigationShell.currentIndex) {
+      if (index == 0) {
+        final container = ProviderScope.containerOf(context, listen: false);
+        container.read(dashboardProvider.notifier).loadData(isRefresh: true);
+      }
+    }
+
     widget.navigationShell.goBranch(
       index,
       initialLocation: index == widget.navigationShell.currentIndex,
     );
   }
 
-  // ✅ SMART BACK NAVIGATION LOGIC
+  // ✅ GLOBAL BACK NAVIGATION HANDLER
   Future<void> _handleBackPress() async {
-    // 1. If Keyboard is open, close it
+    // 1. Close keyboard if open
     if (MediaQuery.of(context).viewInsets.bottom > 0) {
       SystemChannels.textInput.invokeMethod('TextInput.hide');
       return;
@@ -130,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final int currentIndex = widget.navigationShell.currentIndex;
 
-    // 2. CHECK INTERNAL STACK
+    // 2. Identify the active navigator
     GlobalKey<NavigatorState>? currentNavigatorKey;
     switch (currentIndex) {
       case 0: currentNavigatorKey = homeNavKey; break;
@@ -140,6 +148,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 4: currentNavigatorKey = profileNavKey; break;
     }
 
+    // 3. Try popping the internal stack of the active tab
     if (currentNavigatorKey != null && 
         currentNavigatorKey.currentState != null && 
         currentNavigatorKey.currentState!.canPop()) {
@@ -147,13 +156,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return; 
     }
 
-    // 3. If NOT on Dashboard (Tab 0) and stack is empty, go to Dashboard
+    // 4. If not on Dashboard (Tab 0), go back to Dashboard
     if (currentIndex != 0) {
       _goBranch(0);
       return; 
     }
 
-    // 4. If on Dashboard Root, check double-tap to exit
+    // 5. If on Dashboard root, double-tap to exit
     final now = DateTime.now();
     if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
       _lastPressedAt = now;
@@ -168,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return; 
     }
 
-    // 5. Exit App
+    // 6. Exit app
     SystemNavigator.pop();
   }
 
@@ -183,6 +192,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final uiIndex = widget.navigationShell.currentIndex;
     final showAppBar = uiIndex == 0;
 
+    // ✅ PopScope wraps the entire Scaffold to intercept back button
     return PopScope(
       canPop: false, 
       onPopInvokedWithResult: (didPop, result) async {
@@ -321,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// ✅ CHANGED TO CONSUMER STATEFUL WIDGET
+// ✅ DASHBOARD VIEW (Child Widget)
 class DashboardView extends ConsumerStatefulWidget {
   final String? userName; 
   const DashboardView({super.key, this.userName});
@@ -336,8 +346,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   @override
   void initState() {
     super.initState();
-    // ✅ Load Data via Provider
-    // Using Future.microtask to avoid "setState during build" errors
     Future.microtask(() => ref.read(dashboardProvider.notifier).loadData());
     _loadName();
   }
@@ -399,19 +407,8 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final primaryColor = Theme.of(context).primaryColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
-
-    // ✅ WATCH STATE
     final dashboardState = ref.watch(dashboardProvider);
 
-    // ✅ SHOW ERROR SNACKBAR IF NEEDED
-    if (dashboardState.errorMessage != null) {
-      // Use a post-frame callback to show snackbar to avoid build collisions, 
-      // or handle it in a listener. Since we are in build, we shouldn't trigger side effects directly.
-      // Better: The UI below can show a retry button or an error banner.
-    }
-
-    // ✅ 1. SKELETON LOADER
-    // If data is loading and we have no alumni list (initial load), show skeleton
     if (dashboardState.isLoading && dashboardState.topAlumni.isEmpty) {
        return Scaffold(
          backgroundColor: scaffoldBg,
@@ -423,7 +420,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       backgroundColor: scaffoldBg,
       body: SafeArea(
         child: RefreshIndicator(
-          // ✅ REFRESH ACTION
           onRefresh: () async => await ref.read(dashboardProvider.notifier).loadData(isRefresh: true),
           color: primaryColor,
           child: SingleChildScrollView(
@@ -432,7 +428,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ✅ ERROR BANNER (Optional UX improvement)
                 if (dashboardState.errorMessage != null)
                   Container(
                     width: double.infinity,
@@ -445,7 +440,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                     ),
                   ),
 
-                // 0️⃣ MAIN HEADER (ID CARD)
                 DigitalIDCard(
                   userName: _displayName,
                   programme: dashboardState.programme,
@@ -454,19 +448,17 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   imageUrl: dashboardState.profileImage,
                 ),
 
-                // ✅ 1. PROFILE COMPLETION (Compact & Auto-Refresh)
+                // ✅ 1. PROFILE COMPLETION ALERT (Hidden if complete)
                 if (!dashboardState.isLoading && !dashboardState.isProfileComplete)
                   _buildProfileAlert(context, primaryColor, dashboardState.profileCompletionPercent),
 
-                // ✅ 2. CHAPTERS (Compact)
                 const ChapterCard(),
 
-                // ✅ 3. CELEBRATION
                 const CelebrationWidget(),
 
                 const SizedBox(height: 10),
 
-                // 4. ALUMNI NETWORK
+                // ✅ 2. ALUMNI NETWORK
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -479,7 +471,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 ),
                 const SizedBox(height: 12),
                 
-                // ✅ FIXED: Using state data
                 if (dashboardState.isLoading && dashboardState.topAlumni.isNotEmpty)
                   const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
                 else if (dashboardState.topAlumni.isEmpty && !dashboardState.isLoading)
@@ -531,7 +522,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 
                 const SizedBox(height: 25),
 
-                // 6. UPCOMING EVENTS
+                // ✅ 3. UPCOMING EVENTS
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -566,7 +557,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
                 const SizedBox(height: 25),
 
-                // 7. NEWS
+                // ✅ 4. PROGRAMME UPDATES
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -608,7 +599,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     );
   }
 
-  // ✅ FIXED: Accepting percent as argument
   Widget _buildProfileAlert(BuildContext context, Color primaryColor, double percent) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     

@@ -1,5 +1,6 @@
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; 
+import 'package:permission_handler/permission_handler.dart'; // ✅ Added
 import 'socket_service.dart';
 
 class CallService {
@@ -8,16 +9,18 @@ class CallService {
   
   final _socket = SocketService().socket;
 
-  /// ✅ DYNAMIC ICE CONFIGURATION
-  /// Uses public STUN servers + Your Metered.ca TURN servers
+  // ✅ Request Permissions Helper
+  Future<bool> _checkPermissions() async {
+    var status = await Permission.microphone.request();
+    return status.isGranted;
+  }
+
   Future<Map<String, dynamic>> _getIceServers() async {
-    // 1. Default Public STUN Servers (Always included)
     List<Map<String, dynamic>> iceServers = [
       {'urls': 'stun:stun.l.google.com:19302'},
       {'urls': 'stun:stun1.l.google.com:19302'},
     ];
 
-    // 2. Add TURN Servers from Environment
     final String? turnUrlRaw = dotenv.env['TURN_URL'];
     final String? turnUser = dotenv.env['TURN_USERNAME'];
     final String? turnPass = dotenv.env['TURN_PASSWORD'];
@@ -26,9 +29,7 @@ class CallService {
         turnUser != null && turnUser.isNotEmpty && 
         turnPass != null && turnPass.isNotEmpty) {
       
-      // ✅ Split comma-separated URLs to support TCP/UDP fallbacks
       List<String> turnUrls = turnUrlRaw.split(',').map((e) => e.trim()).toList();
-
       iceServers.add({
         'urls': turnUrls, 
         'username': turnUser,
@@ -38,26 +39,22 @@ class CallService {
 
     return {
       'iceServers': iceServers,
-      // 'all' allows WebRTC to test both direct (P2P) and Relay (TURN) connections
       'iceTransportPolicy': 'all', 
     };
   }
 
-  /// 1. Initialize & Start Call
   Future<void> startCall(String receiverId) async {
     if (_socket == null) return;
+    if (!await _checkPermissions()) throw Exception("Microphone permission denied");
 
-    // ✅ Get Config with TURN support
     final configuration = await _getIceServers();
     _peerConnection = await createPeerConnection(configuration);
 
-    // Get Microphone
     _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
     _localStream!.getTracks().forEach((track) {
       _peerConnection!.addTrack(track, _localStream!);
     });
 
-    // Handle ICE Candidates
     _peerConnection!.onIceCandidate = (candidate) {
       _socket?.emit('ice_candidate', {
         'to': receiverId,
@@ -65,22 +62,19 @@ class CallService {
       });
     };
 
-    // Create Offer
     RTCSessionDescription offer = await _peerConnection!.createOffer();
     await _peerConnection!.setLocalDescription(offer);
 
-    // Send Offer via Socket
     _socket?.emit('call_user', {
       'userToCall': receiverId,
       'offer': offer.toMap(),
     });
   }
 
-  /// 2. Answer an Incoming Call
   Future<void> answerCall(Map<String, dynamic> offer, String callerId) async {
     if (_socket == null) return;
+    if (!await _checkPermissions()) throw Exception("Microphone permission denied");
 
-    // ✅ Get Config with TURN support
     final configuration = await _getIceServers();
     _peerConnection = await createPeerConnection(configuration);
 
@@ -96,23 +90,19 @@ class CallService {
       });
     };
 
-    // Set Remote Description (The Offer)
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(offer['sdp'], offer['type']),
     );
 
-    // Create Answer
     RTCSessionDescription answer = await _peerConnection!.createAnswer();
     await _peerConnection!.setLocalDescription(answer);
 
-    // Send Answer
     _socket?.emit('make_answer', {
       'to': callerId,
       'answer': answer.toMap(),
     });
   }
 
-  /// 3. Handle Answer from the other side
   Future<void> handleAnswer(Map<String, dynamic> answer) async {
     if (_peerConnection != null) {
       await _peerConnection!.setRemoteDescription(
@@ -121,7 +111,6 @@ class CallService {
     }
   }
 
-  /// 4. Handle ICE Candidate
   Future<void> handleIceCandidate(Map<String, dynamic> candidate) async {
     if (_peerConnection != null) {
       await _peerConnection!.addCandidate(
@@ -134,7 +123,24 @@ class CallService {
     }
   }
 
-  /// 5. End Call
+  // ✅ Toggle Mute
+  void toggleMute(bool mute) {
+    if (_localStream != null) {
+      _localStream!.getAudioTracks().forEach((track) {
+        track.enabled = !mute;
+      });
+    }
+  }
+
+  // ✅ Toggle Speaker (Basic Implementation)
+  void toggleSpeaker(bool enable) {
+    if (_localStream != null) {
+      _localStream!.getAudioTracks().forEach((track) {
+        track.enableSpeakerphone(enable);
+      });
+    }
+  }
+
   void endCall() {
     _localStream?.dispose();
     _peerConnection?.close();

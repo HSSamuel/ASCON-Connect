@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import '../viewmodels/updates_view_model.dart';
 import '../services/api_client.dart';
 import 'programme_detail_screen.dart';
+import 'alumni_detail_screen.dart'; 
 
 class UpdatesScreen extends ConsumerStatefulWidget {
   const UpdatesScreen({super.key});
@@ -31,9 +32,34 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     super.dispose();
   }
 
-  // =========================================================
-  // 📝 TEXT FORMATTING LOGIC
-  // =========================================================
+  // ✅ NAVIGATE TO PROFILE (Robust ID handling)
+  void _viewProfile(Map<String, dynamic> user) {
+    // Attempt to find the ID in various common keys
+    final userId = user['_id'] ?? user['userId'] ?? user['id'];
+    
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Cannot view profile: User ID missing"))
+      );
+      return;
+    }
+    
+    // Normalize data structure for AlumniDetailScreen
+    final alumniData = {
+      ...user,
+      'userId': userId,
+      '_id': userId,
+      'fullName': user['fullName'] ?? "User",
+      'profilePicture': user['profilePicture'],
+    };
+
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumniData))
+    );
+  }
+
+  // Text Formatting (Bold, Italic, etc.)
   List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
     final List<TextSpan> spans = [];
     final RegExp exp = RegExp(r'([*_~])(.*?)\1'); 
@@ -58,9 +84,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     return spans;
   }
 
-  // =========================================================
-  // ✏️ EDIT POST DIALOG (Restored)
-  // =========================================================
   Future<void> _showEditDialog(String postId, String currentText) async {
     final editCtrl = TextEditingController(text: currentText);
     
@@ -93,9 +116,84 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     }
   }
 
-  // =========================================================
-  // 💬 COMMENTS SHEET (Restored)
-  // =========================================================
+  // ✅ SHOW LIKES SHEET (With Presence Dot & Clickable Profile)
+  void _showLikesSheet(String postId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final textColor = isDark ? Colors.white : Colors.black87;
+
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (_, scrollController) {
+            return FutureBuilder<List<dynamic>>(
+              future: ref.read(updatesProvider.notifier).fetchLikers(postId),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                final likers = snapshot.data!;
+
+                return Column(
+                  children: [
+                    Container(width: 40, height: 4, margin: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                    Text("Likes", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
+                    const Divider(),
+                    Expanded(
+                      child: likers.isEmpty 
+                        ? Center(child: Text("No likes yet", style: GoogleFonts.lato(color: Colors.grey)))
+                        : ListView.builder(
+                            controller: scrollController,
+                            itemCount: likers.length,
+                            itemBuilder: (context, index) {
+                              final user = likers[index];
+                              final bool isOnline = user['isOnline'] == true;
+
+                              return ListTile(
+                                onTap: () => _viewProfile(user),
+                                leading: Stack(
+                                  children: [
+                                    CircleAvatar(
+                                      backgroundImage: (user['profilePicture'] != null && user['profilePicture'].toString().startsWith('http')) 
+                                          ? CachedNetworkImageProvider(user['profilePicture']) 
+                                          : null,
+                                      child: user['profilePicture'] == null ? const Icon(Icons.person) : null,
+                                    ),
+                                    if (isOnline)
+                                      Positioned(
+                                        right: 0, bottom: 0,
+                                        child: Container(
+                                          width: 12, height: 12,
+                                          decoration: BoxDecoration(
+                                            color: Colors.green,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 2)
+                                          ),
+                                        ),
+                                      )
+                                  ],
+                                ),
+                                title: Text(user['fullName'] ?? "Unknown", style: GoogleFonts.lato(fontWeight: FontWeight.bold)),
+                                subtitle: Text(user['jobTitle'] ?? "Member", maxLines: 1, overflow: TextOverflow.ellipsis),
+                              );
+                            },
+                          ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      }
+    );
+  }
+
+  // ✅ COMMENTS SHEET (With Clickable Avatars + Names + Presence Dot)
   void _showCommentsSheet(String postId) {
     final commentController = TextEditingController();
     bool isPosting = false; 
@@ -137,8 +235,10 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                   padding: const EdgeInsets.all(16),
                                   itemBuilder: (context, index) {
                                     final c = comments[index];
-                                    final authorName = c['author']?['fullName'] ?? "User";
-                                    final authorImg = c['author']?['profilePicture'];
+                                    final author = c['author'] ?? {};
+                                    final authorName = author['fullName'] ?? "User";
+                                    final authorImg = author['profilePicture'];
+                                    final bool isOnline = author['isOnline'] == true;
                                     final time = timeago.format(DateTime.tryParse(c['createdAt'] ?? "") ?? DateTime.now());
                                     
                                     return Padding(
@@ -146,11 +246,31 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                       child: Row(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          CircleAvatar(
-                                            radius: 16,
-                                            backgroundColor: Colors.grey[200],
-                                            backgroundImage: authorImg != null && authorImg.toString().startsWith('http') ? CachedNetworkImageProvider(authorImg) : null,
-                                            child: authorImg == null ? const Icon(Icons.person, size: 16, color: Colors.grey) : null,
+                                          // ✅ CLICKABLE AVATAR + PRESENCE DOT
+                                          GestureDetector(
+                                            onTap: () => _viewProfile(author),
+                                            child: Stack(
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 16,
+                                                  backgroundColor: Colors.grey[200],
+                                                  backgroundImage: authorImg != null && authorImg.toString().startsWith('http') ? CachedNetworkImageProvider(authorImg) : null,
+                                                  child: authorImg == null ? const Icon(Icons.person, size: 16, color: Colors.grey) : null,
+                                                ),
+                                                if (isOnline)
+                                                  Positioned(
+                                                    right: 0, bottom: 0,
+                                                    child: Container(
+                                                      width: 10, height: 10,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.green,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5)
+                                                      ),
+                                                    ),
+                                                  )
+                                              ],
+                                            ),
                                           ),
                                           const SizedBox(width: 10),
                                           Expanded(
@@ -163,7 +283,11 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                      Text(authorName, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: textColor)),
+                                                      // ✅ CLICKABLE NAME
+                                                      GestureDetector(
+                                                        onTap: () => _viewProfile(author),
+                                                        child: Text(authorName, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: textColor))
+                                                      ),
                                                       Text(time, style: GoogleFonts.lato(fontSize: 10, color: Colors.grey)),
                                                     ],
                                                   ),
@@ -182,6 +306,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                 ),
                         ),
 
+                        // Input Field
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(color: Theme.of(context).cardColor, border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.2)))),
@@ -337,137 +462,131 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
 
-    return PopScope(
-      canPop: false, 
-      onPopInvoked: (didPop) {
-        if (didPop) return;
-        context.go('/home');
-      },
-      child: Scaffold(
-        backgroundColor: scaffoldBg,
-        body: NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) {
-            return [
-              SliverAppBar(
-                backgroundColor: cardColor, 
-                shadowColor: Colors.black.withOpacity(0.1),
-                elevation: 2.0, 
-                foregroundColor: isDark ? Colors.white : Colors.black,
-                floating: true,
-                snap: true,
-                title: _isSearching
-                    ? TextField(
-                        controller: _searchController,
-                        autofocus: true,
-                        decoration: InputDecoration(
-                          hintText: "Search updates...",
-                          border: InputBorder.none,
-                          hintStyle: GoogleFonts.lato(fontSize: 18),
-                          filled: true,
-                          fillColor: isDark ? Colors.grey[800] : Colors.grey[100], 
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                        ),
-                        style: GoogleFonts.lato(fontSize: 18, color: isDark ? Colors.white : Colors.black),
-                        onChanged: (val) => notifier.searchPosts(val),
-                      )
-                    : Text("Updates", style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 24, color: isDark ? Colors.white : Colors.black)),
-                actions: [
-                  IconButton(
-                    icon: Icon(_isSearching ? Icons.close : Icons.search),
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = !_isSearching;
-                        if (!_isSearching) {
-                          _searchController.clear();
-                          notifier.searchPosts(""); 
-                        }
-                      });
-                    },
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (val) {
-                      if (val == 'refresh') notifier.loadData();
-                      if (val == 'filter') notifier.toggleMediaFilter();
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'refresh', child: Row(children: [Icon(Icons.refresh, size: 20), SizedBox(width: 10), Text("Refresh")])),
-                      PopupMenuItem(value: 'filter', child: Row(children: [Icon(updateState.showMediaOnly ? Icons.check_box : Icons.check_box_outline_blank, size: 20), const SizedBox(width: 10), const Text("Media Only")])),
-                    ],
-                  ),
-                ],
-              ),
-            ];
-          },
-          body: RefreshIndicator(
-            onRefresh: () async => await notifier.loadData(),
-            color: const Color(0xFFD4AF37),
-            child: CustomScrollView(
-              slivers: [
-                if (updateState.highlights.isNotEmpty && !_isSearching) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text("Highlights", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
+    // ✅ NO POP SCOPE HERE (Handled by Home)
+    return Scaffold(
+      backgroundColor: scaffoldBg,
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          return [
+            SliverAppBar(
+              backgroundColor: cardColor, 
+              shadowColor: Colors.black.withOpacity(0.1),
+              elevation: 2.0, 
+              foregroundColor: isDark ? Colors.white : Colors.black,
+              floating: true,
+              snap: true,
+              title: _isSearching
+                  ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: "Search updates...",
+                        border: InputBorder.none,
+                        hintStyle: GoogleFonts.lato(fontSize: 18),
+                        filled: true,
+                        fillColor: isDark ? Colors.grey[800] : Colors.grey[100], 
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                       ),
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 160,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: updateState.highlights.length,
-                        itemBuilder: (context, index) => _buildStatusCard(updateState.highlights[index]),
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: Divider(height: 30, thickness: 0.5)),
-                ],
-
+                      style: GoogleFonts.lato(fontSize: 18, color: isDark ? Colors.white : Colors.black),
+                      onChanged: (val) => notifier.searchPosts(val),
+                    )
+                  : Text("Updates", style: GoogleFonts.lato(fontWeight: FontWeight.w800, fontSize: 24, color: isDark ? Colors.white : Colors.black)),
+              actions: [
+                IconButton(
+                  icon: Icon(_isSearching ? Icons.close : Icons.search),
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = !_isSearching;
+                      if (!_isSearching) {
+                        _searchController.clear();
+                        notifier.searchPosts(""); 
+                      }
+                    });
+                  },
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (val) {
+                    if (val == 'refresh') notifier.loadData();
+                    if (val == 'filter') notifier.toggleMediaFilter();
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'refresh', child: Row(children: [Icon(Icons.refresh, size: 20), SizedBox(width: 10), Text("Refresh")])),
+                    PopupMenuItem(value: 'filter', child: Row(children: [Icon(updateState.showMediaOnly ? Icons.check_box : Icons.check_box_outline_blank, size: 20), const SizedBox(width: 10), const Text("Media Only")])),
+                  ],
+                ),
+              ],
+            ),
+          ];
+        },
+        body: RefreshIndicator(
+          onRefresh: () async => await notifier.loadData(),
+          color: const Color(0xFFD4AF37),
+          child: CustomScrollView(
+            slivers: [
+              if (updateState.highlights.isNotEmpty && !_isSearching) ...[
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(_isSearching ? "Search Results" : "Recent Updates", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16)),
-                        if (updateState.showMediaOnly)
-                          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text("Media Only", style: TextStyle(fontSize: 12, color: primaryColor))),
+                        Text("Highlights", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16)),
                       ],
                     ),
                   ),
                 ),
-
-                if (updateState.isLoading)
-                  const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
-                else if (updateState.filteredPosts.isEmpty)
-                  SliverFillRemaining(child: Center(child: Text("No updates found.", style: GoogleFonts.lato(color: Colors.grey))))
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildPostCard(updateState.filteredPosts[index], updateState.isAdmin, updateState.currentUserId, notifier),
-                      childCount: updateState.filteredPosts.length,
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 160,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: updateState.highlights.length,
+                      itemBuilder: (context, index) => _buildStatusCard(updateState.highlights[index]),
                     ),
                   ),
-                  
-                const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+                ),
+                const SliverToBoxAdapter(child: Divider(height: 30, thickness: 0.5)),
               ],
-            ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(_isSearching ? "Search Results" : "Recent Updates", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16)),
+                      if (updateState.showMediaOnly)
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text("Media Only", style: TextStyle(fontSize: 12, color: primaryColor))),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (updateState.isLoading)
+                const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+              else if (updateState.filteredPosts.isEmpty)
+                SliverFillRemaining(child: Center(child: Text("No updates found.", style: GoogleFonts.lato(color: Colors.grey))))
+              else
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildPostCard(updateState.filteredPosts[index], updateState.isAdmin, updateState.currentUserId, notifier),
+                    childCount: updateState.filteredPosts.length,
+                  ),
+                ),
+                
+              const SliverPadding(padding: EdgeInsets.only(bottom: 80)),
+            ],
           ),
         ),
-
-        floatingActionButton: FloatingActionButton(
-          onPressed: _showCreatePostSheet,
-          backgroundColor: const Color(0xFFD4AF37),
-          child: const Icon(Icons.edit, color: Colors.white),
-        ),
+      ),
+      
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showCreatePostSheet,
+        backgroundColor: const Color(0xFFD4AF37),
+        child: const Icon(Icons.edit, color: Colors.white),
       ),
     );
   }
@@ -524,7 +643,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     final String postAuthorId = (post['authorId'] ?? '').toString();
     final bool isMyPost = (myId != null && postAuthorId == myId);
     final bool canDelete = isAdmin || isMyPost;
-    // ✅ RESTORED: Edit Permission Check
     final bool canEdit = isMyPost;
 
     return Container(
@@ -537,13 +655,16 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 20, 
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: author['profilePicture'] != null && author['profilePicture'].toString().startsWith('http')
-                      ? CachedNetworkImageProvider(author['profilePicture'])
-                      : null,
-                  child: author['profilePicture'] == null ? Icon(Icons.person, size: 20, color: Colors.grey[400]) : null,
+                GestureDetector(
+                  onTap: () => _viewProfile(author),
+                  child: CircleAvatar(
+                    radius: 20, 
+                    backgroundColor: Colors.grey[200],
+                    backgroundImage: author['profilePicture'] != null && author['profilePicture'].toString().startsWith('http')
+                        ? CachedNetworkImageProvider(author['profilePicture'])
+                        : null,
+                    child: author['profilePicture'] == null ? Icon(Icons.person, size: 20, color: Colors.grey[400]) : null,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -553,10 +674,13 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              author['fullName'] ?? 'Alumni Member', 
-                              style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 15, color: textColor),
-                              overflow: TextOverflow.ellipsis,
+                            child: GestureDetector(
+                              onTap: () => _viewProfile(author),
+                              child: Text(
+                                author['fullName'] ?? 'Alumni Member', 
+                                style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 15, color: textColor),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 6),
@@ -577,7 +701,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                   ),
                 ),
                 
-                // ✅ RESTORED: Popup Menu for Edit/Delete
                 if (canDelete || canEdit)
                   SizedBox(
                     width: 24, height: 24,
@@ -639,20 +762,30 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
               ),
             ),
 
-          // ✅ RESTORED: Comment Count
+          // ✅ CLICKABLE LIKES & COMMENTS COUNTS
           if ((post['likes']?.length ?? 0) > 0 || (post['comments']?.length ?? 0) > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
                   if ((post['likes']?.length ?? 0) > 0) ...[
-                    Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle), child: const Icon(Icons.thumb_up, size: 8, color: Colors.white)),
-                    const SizedBox(width: 6),
-                    Text("${post['likes']?.length}", style: TextStyle(fontSize: 11, color: subTextColor)),
+                    GestureDetector(
+                      onTap: () => _showLikesSheet(post['_id']),
+                      child: Row(
+                        children: [
+                          Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle), child: const Icon(Icons.thumb_up, size: 8, color: Colors.white)),
+                          const SizedBox(width: 6),
+                          Text("${post['likes']?.length}", style: TextStyle(fontSize: 11, color: subTextColor, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
                   ],
                   const Spacer(),
                   if ((post['comments']?.length ?? 0) > 0)
-                    Text("${post['comments']?.length} comments", style: TextStyle(fontSize: 11, color: subTextColor)),
+                    GestureDetector(
+                      onTap: () => _showCommentsSheet(post['_id']),
+                      child: Text("${post['comments']?.length} comments", style: TextStyle(fontSize: 11, color: subTextColor, fontWeight: FontWeight.bold)),
+                    ),
                 ],
               ),
             ),
@@ -671,7 +804,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                     onPressed: () => notifier.toggleLike(post['_id']),
                   ),
                 ),
-                // ✅ RESTORED: Comment Button Action
                 Expanded(
                   child: TextButton.icon(
                     icon: Icon(Icons.mode_comment_outlined, size: 18, color: subTextColor),

@@ -26,11 +26,13 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     super.dispose();
   }
 
-  // Duplicate helper purely for UI building logic here
+  // ✅ SAFELY GET OTHER PARTICIPANT (Prevents Map Cast Error)
   Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation, String myId) {
     if (conversation['isGroup'] == true) {
-      final group = conversation['groupId'];
-      if (group is Map) {
+      final groupRaw = conversation['groupId'];
+      if (groupRaw is Map) {
+        // Safe Cast
+        final group = Map<String, dynamic>.from(groupRaw);
         return {
           '_id': group['_id'],
           'fullName': group['name'] ?? "Group",
@@ -43,12 +45,21 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       }
     }
 
-    final participants = conversation['participants'] as List;
-    final other = participants.firstWhere(
+    final participants = conversation['participants'] as List?;
+    if (participants == null || participants.isEmpty) {
+      return {'fullName': 'Unknown User', 'profilePicture': ''};
+    }
+
+    // Safe retrieval
+    final otherRaw = participants.firstWhere(
       (p) => p['_id'] != myId,
-      orElse: () => {'fullName': 'Unknown User', 'profilePicture': ''},
+      orElse: () => participants.isNotEmpty ? participants[0] : {'fullName': 'Unknown User', 'profilePicture': ''},
     );
-    return other;
+    
+    if (otherRaw is Map) {
+      return Map<String, dynamic>.from(otherRaw);
+    }
+    return {'fullName': 'Unknown User', 'profilePicture': ''};
   }
 
   @override
@@ -120,8 +131,14 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 itemCount: chatState.onlineUsers.length,
                                 itemBuilder: (context, index) {
-                                  final user = _getOtherParticipant(chatState.onlineUsers[index], chatState.myId);
-                                  return _buildActiveUserBubble(user);
+                                  // ✅ SAFE CAST 1
+                                  final rawChat = chatState.onlineUsers[index];
+                                  if (rawChat is Map) {
+                                    final chat = Map<String, dynamic>.from(rawChat);
+                                    final user = _getOtherParticipant(chat, chatState.myId);
+                                    return _buildActiveUserBubble(user);
+                                  }
+                                  return const SizedBox.shrink();
                                 },
                               ),
                             ),
@@ -150,7 +167,15 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: chatState.filteredConversations.length,
                               separatorBuilder: (c, i) => Divider(height: 1, indent: 80, color: Colors.grey.withOpacity(0.1)),
-                              itemBuilder: (context, index) => _buildChatTile(chatState.filteredConversations[index], chatState.myId, chatState.typingStatus, notifier),
+                              itemBuilder: (context, index) {
+                                // ✅ SAFE CAST 2
+                                final rawChat = chatState.filteredConversations[index];
+                                if (rawChat is Map) {
+                                  final chat = Map<String, dynamic>.from(rawChat);
+                                  return _buildChatTile(chat, chatState.myId, chatState.typingStatus, notifier);
+                                }
+                                return const SizedBox.shrink();
+                              },
                             ),
                             
                           const SizedBox(height: 20),
@@ -262,7 +287,6 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       onDismissed: (direction) => notifier.deleteConversation(convId),
       child: InkWell(
         onTap: () {
-          // Temporarily clear badge locally, provider update comes from socket
           _openChat(other, convId);
         },
         child: Padding(
