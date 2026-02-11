@@ -22,8 +22,7 @@ class AuthService {
   static String? _tokenCache;
   final _secureStorage = StorageConfig.storage;
 
-  // ✅ FIX: Use simple constructor.
-  // v7 usually works with just GoogleSignIn(), configured via google-services.json
+  // ✅ FIX: Standard Constructor for GoogleSignIn v6+
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
   );
@@ -350,7 +349,6 @@ class AuthService {
     } catch (_) {}
 
     try {
-      // ✅ FIX: Safe check for currentUser before disconnect
       if (_googleSignIn.currentUser != null) {
         await _googleSignIn.disconnect();
       }

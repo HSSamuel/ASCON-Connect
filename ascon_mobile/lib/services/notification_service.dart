@@ -58,9 +58,9 @@ class NotificationService {
       const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
       const InitializationSettings initSettings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
+      // ✅ INITIALIZE: Using standard v18+ signature
       await _localNotifications.initialize(
         initSettings,
-        // ✅ FIX: Use onDidReceiveNotificationResponse for v20+
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           if (response.payload != null) {
             handleNavigation(jsonDecode(response.payload!));
@@ -285,12 +285,12 @@ class NotificationService {
 
     final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
+    // ✅ FIXED: Using NAMED PARAMETERS for version 18+
     await _localNotifications.show(
-      message.hashCode,
-      formattedTitle,
-      body,
-      platformDetails,
-      // ✅ FIX: Named parameter for payload
+      id: message.hashCode,
+      title: formattedTitle,
+      body: body,
+      notificationDetails: platformDetails,
       payload: jsonEncode(message.data), 
     );
   }

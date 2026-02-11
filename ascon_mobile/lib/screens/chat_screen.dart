@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// ✅ ADD THIS IMPORT
-import 'package:flutter_riverpod/legacy.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -88,8 +86,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
-  // ✅ THIS NOW WORKS WITH THE LEGACY IMPORT
-  AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
+  // ✅ FIXED: Removed explicit type to allow Riverpod 2.x inference
+  get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
       isGroup: widget.isGroup,
@@ -423,7 +421,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  // ✅ UPDATED: Shows Modal Bottom Sheet for Delete Options
+  // Shows Modal Bottom Sheet for Delete Options
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
     

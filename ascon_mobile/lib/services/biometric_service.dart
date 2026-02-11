@@ -27,7 +27,7 @@ class BiometricService {
     try {
       return await _auth.authenticate(
         localizedReason: 'Scan your fingerprint or face to log in',
-        // ✅ CORRECT PARAMETER USAGE FOR V3
+        // ✅ CORRECT PARAMETER USAGE FOR local_auth v2+
         options: const AuthenticationOptions(
           stickyAuth: true,
           biometricOnly: true,
