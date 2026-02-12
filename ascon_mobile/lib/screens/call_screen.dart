@@ -9,7 +9,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart'; 
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
-import '../services/auth_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String remoteName;
@@ -17,6 +16,8 @@ class CallScreen extends StatefulWidget {
   final String? remoteAvatar;
   final bool isCaller; 
   final Map<String, dynamic>? offer; 
+  // ✅ NEW: Receive callLogId if this is an incoming call
+  final String? callLogId; 
 
   const CallScreen({
     super.key,
@@ -25,6 +26,7 @@ class CallScreen extends StatefulWidget {
     this.remoteAvatar,
     required this.isCaller,
     this.offer,
+    this.callLogId,
   });
 
   @override
@@ -44,6 +46,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   bool _isSpeakerOn = false; 
   bool _hasAnswered = false;
   bool _permissionDenied = false;
+  
+  // ✅ Track the unique ID of this call for logging
+  String? _currentCallLogId;
 
   Timer? _callTimer;
   Duration _callDuration = Duration.zero;
@@ -51,6 +56,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // If incoming, use the ID passed from the notification/socket event
+    _currentCallLogId = widget.callLogId; 
+    
     _audioPlayer = AudioPlayer();
     
     _pulseController = AnimationController(
@@ -102,8 +110,14 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         case CallState.idle:
           _stopRinging();
           _triggerVibration(pattern: [0, 500]);
-          
           _callTimer?.cancel();
+
+          // ✅ EMIT END CALL EVENT TO SERVER
+          // This updates the log status to 'ended' and saves duration
+          if (_currentCallLogId != null) {
+            _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
+          }
+
           if (mounted && context.canPop()) context.pop();
           break;
           
@@ -117,10 +131,21 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     });
 
     _socketService.callEvents.listen((event) {
-       if (event['type'] == 'answer_made' && widget.isCaller) {
+       // ✅ Listen for generated Call Log ID (when we are the Caller)
+       if (event['type'] == 'call_log_generated') {
+         setState(() {
+           _currentCallLogId = event['data']['callLogId'];
+         });
+       }
+       else if (event['type'] == 'answer_made' && widget.isCaller) {
          _callService.handleAnswer(event['data']['answer']);
        } else if (event['type'] == 'ice_candidate') {
          _callService.handleIceCandidate(event['data']['candidate']);
+       } else if (event['type'] == 'call_failed') {
+         setState(() => _status = "Call Failed: ${event['data']['reason']}");
+         Future.delayed(const Duration(seconds: 2), () {
+           if (mounted && context.canPop()) context.pop();
+         });
        }
     });
   }
@@ -146,7 +171,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       debugPrint("Call Init Error: $e");
       _stopRinging();
       
-      // ✅ SAFETY CHECK: Do not call setState if widget is disposed
       if (!mounted) return;
 
       if (e.toString().contains("NotAllowedError") || e.toString().contains("Permission dismissed")) {
@@ -198,6 +222,14 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           _status = "Connecting...";
           _hasAnswered = true;
         });
+        
+        // ✅ Emit make_answer with Log ID to update server
+        // This tells backend to switch status from 'ringing' to 'ongoing'
+        _socketService.socket?.emit('make_answer', {
+          'to': widget.remoteId,
+          'callLogId': _currentCallLogId, 
+        });
+
         await _callService.answerCall(widget.offer!, widget.remoteId);
       } catch (e) {
         if (!mounted) return;
@@ -212,8 +244,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   void _onDecline() {
     _stopRinging();
-    _callService.endCall();
-    if (mounted && context.canPop()) context.pop();
+    _callService.endCall(); // This triggers Idle state -> which emits end_call
   }
 
   @override

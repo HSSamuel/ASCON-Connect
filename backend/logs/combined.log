@@ -2098,3 +2098,9 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-12 10:54:59"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-12 10:55:01"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-12 10:55:01"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-12 12:16:52"}
+{"level":"info","message":"ℹ️ Running in Memory Mode (Redis disabled).","timestamp":"2026-02-12 12:16:52"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-12 12:16:54"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-12 12:16:58"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-12 12:16:59"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-12 12:17:00"}

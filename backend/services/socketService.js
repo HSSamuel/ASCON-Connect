@@ -159,52 +159,66 @@ const initializeSocket = async (server) => {
     });
 
     // ==========================================
-    // D. WEBRTC SIGNALING (VOICE CALLS)
+    // D. WEBRTC SIGNALING & LOGGING (UPDATED)
     // ==========================================
 
-    // 1. Initiate Call (FIXED with Caller Info)
+    // 1. Initiate Call
     socket.on("call_user", async (data) => {
       const receiverId = data.userToCall;
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
       try {
-        // ✅ FETCH CALLER PROFILE
         const callerProfile = await UserProfile.findOne({
           userId: socket.userId,
         }).select("fullName profilePicture");
-
         const callerName = callerProfile
           ? callerProfile.fullName
           : "Unknown Caller";
         const callerPic = callerProfile ? callerProfile.profilePicture : null;
 
-        // ✅ EMIT WITH NAME & PIC
-        io.to(receiverId).emit("call_made", {
-          offer: data.offer,
-          socket: socket.id,
-          callerId: socket.userId,
+        // ✅ 1. Create Call Log in DB
+        const newLog = await CallLog.create({
+          caller: socket.userId,
+          receiver: receiverId,
+          status: "ringing",
           callerName: callerName,
           callerPic: callerPic,
         });
 
-        // Check "official" online status for Notification fallback
+        // ✅ 2. Send CallLog ID back to Caller (so they can end it later)
+        socket.emit("call_log_generated", { callLogId: newLog._id });
+
         const isReceiverOnline =
           onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
 
-        if (!isReceiverOnline) {
-          logger.info(
-            `📴 User ${receiverId} appears offline. Sending Push Notification.`,
-          );
+        if (isReceiverOnline) {
+          // Send offer + callLogId
+          io.to(receiverId).emit("call_made", {
+            offer: data.offer,
+            socket: socket.id,
+            callerId: socket.userId,
+            callerName: callerName,
+            callerPic: callerPic,
+            callLogId: newLog._id, // ✅ Pass ID to receiver
+          });
+        } else {
+          // Receiver is Offline -> Mark as Missed immediately
+          logger.info(`📴 User ${receiverId} offline. Logging as Missed.`);
+          await CallLog.findByIdAndUpdate(newLog._id, { status: "missed" });
+
           await sendPersonalNotification(
             receiverId,
-            "Incoming Call 📞",
-            `${callerName} is calling you...`,
+            "Missed Call 📞",
+            `${callerName} tried to call you.`,
             {
-              type: "call_incoming",
+              type: "call_missed", // Changed type slightly
               callerId: socket.userId,
               callerName: callerName,
             },
           );
+
+          // Tell caller it failed
+          socket.emit("call_failed", { reason: "User is offline" });
         }
       } catch (err) {
         logger.error(`Call Error: ${err.message}`);
@@ -212,15 +226,51 @@ const initializeSocket = async (server) => {
     });
 
     // 2. Answer Call
-    socket.on("make_answer", (data) => {
+    socket.on("make_answer", async (data) => {
       logger.info(`📞 Call answered by ${socket.userId}`);
+
+      // ✅ Update Log to 'ongoing'
+      if (data.callLogId) {
+        await CallLog.findByIdAndUpdate(data.callLogId, {
+          status: "ongoing",
+          startTime: new Date(),
+        });
+      }
+
       io.to(data.to).emit("answer_made", {
         socket: socket.id,
         answer: data.answer,
       });
     });
 
-    // 3. ICE Candidates
+    // 3. End Call (New Event)
+    socket.on("end_call", async (data) => {
+      if (!data.callLogId) return;
+
+      try {
+        const log = await CallLog.findById(data.callLogId);
+        if (log && log.status !== "ended") {
+          const endTime = new Date();
+          const duration = (endTime - new Date(log.startTime)) / 1000; // Seconds
+
+          // If duration is tiny and status was ringing, it might be a decline
+          const status = log.status === "ringing" ? "declined" : "ended";
+
+          await CallLog.findByIdAndUpdate(data.callLogId, {
+            status: status,
+            endTime: endTime,
+            duration: status === "ended" ? duration : 0,
+          });
+          logger.info(
+            `📞 Call ${data.callLogId} ended. Duration: ${duration}s`,
+          );
+        }
+      } catch (e) {
+        logger.error(`End Call Error: ${e.message}`);
+      }
+    });
+
+    // 4. ICE Candidates
     socket.on("ice_candidate", (data) => {
       io.to(data.to).emit("ice_candidate_received", {
         candidate: data.candidate,

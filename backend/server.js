@@ -5,7 +5,6 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
-// const rateLimit = require("express-rate-limit"); // REMOVED
 const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
@@ -143,6 +142,7 @@ app.use("/api/mentorship", require("./routes/mentorship"));
 app.use("/api/updates", require("./routes/updates"));
 app.use("/api/polls", require("./routes/polls"));
 app.use("/api/groups", require("./routes/groups"));
+app.use("/api/calls", require("./routes/callLogs"));
 
 app.use(errorHandler);
 
