@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart'; // ✅ Import for kIsWeb
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart'; // ✅ Needed for SchedulerBinding
+import 'package:flutter/scheduler.dart'; 
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../router.dart'; 
@@ -18,7 +21,6 @@ class SocketService with WidgetsBindingObserver {
   final _callEventsController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get callEvents => _callEventsController.stream;
 
-  // ✅ New Streams for Status Updates
   final _messageStatusController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get messageStatusStream => _messageStatusController.stream;
 
@@ -27,6 +29,11 @@ class SocketService with WidgetsBindingObserver {
 
   SocketService._internal() {
     WidgetsBinding.instance.addObserver(this);
+    
+    // ✅ CRITICAL FIX: Only setup CallKit listener on Mobile (Android/iOS)
+    if (!kIsWeb) {
+      _setupCallKitListener();
+    }
   }
 
   @override
@@ -40,6 +47,28 @@ class SocketService with WidgetsBindingObserver {
 
   IO.Socket? getSocket() {
     return socket;
+  }
+
+  void _setupCallKitListener() {
+    // This will only run on mobile now
+    try {
+      FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
+        if (event == null) return;
+        
+        switch (event.event) {
+          case Event.actionCallAccept:
+            // Handle native answer action
+            break;
+          case Event.actionCallDecline:
+             // Handle native decline action
+             break;
+          default:
+            break;
+        }
+      });
+    } catch (e) {
+      debugPrint("⚠️ CallKit Listener Error: $e");
+    }
   }
 
   Future<void> initSocket({String? userIdOverride}) async {
@@ -110,23 +139,19 @@ class SocketService with WidgetsBindingObserver {
       if (data != null) _userStatusController.add(Map<String, dynamic>.from(data));
     });
 
-    // ✅ Listen for incoming messages to send Delivery Receipts
     socket!.on('new_message', (data) {
-      // Auto-acknowledge delivery immediately
       if (data != null && data['message'] != null && data['conversationId'] != null) {
         final msgId = data['message']['_id'] ?? data['message']['id'];
         final senderId = data['message']['sender'] is Map 
             ? data['message']['sender']['_id'] 
             : data['message']['sender'];
 
-        // Only mark delivered if I am NOT the sender
         if (senderId != _currentUserId) {
           markMessageAsDelivered(msgId, data['conversationId']);
         }
       }
     });
 
-    // ✅ Listen for updates to MY sent messages (Sent -> Delivered / Read)
     socket!.on('messages_read_update', (data) {
        _messageStatusController.add({'type': 'read', 'data': data});
     });
@@ -136,48 +161,86 @@ class SocketService with WidgetsBindingObserver {
     });
 
     // ============================================
-    // 📞 CALL SIGNALING EVENTS (CRASH FIX)
+    // 📞 CALL SIGNALING EVENTS
     // ============================================
 
-    socket!.on('call_made', (data) {
+    socket!.on('call_made', (data) async {
       debugPrint("📞 INCOMING CALL RECEIVED! Payload: $data");
       
-      // ✅ FIX 1: Use SchedulerBinding to ensure we are not in the middle of a build
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        // ✅ FIX 2: Check if Navigator is mounted before pushing
-        if (rootNavigatorKey.currentState != null) {
-          try {
-            debugPrint("🚀 Safe Navigation to CallScreen...");
-            appRouter.push('/call', extra: {
-              'remoteName': data['callerName'] ?? "Unknown Caller",
-              'remoteId': data['callerId'] ?? "Unknown",
-              'remoteAvatar': data['callerPic'],
-              'isCaller': false,
-              'offer': data['offer'],
-            });
-          } catch (e) {
-            debugPrint("❌ Navigation Failed: $e");
+      final appState = WidgetsBinding.instance.lifecycleState;
+      
+      // ✅ CRITICAL FIX: Only attempt native CallKit UI if NOT on Web AND App is in background
+      if (!kIsWeb && (appState == AppLifecycleState.paused || appState == AppLifecycleState.detached || appState == AppLifecycleState.inactive)) {
+         
+         CallKitParams params = CallKitParams(
+            id: data['callLogId'],
+            nameCaller: data['callerName'] ?? 'Unknown',
+            appName: 'ASCON Connect',
+            avatar: data['callerPic'],
+            handle: data['callerId'],
+            type: 0, // Audio
+            duration: 30000,
+            textAccept: 'Answer',
+            textDecline: 'Decline',
+            extra: data, 
+            android: const AndroidParams(
+              isCustomNotification: true,
+              isShowLogo: false,
+              backgroundColor: '#0F3621',
+              ringtonePath: 'system_ringtone_default',
+              actionColor: '#4CAF50',
+              incomingCallNotificationChannelName: "Incoming Call",
+            ),
+            ios: const IOSParams(
+              iconName: 'CallKitIcon',
+              handleType: 'generic',
+              supportsVideo: false,
+              maximumCallGroups: 1,
+              maximumCallsPerCallGroup: 1,
+            ),
+         );
+         await FlutterCallkitIncoming.showCallkitIncoming(params);
+      } else {
+        // App is Foreground (or Web): Show In-App UI
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (rootNavigatorKey.currentState != null) {
+            try {
+              appRouter.push('/call', extra: {
+                'remoteName': data['callerName'] ?? "Unknown Caller",
+                'remoteId': data['callerId'] ?? "Unknown",
+                'remoteAvatar': data['callerPic'],
+                'isCaller': false,
+                'offer': data['offer'],
+                'callLogId': data['callLogId'], 
+              });
+            } catch (e) {
+              debugPrint("❌ Navigation Failed: $e");
+            }
           }
-        } else {
-          debugPrint("⚠️ Navigator not ready. Call notification missed.");
-        }
-      });
+        });
+      }
     });
 
     socket!.on('answer_made', (data) {
       debugPrint("✅ Call Answered by Peer");
       _callEventsController.add({'type': 'answer_made', 'data': data});
     });
+    
+    socket!.on('call_ended_remote', (data) {
+      _callEventsController.add({'type': 'call_ended_remote', 'data': data});
+    });
 
     socket!.on('ice_candidate_received', (data) {
       _callEventsController.add({'type': 'ice_candidate', 'data': data});
+    });
+    
+    socket!.on('call_failed', (data) {
+      _callEventsController.add({'type': 'call_failed', 'data': data});
     });
 
     socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
     socket!.onError((data) => debugPrint('⚠️ Socket Error: $data'));
   }
-
-  // ✅ New Methods for Status Updates
 
   void markMessagesAsRead(String chatId, List<String> messageIds, String userId) {
     if (socket != null && socket!.connected) {

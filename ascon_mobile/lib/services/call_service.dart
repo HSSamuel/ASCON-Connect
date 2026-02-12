@@ -22,6 +22,10 @@ class CallService {
   String? _remoteId;
   bool _isCallActive = false;
   
+  // ✅ FIX: Buffering for ICE candidates
+  bool _isRemoteDescriptionSet = false;
+  final List<RTCIceCandidate> _candidateQueue = [];
+  
   // Call State Streams
   final _callStateController = StreamController<CallState>.broadcast();
   Stream<CallState> get callStateStream => _callStateController.stream;
@@ -46,14 +50,15 @@ class CallService {
     
     _remoteId = remoteUserId;
     _isCallActive = true;
+    _isRemoteDescriptionSet = false; // Reset
+    _candidateQueue.clear();
+
     _callStateController.add(CallState.calling);
 
     await _createPeerConnection();
-    // ✅ SAFETY CHECK 1: Call might have ended while creating peer connection
     if (_peerConnection == null) return;
 
     await _getUserMedia(video: video);
-    // ✅ SAFETY CHECK 2: Call might have ended while getting media
     if (_peerConnection == null) return;
 
     // Force audio routing to earpiece (default for calls)
@@ -70,7 +75,6 @@ class CallService {
       'offerToReceiveVideo': video,
     });
 
-    // ✅ SAFETY CHECK 3: Call might have ended while creating offer
     if (_peerConnection == null) return;
 
     await _peerConnection!.setLocalDescription(offer);
@@ -85,6 +89,9 @@ class CallService {
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, {bool video = false}) async {
     _remoteId = callerId;
     _isCallActive = true;
+    _isRemoteDescriptionSet = false; // Reset
+    _candidateQueue.clear();
+    
     _callStateController.add(CallState.connected);
 
     await _createPeerConnection();
@@ -102,6 +109,8 @@ class CallService {
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(offer['sdp'], offer['type']),
     );
+    _isRemoteDescriptionSet = true; // ✅ Mark as ready
+    _processCandidateQueue();       // ✅ Process any buffered candidates
 
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
@@ -128,20 +137,33 @@ class CallService {
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(answerData['sdp'], answerData['type']),
     );
+    _isRemoteDescriptionSet = true; // ✅ Mark as ready
+    _processCandidateQueue();       // ✅ Process any buffered candidates
+
     _callStateController.add(CallState.connected);
   }
 
   // --- 4. HANDLE ICE CANDIDATES (Both) ---
   Future<void> handleIceCandidate(dynamic candidateData) async {
-    if (_peerConnection != null) {
-      await _peerConnection!.addCandidate(
-        RTCIceCandidate(
-          candidateData['candidate'],
-          candidateData['sdpMid'],
-          candidateData['sdpMLineIndex'],
-        ),
-      );
+    final candidate = RTCIceCandidate(
+      candidateData['candidate'],
+      candidateData['sdpMid'],
+      candidateData['sdpMLineIndex'],
+    );
+
+    if (_peerConnection != null && _isRemoteDescriptionSet) {
+      await _peerConnection!.addCandidate(candidate);
+    } else {
+      // ✅ Buffer if remote description is not set yet
+      _candidateQueue.add(candidate);
     }
+  }
+
+  void _processCandidateQueue() async {
+    for (var candidate in _candidateQueue) {
+      await _peerConnection?.addCandidate(candidate);
+    }
+    _candidateQueue.clear();
   }
 
   // --- 5. UTILS & CONTROLS ---
@@ -171,12 +193,10 @@ class CallService {
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
-        
         // Explicitly enable remote audio tracks
         _remoteStream!.getAudioTracks().forEach((track) {
           track.enabled = true;
         });
-
         _remoteStreamController.add(_remoteStream);
       }
     };
@@ -233,11 +253,14 @@ class CallService {
     _callStateController.add(CallState.idle);
     _isCallActive = false;
     _remoteId = null;
+    _candidateQueue.clear();
   }
 
   void _closePeerConnection() {
     _peerConnection?.close();
     _peerConnection = null;
+    // ✅ Fix: release hardware lock properly
+    _localStream?.getTracks().forEach((track) => track.stop());
     _localStream?.dispose();
     _localStream = null;
     _remoteStream = null;

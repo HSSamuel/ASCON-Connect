@@ -16,7 +16,6 @@ class CallScreen extends StatefulWidget {
   final String? remoteAvatar;
   final bool isCaller; 
   final Map<String, dynamic>? offer; 
-  // ✅ NEW: Receive callLogId if this is an incoming call
   final String? callLogId; 
 
   const CallScreen({
@@ -40,6 +39,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AudioPlayer _audioPlayer;
   StreamSubscription? _callStateSubscription;
+  StreamSubscription? _socketSubscription; // ✅ Track listener to cancel it
 
   String _status = "Initializing...";
   bool _isMuted = false;
@@ -47,7 +47,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   bool _hasAnswered = false;
   bool _permissionDenied = false;
   
-  // ✅ Track the unique ID of this call for logging
   String? _currentCallLogId;
 
   Timer? _callTimer;
@@ -56,7 +55,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    // If incoming, use the ID passed from the notification/socket event
     _currentCallLogId = widget.callLogId; 
     
     _audioPlayer = AudioPlayer();
@@ -98,7 +96,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       switch (state) {
         case CallState.connected:
           _stopRinging();
-          _triggerVibration(pattern: [0, 100, 50, 100]); 
+          // ✅ Short vibration to indicate connection
+          _triggerVibration(pattern: [0, 100]); 
           
           _startCallTimer();
           setState(() {
@@ -112,8 +111,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           _triggerVibration(pattern: [0, 500]);
           _callTimer?.cancel();
 
-          // ✅ EMIT END CALL EVENT TO SERVER
-          // This updates the log status to 'ended' and saves duration
           if (_currentCallLogId != null) {
             _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
           }
@@ -130,8 +127,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       }
     });
 
-    _socketService.callEvents.listen((event) {
-       // ✅ Listen for generated Call Log ID (when we are the Caller)
+    _socketSubscription = _socketService.callEvents.listen((event) {
        if (event['type'] == 'call_log_generated') {
          setState(() {
            _currentCallLogId = event['data']['callLogId'];
@@ -146,6 +142,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
          Future.delayed(const Duration(seconds: 2), () {
            if (mounted && context.canPop()) context.pop();
          });
+       } 
+       // ✅ Listen for remote hangup
+       else if (event['type'] == 'call_ended_remote') {
+         setState(() => _status = "Call Ended");
+         _stopRinging();
+         _callService.endCall();
        }
     });
   }
@@ -215,7 +217,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   void _onAnswer() async {
-    _stopRinging();
+    // ✅ CRITICAL: Stop ringtone and Wait before enabling WebRTC audio
+    await _stopRinging();
+    
     if (widget.offer != null) {
       try {
         setState(() {
@@ -223,8 +227,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           _hasAnswered = true;
         });
         
-        // ✅ Emit make_answer with Log ID to update server
-        // This tells backend to switch status from 'ringing' to 'ongoing'
         _socketService.socket?.emit('make_answer', {
           'to': widget.remoteId,
           'callLogId': _currentCallLogId, 
@@ -244,7 +246,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   void _onDecline() {
     _stopRinging();
-    _callService.endCall(); // This triggers Idle state -> which emits end_call
+    _callService.endCall(); 
   }
 
   @override
@@ -253,6 +255,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _stopRinging();
     _audioPlayer.dispose();
     _callStateSubscription?.cancel();
+    _socketSubscription?.cancel(); // ✅ Clean up
     _pulseController.dispose();
     _callService.endCall();
     super.dispose();

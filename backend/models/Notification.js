@@ -44,6 +44,8 @@ const notificationSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+    // ✅ AUTO-DELETE: Expires documents 24 hours (86400 seconds) after creation
+    expires: 86400,
   },
 });
 

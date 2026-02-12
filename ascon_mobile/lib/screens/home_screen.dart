@@ -17,20 +17,20 @@ import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
-import 'admin/add_content_screen.dart'; // ✅ Import Add Content Screen
+import 'admin/add_content_screen.dart'; 
 
-import '../widgets/celebration_card.dart';
+import '../widgets/celebration_card.dart'; // ✅ Added Back
 import '../widgets/active_poll_card.dart'; 
 import '../widgets/chapter_card.dart';     
 import '../widgets/digital_id_card.dart';
 import '../widgets/shimmer_utils.dart';
 
 import '../viewmodels/dashboard_view_model.dart';
-import '../viewmodels/events_view_model.dart'; // ✅ Needed for delete logic
+import '../viewmodels/events_view_model.dart'; 
 import '../services/socket_service.dart'; 
 import '../services/api_client.dart'; 
 import '../services/notification_service.dart';
-import '../services/auth_service.dart'; // ✅ Needed to check Admin status
+import '../services/auth_service.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -117,7 +117,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _goBranch(int index) {
-    // ✅ FEATURE: Tap "Home" to refresh dashboard
     if (index == widget.navigationShell.currentIndex) {
       if (index == 0) {
         final container = ProviderScope.containerOf(context, listen: false);
@@ -131,9 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  // ✅ GLOBAL BACK NAVIGATION HANDLER
   Future<void> _handleBackPress() async {
-    // 1. Close keyboard if open
     if (MediaQuery.of(context).viewInsets.bottom > 0) {
       SystemChannels.textInput.invokeMethod('TextInput.hide');
       return;
@@ -141,7 +138,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final int currentIndex = widget.navigationShell.currentIndex;
 
-    // 2. Identify the active navigator
     GlobalKey<NavigatorState>? currentNavigatorKey;
     switch (currentIndex) {
       case 0: currentNavigatorKey = homeNavKey; break;
@@ -151,7 +147,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case 4: currentNavigatorKey = profileNavKey; break;
     }
 
-    // 3. Try popping the internal stack of the active tab
     if (currentNavigatorKey != null && 
         currentNavigatorKey.currentState != null && 
         currentNavigatorKey.currentState!.canPop()) {
@@ -159,13 +154,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return; 
     }
 
-    // 4. If not on Dashboard (Tab 0), go back to Dashboard
     if (currentIndex != 0) {
       _goBranch(0);
       return; 
     }
 
-    // 5. If on Dashboard root, double-tap to exit
     final now = DateTime.now();
     if (_lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2)) {
       _lastPressedAt = now;
@@ -180,7 +173,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return; 
     }
 
-    // 6. Exit app
     SystemNavigator.pop();
   }
 
@@ -195,7 +187,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final uiIndex = widget.navigationShell.currentIndex;
     final showAppBar = uiIndex == 0;
 
-    // ✅ PopScope wraps the entire Scaffold to intercept back button
     return PopScope(
       canPop: false, 
       onPopInvokedWithResult: (didPop, result) async {
@@ -210,6 +201,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
+                IconButton(
+    icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : primaryColor, size: 24),
+    onPressed: () => context.push('/notifications'),
+  ),
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
@@ -334,7 +329,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// ✅ DASHBOARD VIEW (Child Widget)
 class DashboardView extends ConsumerStatefulWidget {
   final String? userName; 
   const DashboardView({super.key, this.userName});
@@ -345,7 +339,7 @@ class DashboardView extends ConsumerStatefulWidget {
 
 class _DashboardViewState extends ConsumerState<DashboardView> {
   String _displayName = "Alumni";
-  bool _isAdmin = false; // ✅ Track Admin Status
+  bool _isAdmin = false; 
 
   @override
   void initState() {
@@ -357,7 +351,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   Future<void> _loadUser() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('user_name');
-    final isAdmin = await AuthService().isAdmin; // ✅ Check Admin Status
+    final isAdmin = await AuthService().isAdmin; 
     
     if (mounted) {
       setState(() {
@@ -367,7 +361,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     }
   }
 
-  // ✅ NEW: Delete Programme Logic
   Future<void> _deleteProgramme(String id) async {
     final confirm = await showDialog(
       context: context,
@@ -476,17 +469,16 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   imageUrl: dashboardState.profileImage,
                 ),
 
-                // ✅ 1. PROFILE COMPLETION ALERT (Hidden if complete)
                 if (!dashboardState.isLoading && !dashboardState.isProfileComplete)
                   _buildProfileAlert(context, primaryColor, dashboardState.profileCompletionPercent),
 
                 const ChapterCard(),
 
+                // ✅ 2. RESTORED CelebrationWidget (Birthdays Only)
                 const CelebrationWidget(),
 
                 const SizedBox(height: 10),
 
-                // ✅ 2. ALUMNI NETWORK
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -550,7 +542,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                 
                 const SizedBox(height: 25),
 
-                // ✅ 3. UPCOMING EVENTS
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -585,14 +576,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
 
                 const SizedBox(height: 25),
 
-                // ✅ 4. PROGRAMME UPDATES
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Programme Updates", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
-                      // ✅ Admin Add Button
                       if (_isAdmin)
                         IconButton(
                           icon: const Icon(Icons.add_circle, color: Colors.green),
@@ -642,7 +631,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 5, 16, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF424242) : const Color(0xFFFFF8E1),
         borderRadius: BorderRadius.circular(12),
@@ -673,14 +662,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  "Complete Profile (${(percent * 100).toInt()}%)", 
+                  "Complete ur profile (${(percent * 100).toInt()}%)", 
                   style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)
-                ),
-                Text(
-                  "Add bio & city to connect.", 
-                  style: GoogleFonts.lato(fontSize: 11, color: isDark ? Colors.grey[300] : Colors.grey[800])
                 ),
               ],
             ),
@@ -854,7 +840,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   ],
                 ),
               ),
-              // ✅ Admin Delete Button
               if (_isAdmin)
                 Positioned(
                   top: 8, right: 8,

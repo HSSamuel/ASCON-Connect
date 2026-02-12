@@ -2,13 +2,14 @@ const router = require("express").Router();
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
+const Group = require("../models/Group"); // ✅ Added Group Import
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
 
 // ✅ Centralized Profile Completeness Logic
 const calculateProfileCompleteness = (profile) => {
   let totalScore = 0;
-  const maxScore = 8; // Score is out of 8 now
+  const maxScore = 8;
 
   if (profile.profilePicture) totalScore++;
   if (profile.jobTitle) totalScore++;
@@ -17,7 +18,7 @@ const calculateProfileCompleteness = (profile) => {
   if (profile.city) totalScore++;
   if (profile.bio) totalScore++;
   if (profile.linkedin) totalScore++;
-  if (profile.dateOfBirth) totalScore++; // ✅ Added DOB Check
+  if (profile.dateOfBirth) totalScore++;
 
   const percent = totalScore / maxScore;
   return {
@@ -42,16 +43,58 @@ router.put("/update", verifyToken, (req, res) => {
     }
 
     try {
-      // Sanitize Year
-      let year = req.body.yearOfAttendance;
-      if (!year || year === "null" || year === "" || isNaN(year)) {
-        year = null;
+      // 1. Sanitize Year
+      let newYear = req.body.yearOfAttendance;
+      if (!newYear || newYear === "null" || newYear === "" || isNaN(newYear)) {
+        newYear = null;
+      }
+
+      // 2. ✅ CRITICAL: Fetch Current Profile (To detect changes)
+      const currentProfile = await UserProfile.findOne({
+        userId: req.user._id,
+      });
+      if (!currentProfile) {
+        return res.status(404).json({ message: "User profile not found" });
+      }
+
+      // 3. ✅ GROUP SYNC LOGIC (Year Change)
+      const oldYear = currentProfile.yearOfAttendance;
+
+      // Check if year changed (using loose equality to handle string/number diffs)
+      if (newYear != oldYear) {
+        console.log(
+          `🔄 Year changed from ${oldYear} to ${newYear}. Syncing Groups...`,
+        );
+
+        // A. Remove from Old Group
+        if (oldYear) {
+          const oldGroupName = `Class of ${oldYear}`;
+          await Group.findOneAndUpdate(
+            { name: oldGroupName, type: "Class" },
+            { $pull: { members: req.user._id } },
+          );
+        }
+
+        // B. Add to New Group
+        if (newYear) {
+          const newGroupName = `Class of ${newYear}`;
+          await Group.findOneAndUpdate(
+            { name: newGroupName, type: "Class" },
+            {
+              $addToSet: { members: req.user._id },
+              $setOnInsert: {
+                description: `Official group for the ${newGroupName}`,
+              },
+            },
+            { upsert: true, new: true },
+          );
+        }
       }
 
       // Handle Boolean Toggles
       const isMentor = req.body.isOpenToMentorship === "true";
       const isLocationVisible = req.body.isLocationVisible === "true";
-      const isBirthdayVisible = req.body.isBirthdayVisible === "true"; // ✅ New Flag
+      const isBirthdayVisible = req.body.isBirthdayVisible === "true";
 
       // Handle Skills Array
       let skillsArray = [];
@@ -62,7 +105,7 @@ router.put("/update", verifyToken, (req, res) => {
           .filter((s) => s.length > 0);
       }
 
-      // ✅ 1. PREPARE PROFILE DATA
+      // ✅ 4. PREPARE PROFILE DATA
       const profileUpdateData = {
         fullName: req.body.fullName,
         bio: req.body.bio,
@@ -70,7 +113,7 @@ router.put("/update", verifyToken, (req, res) => {
         organization: req.body.organization,
         linkedin: req.body.linkedin,
         phoneNumber: req.body.phoneNumber,
-        yearOfAttendance: year,
+        yearOfAttendance: newYear, // Use sanitized year
         programmeTitle: req.body.programmeTitle,
         customProgramme: req.body.customProgramme,
         industry: req.body.industry || "",
@@ -79,7 +122,6 @@ router.put("/update", verifyToken, (req, res) => {
         skills: skillsArray,
       };
 
-      // ✅ HANDLE DATE OF BIRTH
       if (req.body.dateOfBirth && req.body.dateOfBirth !== "null") {
         profileUpdateData.dateOfBirth = new Date(req.body.dateOfBirth);
       }
@@ -88,14 +130,14 @@ router.put("/update", verifyToken, (req, res) => {
         profileUpdateData.profilePicture = req.file.path;
       }
 
-      // ✅ 2. PREPARE SETTINGS DATA
+      // ✅ 5. PREPARE SETTINGS DATA
       const settingsUpdateData = {
         isLocationVisible: isLocationVisible,
         isOpenToMentorship: isMentor,
-        isBirthdayVisible: isBirthdayVisible, // ✅ Save setting
+        isBirthdayVisible: isBirthdayVisible,
       };
 
-      // ✅ 3. RUN UPDATES IN PARALLEL
+      // ✅ 6. RUN UPDATES IN PARALLEL
       const [updatedProfile, updatedSettings] = await Promise.all([
         UserProfile.findOneAndUpdate(
           { userId: req.user._id },
@@ -108,10 +150,6 @@ router.put("/update", verifyToken, (req, res) => {
           { new: true },
         ),
       ]);
-
-      if (!updatedProfile) {
-        return res.status(404).json({ message: "User profile not found" });
-      }
 
       res
         .status(200)
@@ -140,7 +178,6 @@ router.get("/me", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // ✅ NEW: Calculate stats on the server
     const completeness = calculateProfileCompleteness(profile);
 
     const fullProfile = {
@@ -152,7 +189,6 @@ router.get("/me", verifyToken, async (req, res) => {
       lastSeen: auth.lastSeen,
       ...profile.toObject(),
       ...settings.toObject(),
-      // ✅ Inject calculated fields
       profileCompletionPercent: completeness.percent,
       isProfileComplete: completeness.isComplete,
     };

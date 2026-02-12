@@ -76,14 +76,13 @@ router.get("/", verify, async (req, res) => {
   try {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
-      // Relaxed query: Allow chats created recently even if lastMessage is unset (rare but safe)
       $or: [
         { lastMessage: { $exists: true, $ne: null, $ne: "" } },
-        { isGroup: true }, // Always show groups
+        { isGroup: true },
       ],
     })
       .populate("groupId", "name icon")
-      .sort({ updatedAt: -1 }) // Sort by updated to show new chats too
+      .sort({ updatedAt: -1 })
       .lean();
 
     const allParticipantIds = new Set();
@@ -131,17 +130,6 @@ router.get("/", verify, async (req, res) => {
             exists: !!auth,
           };
         });
-
-        // ✅ FIX: Commented out the strict filter.
-        // Even if 'otherUser' doesn't exist (deleted), we show the chat so it's not hidden.
-        /*
-        const otherUser = enrichedParticipants.find(
-          (p) => p._id !== req.user._id,
-        );
-        if (!chat.isGroup && otherUser && !otherUser.exists) {
-          return null;
-        }
-        */
 
         const unreadCount = await Message.countDocuments({
           conversationId: chat._id,
@@ -237,7 +225,7 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. BULK DELETE MESSAGES
+// 4. BULK DELETE MESSAGES (UPDATED: HARD DELETE)
 // ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
@@ -258,16 +246,38 @@ router.post("/delete-multiple", verify, async (req, res) => {
 
     if (deleteForEveryone) {
       const query = { _id: { $in: messageIds } };
+      // Security: Only sender or Admin can delete for everyone
       if (!isAdmin) query.sender = req.user._id;
 
-      await Message.updateMany(query, {
-        $set: {
-          isDeleted: true,
-          text: "🚫 This message was deleted" + (isAdmin ? " by Admin" : ""),
-          fileUrl: null,
-          type: "text",
-        },
+      // ✅ 1. HARD DELETE: Remove from Database entirely
+      await Message.deleteMany(query);
+
+      // ✅ 2. FIX CONVERSATION PREVIEW
+      // If we deleted the "lastMessage", we must find the new last message
+      const latestMsg = await Message.findOne({
+        conversationId: firstMsg.conversationId,
+      }).sort({ createdAt: -1 });
+
+      let newPreview = "";
+      let newSender = null;
+      let newTime = conversation.createdAt;
+
+      if (latestMsg) {
+        if (latestMsg.type === "image") newPreview = "📷 Image";
+        else if (latestMsg.type === "audio") newPreview = "🎤 Voice Note";
+        else if (latestMsg.type === "file") newPreview = "📎 Document";
+        else newPreview = latestMsg.text;
+
+        newSender = latestMsg.sender;
+        newTime = latestMsg.createdAt;
+      }
+
+      await Conversation.findByIdAndUpdate(firstMsg.conversationId, {
+        lastMessage: newPreview,
+        lastMessageSender: newSender,
+        lastMessageAt: newTime,
       });
+
       _emitDeleteEvent(
         req,
         firstMsg.conversationId,
@@ -276,6 +286,7 @@ router.post("/delete-multiple", verify, async (req, res) => {
         conversation,
       );
     } else {
+      // Delete for Me Only (Soft Delete via array)
       await Message.updateMany(
         { _id: { $in: messageIds } },
         { $addToSet: { deletedFor: req.user._id } },
@@ -310,6 +321,7 @@ async function _emitDeleteEvent(
     });
   } else {
     conversation.participants.forEach((userId) => {
+      // For hard delete, notify everyone. For soft, only notify the deleter (usually implicit).
       if (isHardDelete || userId.toString() === req.user._id) {
         req.io.to(userId.toString()).emit("messages_deleted_bulk", {
           conversationId,
@@ -604,7 +616,10 @@ router.delete("/message/:id", verify, async (req, res) => {
   try {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json({ message: "Not found" });
+
+    // HARD DELETE SINGLE MESSAGE
     await Message.findByIdAndDelete(req.params.id);
+
     const conversation = await Conversation.findById(msg.conversationId);
     _emitDeleteEvent(req, msg.conversationId, [msg._id], true, conversation);
     res.status(200).json({ message: "Deleted" });

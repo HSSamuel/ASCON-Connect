@@ -86,7 +86,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
-  // ✅ FIXED: Explicit type definition so ref.listen knows what state it is watching
   AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
@@ -103,7 +102,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setupAudioPlayerListeners();
     _setupScrollListener();
     
-    // ✅ Trigger Read Receipt when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
        ref.read(_provider.notifier).markUnreadAsRead();
     });
@@ -394,9 +392,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _attachOption(Icons.image, Colors.purple, "Gallery", () => _pickImage(ImageSource.gallery)), 
             _attachOption(Icons.camera_alt, Colors.pink, "Camera", () => _pickImage(ImageSource.camera)), 
             _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
-            if (widget.isGroup)
+            if (widget.isGroup && widget.groupId != null)
               _attachOption(Icons.bar_chart_rounded, Colors.orange, "Poll", () {
-                  Navigator.pop(context); 
+                  // ✅ FIX: Removed the extra Navigator.pop(context) that was causing dashboard kick-out
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true, 
@@ -411,6 +409,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
   
   Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
+    // This widget already pops the menu, so don't pop again inside the callback!
     return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
   }
 
@@ -509,7 +508,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final state = ref.watch(_provider);
     final notifier = ref.read(_provider.notifier);
 
-    // ✅ AUTO-SCROLL when new messages arrive
     ref.listen(_provider, (previous, next) {
       if (next.messages.length > (previous?.messages.length ?? 0)) {
         _scrollToBottom();
@@ -600,15 +598,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               onTap: _openDetails,
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: (widget.receiverProfilePic != null && widget.receiverProfilePic!.isNotEmpty)
-                        ? CachedNetworkImageProvider(widget.receiverProfilePic!)
-                        : null,
-                    child: (widget.receiverProfilePic == null || widget.receiverProfilePic!.isEmpty)
-                        ? Text(widget.receiverName.substring(0, 1).toUpperCase(), style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold))
-                        : null,
+                  // ✅ FIXED: Using CachedNetworkImage with error fallback
+                  CachedNetworkImage(
+                    imageUrl: widget.receiverProfilePic ?? "",
+                    imageBuilder: (context, imageProvider) => CircleAvatar(
+                      radius: 20,
+                      backgroundImage: imageProvider,
+                    ),
+                    placeholder: (context, url) => CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.grey[300],
+                      child: Text(
+                        widget.receiverName.isNotEmpty ? widget.receiverName.substring(0, 1).toUpperCase() : "?",
+                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => CircleAvatar(
+                      radius: 20,
+                      backgroundColor: Colors.grey[300],
+                      child: Text(
+                        widget.receiverName.isNotEmpty ? widget.receiverName.substring(0, 1).toUpperCase() : "?",
+                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Column(
@@ -639,7 +651,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                ActivePollCard(groupId: widget.groupId),
 
             Expanded(
-              // ✅ SWIPE TO REFRESH
               child: RefreshIndicator(
                 onRefresh: () async {
                   await notifier.refreshMessages();
@@ -702,7 +713,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             setState(() { _editingMessage = msg; _replyingTo = null; _textController.text = msg.text; });
                             _focusNode.requestFocus();
                           },
-                          // ✅ UPDATED: Trigger deletion via notifier
                           onDelete: (id, deleteForEveryone) { 
                             notifier.deleteMessages([id], deleteForEveryone: deleteForEveryone);
                           }, 

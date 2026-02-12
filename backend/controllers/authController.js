@@ -33,7 +33,6 @@ const registerSchema = Joi.object({
   city: Joi.string().optional().allow(""),
   googleToken: Joi.string().optional().allow(null, ""),
   fcmToken: Joi.string().optional().allow(null, ""),
-  // ✅ Added Date of Birth
   dateOfBirth: Joi.string().isoDate().optional().allow(null, ""),
 });
 
@@ -80,17 +79,15 @@ exports.register = asyncHandler(async (req, res) => {
     customProgramme,
     city,
     fcmToken,
-    dateOfBirth, // ✅ Extract DOB
+    dateOfBirth,
   } = req.body;
 
-  // 1. Check if Auth exists (Read-only, no transaction needed yet)
   const emailExist = await UserAuth.findOne({ email });
   if (emailExist) {
     res.status(400);
     throw new Error("Email already registered. Please Login.");
   }
 
-  // ✅ START TRANSACTION
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -120,7 +117,6 @@ exports.register = asyncHandler(async (req, res) => {
       customProgramme: customProgramme || "",
       city: city || "",
       alumniId: newAlumniId,
-      // ✅ Save Date if present
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
     });
     await newUserProfile.save({ session });
@@ -131,7 +127,7 @@ exports.register = asyncHandler(async (req, res) => {
       hasSeenWelcome: false,
       isEmailVisible: true,
       isPhoneVisible: false,
-      isBirthdayVisible: true, // ✅ Default to visible
+      isBirthdayVisible: true,
     });
     await newUserSettings.save({ session });
 
@@ -164,17 +160,12 @@ exports.register = asyncHandler(async (req, res) => {
       );
     }
 
-    // ✅ COMMIT TRANSACTION
     await session.commitTransaction();
     session.endSession();
 
-    // 5. Post-Transaction Actions (Notifications & Socket)
     try {
       if (req.io) {
-        // Notify Admin Dashboard
         req.io.emit("admin_stats_update", { type: "NEW_USER" });
-
-        // Notify Mobile Users (Presence)
         req.io.emit("user_status_update", {
           userId: savedAuth._id,
           isOnline: true,
@@ -219,10 +210,9 @@ exports.register = asyncHandler(async (req, res) => {
       },
     });
   } catch (err) {
-    // ❌ ABORT TRANSACTION ON ERROR
     await session.abortTransaction();
     session.endSession();
-    throw err; // Pass error to global handler
+    throw err;
   }
 });
 
@@ -364,7 +354,19 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     });
     await userSettings.save();
 
-    // ✅ Emit admin event for Google Signups too
+    // ✅ FIX 1: Auto-Join Class Group for Google Users
+    const classGroupName = `Class of ${currentYear}`;
+    await Group.findOneAndUpdate(
+      { name: classGroupName, type: "Class" },
+      {
+        $addToSet: { members: userAuth._id },
+        $setOnInsert: {
+          description: `Official group for the ${classGroupName}`,
+        },
+      },
+      { upsert: true, new: true },
+    );
+
     if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
   } else {
     userProfile = await UserProfile.findOne({ userId: userAuth._id });
@@ -473,7 +475,6 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   userAuth.resetPasswordExpires = Date.now() + 3600000;
   await userAuth.save();
 
-  // ✅ FIX: Use Environment Variable
   const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
   const resetUrl = `${clientUrl}/reset-password?token=${token}`;
 

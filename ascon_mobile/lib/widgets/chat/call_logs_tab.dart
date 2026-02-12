@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_client.dart';
+import '../../services/socket_service.dart';
 import '../../screens/call_screen.dart';
+import '../../screens/call_log_detail_screen.dart';
 
 class CallLogsTab extends StatefulWidget {
   const CallLogsTab({super.key});
@@ -14,6 +16,8 @@ class CallLogsTab extends StatefulWidget {
 
 class _CallLogsTabState extends State<CallLogsTab> {
   final ApiClient _api = ApiClient();
+  final SocketService _socketService = SocketService();
+  
   bool _isLoading = true;
   List<dynamic> _logs = [];
 
@@ -21,22 +25,49 @@ class _CallLogsTabState extends State<CallLogsTab> {
   void initState() {
     super.initState();
     _fetchLogs();
+    _setupSocketListeners(); 
+  }
+
+  void _setupSocketListeners() {
+    _socketService.callEvents.listen((event) {
+      if (!mounted) return;
+      if (event['type'] == 'call_ended_remote' || 
+          event['type'] == 'call_failed' || 
+          event['type'] == 'call_log_generated') {
+        Future.delayed(const Duration(seconds: 1), _fetchLogs);
+      }
+    });
   }
 
   Future<void> _fetchLogs() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    if (_logs.isEmpty) setState(() => _isLoading = true);
 
     try {
-      // ✅ FETCH CENTRALIZED LOGS FROM BACKEND API
       final res = await _api.get('/api/calls');
       
       if (res['success'] == true) {
-        if (mounted) {
-          setState(() {
-            _logs = res['data'];
-            _isLoading = false;
-          });
+        final serverResponse = res['data']; 
+
+        // ✅ FIX: Handle nested list structure { success: true, data: [...] }
+        if (serverResponse is Map && serverResponse['data'] is List) {
+          if (mounted) {
+            setState(() {
+              _logs = serverResponse['data'];
+              _isLoading = false;
+            });
+          }
+        } else if (serverResponse is List) {
+          // Fallback if backend returns direct list
+          if (mounted) {
+            setState(() {
+              _logs = serverResponse;
+              _isLoading = false;
+            });
+          }
+        } else {
+          debugPrint("⚠️ Unexpected API format in CallLogs: $serverResponse");
+          if (mounted) setState(() => _isLoading = false);
         }
       } else {
         if (mounted) setState(() => _isLoading = false);
@@ -49,17 +80,28 @@ class _CallLogsTabState extends State<CallLogsTab> {
 
   Future<void> _deleteLog(String id) async {
     try {
-      // Optimistic UI Update
       setState(() {
         _logs.removeWhere((l) => l['_id'] == id);
       });
-      // Send Delete Request
       await _api.delete('/api/calls/$id');
     } catch (e) {
       debugPrint("Delete error: $e");
-      // Re-fetch if fails
-      _fetchLogs();
+      _fetchLogs(); 
     }
+  }
+
+  void _openLogDetails(Map<String, dynamic> log) {
+    final userLogs = _logs.where((l) => l['remoteId'] == log['remoteId']).toList();
+    final strictLogs = userLogs.map((e) => Map<String, dynamic>.from(e)).toList();
+
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => CallLogDetailScreen(
+        name: log['remoteName'] ?? "Unknown",
+        avatar: log['remotePic'],
+        callerId: log['remoteId'], 
+        logs: strictLogs,
+      )
+    ));
   }
 
   @override
@@ -88,7 +130,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
         separatorBuilder: (c, i) => Divider(height: 1, indent: 70, color: Colors.grey.withOpacity(0.1)),
         itemBuilder: (context, index) {
           final log = _logs[index];
-          // Types mapped from backend: 'dialed', 'received', 'missed'
           final String type = log['type'] ?? 'dialed'; 
           
           return Dismissible(
@@ -103,6 +144,7 @@ class _CallLogsTabState extends State<CallLogsTab> {
             onDismissed: (_) => _deleteLog(log['_id']),
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              onTap: () => _openLogDetails(log),
               leading: _buildAvatar(log['remotePic'], log['remoteName']),
               title: Text(
                 log['remoteName'] ?? "Unknown",
@@ -130,7 +172,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
               trailing: IconButton(
                 icon: const Icon(Icons.call, color: Colors.green),
                 onPressed: () {
-                  // Redial Logic
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => CallScreen(
                       isCaller: true,
@@ -148,12 +189,29 @@ class _CallLogsTabState extends State<CallLogsTab> {
     );
   }
 
+  // ✅ FIXED: Replaced CircleAvatar(backgroundImage) with CachedNetworkImage + ErrorWidget
   Widget _buildAvatar(String? url, String? name) {
     if (url != null && url.isNotEmpty) {
-      return CircleAvatar(
-        radius: 24,
-        backgroundImage: CachedNetworkImageProvider(url),
-        backgroundColor: Colors.grey[200],
+      return CachedNetworkImage(
+        imageUrl: url,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: 24,
+          backgroundImage: imageProvider,
+          backgroundColor: Colors.grey[200],
+        ),
+        placeholder: (context, url) => CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.grey[200],
+          child: const Icon(Icons.person, color: Colors.grey),
+        ),
+        errorWidget: (context, url, error) => CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.grey[200],
+          child: Text(
+            (name ?? "?").substring(0, 1).toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[600]),
+          ),
+        ),
       );
     }
     return CircleAvatar(

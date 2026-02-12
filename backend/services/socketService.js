@@ -6,6 +6,7 @@ const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const Message = require("../models/Message");
+const CallLog = require("../models/CallLog"); // ✅ Added Import
 const logger = require("../utils/logger");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
@@ -103,7 +104,7 @@ const initializeSocket = async (server) => {
     socket.on("leave_room", (room) => socket.leave(room));
 
     // ==========================================
-    // C. MESSAGE STATUS HANDLERS (NEW)
+    // C. MESSAGE STATUS HANDLERS
     // ==========================================
 
     // 1. Handle "Mark as Read" (When receiver opens the chat)
@@ -120,7 +121,6 @@ const initializeSocket = async (server) => {
           );
 
           // Notify the OTHER participants in the chat (The Senders)
-          // We broadcast to the chat room, excluding the sender (who is the reader)
           socket.to(chatId).emit("messages_read_update", {
             chatId,
             messageIds,
@@ -146,7 +146,6 @@ const initializeSocket = async (server) => {
         );
 
         if (msg) {
-          // Notify the sender specifically via the chat room
           io.to(chatId).emit("message_status_update", {
             messageId,
             status: "delivered",
@@ -159,7 +158,7 @@ const initializeSocket = async (server) => {
     });
 
     // ==========================================
-    // D. WEBRTC SIGNALING & LOGGING (UPDATED)
+    // D. WEBRTC SIGNALING & LOGGING
     // ==========================================
 
     // 1. Initiate Call
@@ -176,7 +175,7 @@ const initializeSocket = async (server) => {
           : "Unknown Caller";
         const callerPic = callerProfile ? callerProfile.profilePicture : null;
 
-        // ✅ 1. Create Call Log in DB
+        // ✅ Create Call Log in DB
         const newLog = await CallLog.create({
           caller: socket.userId,
           receiver: receiverId,
@@ -185,41 +184,42 @@ const initializeSocket = async (server) => {
           callerPic: callerPic,
         });
 
-        // ✅ 2. Send CallLog ID back to Caller (so they can end it later)
+        // ✅ Send CallLog ID back to Caller
         socket.emit("call_log_generated", { callLogId: newLog._id });
 
         const isReceiverOnline =
           onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
 
-        if (isReceiverOnline) {
-          // Send offer + callLogId
-          io.to(receiverId).emit("call_made", {
-            offer: data.offer,
-            socket: socket.id,
-            callerId: socket.userId,
-            callerName: callerName,
-            callerPic: callerPic,
-            callLogId: newLog._id, // ✅ Pass ID to receiver
-          });
-        } else {
-          // Receiver is Offline -> Mark as Missed immediately
-          logger.info(`📴 User ${receiverId} offline. Logging as Missed.`);
-          await CallLog.findByIdAndUpdate(newLog._id, { status: "missed" });
+        // ✅ Send to receiver (even if "offline" logic might trigger, we try emitting)
+        // Note: For push notifications, you would trigger FCM here if isReceiverOnline is false
+        io.to(receiverId).emit("call_made", {
+          offer: data.offer,
+          socket: socket.id,
+          callerId: socket.userId,
+          callerName: callerName,
+          callerPic: callerPic,
+          callLogId: newLog._id,
+        });
 
-          await sendPersonalNotification(
-            receiverId,
-            "Missed Call 📞",
-            `${callerName} tried to call you.`,
-            {
-              type: "call_missed", // Changed type slightly
-              callerId: socket.userId,
-              callerName: callerName,
-            },
-          );
+        // If strictly offline in socket terms, we can mark as missed,
+        // but with Background modes, they might reconnect quickly.
+        // We set a short timeout to check if they answered.
+        setTimeout(async () => {
+          const checkLog = await CallLog.findById(newLog._id);
+          if (checkLog && checkLog.status === "ringing") {
+            // If still ringing after 30s, mark missed
+            await CallLog.findByIdAndUpdate(newLog._id, { status: "missed" });
+            io.to(socket.userId).emit("call_failed", { reason: "No answer" });
 
-          // Tell caller it failed
-          socket.emit("call_failed", { reason: "User is offline" });
-        }
+            // Send Push Notification
+            await sendPersonalNotification(
+              receiverId,
+              "Missed Call 📞",
+              `${callerName} tried to call you.`,
+              { type: "call_missed", callerId: socket.userId, callerName },
+            );
+          }
+        }, 30000);
       } catch (err) {
         logger.error(`Call Error: ${err.message}`);
       }
@@ -229,7 +229,6 @@ const initializeSocket = async (server) => {
     socket.on("make_answer", async (data) => {
       logger.info(`📞 Call answered by ${socket.userId}`);
 
-      // ✅ Update Log to 'ongoing'
       if (data.callLogId) {
         await CallLog.findByIdAndUpdate(data.callLogId, {
           status: "ongoing",
@@ -243,17 +242,16 @@ const initializeSocket = async (server) => {
       });
     });
 
-    // 3. End Call (New Event)
+    // 3. End Call
     socket.on("end_call", async (data) => {
       if (!data.callLogId) return;
 
       try {
         const log = await CallLog.findById(data.callLogId);
-        if (log && log.status !== "ended") {
+        if (log && log.status !== "ended" && log.status !== "missed") {
           const endTime = new Date();
-          const duration = (endTime - new Date(log.startTime)) / 1000; // Seconds
+          const duration = (endTime - new Date(log.startTime)) / 1000;
 
-          // If duration is tiny and status was ringing, it might be a decline
           const status = log.status === "ringing" ? "declined" : "ended";
 
           await CallLog.findByIdAndUpdate(data.callLogId, {
@@ -261,6 +259,17 @@ const initializeSocket = async (server) => {
             endTime: endTime,
             duration: status === "ended" ? duration : 0,
           });
+
+          // Notify the other party to close their screen
+          const otherParty =
+            log.caller.toString() === socket.userId
+              ? log.receiver.toString()
+              : log.caller.toString();
+
+          io.to(otherParty).emit("call_ended_remote", {
+            callLogId: data.callLogId,
+          });
+
           logger.info(
             `📞 Call ${data.callLogId} ended. Duration: ${duration}s`,
           );
@@ -363,32 +372,67 @@ const handleConnection = (socket, userId) => {
     }
   });
 
-  socket.on("disconnect", () => {
-    if (!onlineUsers.has(userId)) return;
+  socket.on("disconnect", async () => {
+    // ✅ 1. Remove from active map immediately
+    if (onlineUsers.has(userId)) {
+      const userSockets = onlineUsers.get(userId);
+      userSockets.delete(socket.id);
+    }
 
-    const userSockets = onlineUsers.get(userId);
-    userSockets.delete(socket.id);
+    // ✅ 2. ACTIVE CALL CLEANUP (The Fix)
+    try {
+      // Find any call involving this user that is still active
+      const activeCall = await CallLog.findOne({
+        $or: [{ caller: userId }, { receiver: userId }],
+        status: { $in: ["ringing", "ongoing"] },
+      });
 
-    if (userSockets.size > 0) return;
+      if (activeCall) {
+        const isCaller = activeCall.caller.toString() === userId;
+        const otherParty = isCaller ? activeCall.receiver : activeCall.caller;
 
-    const timer = setTimeout(async () => {
-      if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
-        try {
-          cleanupUser(userId);
-          const lastSeen = new Date();
-          await UserAuth.findByIdAndUpdate(userId, {
-            isOnline: false,
-            lastSeen,
-          });
-          io.emit("user_status_update", { userId, isOnline: false, lastSeen });
-          logger.info(`🔴 User ${userId} went Offline`);
-        } catch (e) {
-          logger.error(`Socket Error (Disconnect): ${e.message}`);
-        }
+        // Mark ended
+        await CallLog.findByIdAndUpdate(activeCall._id, {
+          status: activeCall.status === "ringing" ? "missed" : "ended",
+          endTime: new Date(),
+        });
+
+        // Tell the other person
+        io.to(otherParty.toString()).emit("call_failed", {
+          reason: "User disconnected",
+        });
+        logger.info(
+          `🧹 Auto-cleaned call ${activeCall._id} for disconnected user ${userId}`,
+        );
       }
-    }, 5000);
+    } catch (err) {
+      logger.error(`Call Cleanup Error: ${err.message}`);
+    }
 
-    disconnectTimers.set(userId, timer);
+    // ✅ 3. Standard Offline Timeout
+    if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
+      const timer = setTimeout(async () => {
+        if (!onlineUsers.has(userId) || onlineUsers.get(userId).size === 0) {
+          try {
+            cleanupUser(userId);
+            const lastSeen = new Date();
+            await UserAuth.findByIdAndUpdate(userId, {
+              isOnline: false,
+              lastSeen,
+            });
+            io.emit("user_status_update", {
+              userId,
+              isOnline: false,
+              lastSeen,
+            });
+            logger.info(`🔴 User ${userId} went Offline`);
+          } catch (e) {
+            logger.error(`Socket Error (Disconnect): ${e.message}`);
+          }
+        }
+      }, 5000);
+      disconnectTimers.set(userId, timer);
+    }
   });
 };
 

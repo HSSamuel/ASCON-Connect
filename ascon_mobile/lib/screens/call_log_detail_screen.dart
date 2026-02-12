@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'chat_screen.dart';
-import 'call_screen.dart'; // ✅ Added CallScreen import
+import 'call_screen.dart'; 
 import '../widgets/full_screen_image.dart';
 
 class CallLogDetailScreen extends StatelessWidget {
@@ -42,7 +42,6 @@ class CallLogDetailScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                // ✅ Clickable Avatar
                 _buildAvatar(context, avatar, name, 50),
                 
                 const SizedBox(height: 16),
@@ -54,21 +53,20 @@ class CallLogDetailScreen extends StatelessWidget {
                 if (callerId != null) ...[
                   const SizedBox(height: 24),
                   
-                  // ACTION BUTTONS (Equal Size)
+                  // ACTION BUTTONS 
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32.0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // ✅ Button 1: Call
+                        // Button 1: Call
                         Expanded(
                           child: _buildActionButton(
                             context, 
                             icon: Icons.call, 
                             label: "Call", 
-                            color: const Color(0xFF1B5E3A), // Brand Green
+                            color: const Color(0xFF1B5E3A),
                             onTap: () {
-                              // ✅ FIX: Navigate to CallScreen instead of calling service directly
                               if (callerId != null) {
                                 Navigator.push(
                                   context,
@@ -77,7 +75,7 @@ class CallLogDetailScreen extends StatelessWidget {
                                       remoteId: callerId!,
                                       remoteName: name,
                                       remoteAvatar: avatar,
-                                      isCaller: true, // Triggers call start
+                                      isCaller: true,
                                     ),
                                   ),
                                 );
@@ -88,7 +86,7 @@ class CallLogDetailScreen extends StatelessWidget {
                         
                         const SizedBox(width: 16),
                         
-                        // ✅ Button 2: Message
+                        // Button 2: Message
                         Expanded(
                           child: _buildActionButton(
                             context, 
@@ -182,13 +180,30 @@ class CallLogDetailScreen extends StatelessWidget {
     );
   }
 
+  // ✅ FIXED: Replaced CircleAvatar(backgroundImage) with CachedNetworkImage + ErrorWidget
   Widget _buildAvatar(BuildContext context, String? url, String? name, double radius) {
     Widget avatarWidget;
     
     if (url != null && url.isNotEmpty) {
-      avatarWidget = CircleAvatar(
-        radius: radius, 
-        backgroundImage: CachedNetworkImageProvider(url)
+      avatarWidget = CachedNetworkImage(
+        imageUrl: url,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: radius, 
+          backgroundImage: imageProvider
+        ),
+        placeholder: (context, url) => CircleAvatar(
+          radius: radius,
+          backgroundColor: Colors.grey[200],
+          child: Icon(Icons.person, size: radius, color: Colors.grey),
+        ),
+        errorWidget: (context, url, error) => CircleAvatar(
+          radius: radius,
+          backgroundColor: Colors.grey[200],
+          child: Text(
+            (name ?? "?").substring(0, 1).toUpperCase(),
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: radius * 0.8, color: Colors.grey[600]),
+          ),
+        ),
       );
     } else {
       avatarWidget = CircleAvatar(
@@ -201,7 +216,6 @@ class CallLogDetailScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Clickable Logic
     return GestureDetector(
       onTap: () {
         if (url != null && url.isNotEmpty) {

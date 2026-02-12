@@ -14,7 +14,8 @@ import 'screens/chat_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/polls_screen.dart';
 import 'screens/notification_permission_screen.dart'; 
-import 'screens/call_screen.dart'; // ✅ ADD THIS IMPORT
+import 'screens/call_screen.dart'; 
+import 'screens/notifications_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> homeNavKey = GlobalKey<NavigatorState>();
@@ -43,6 +44,12 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginScreen(),
+    ),
+
+    GoRoute(
+      path: '/notifications',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const NotificationsScreen(),
     ),
 
     // Shell Route Wraps the Bottom Navigation
@@ -148,7 +155,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PollsScreen(),
     ),
 
-    // ✅ NEW CALL ROUTE (Fixes Navigation Crash)
+    // ✅ NEW CALL ROUTE (Fixed: Added callLogId)
     GoRoute(
       path: '/call',
       parentNavigatorKey: rootNavigatorKey,
@@ -160,6 +167,7 @@ final GoRouter appRouter = GoRouter(
           remoteAvatar: args['remoteAvatar'],
           isCaller: args['isCaller'],
           offer: args['offer'],
+          callLogId: args['callLogId'], // ✅ Essential for logging logic
         );
       },
     ),

@@ -12,7 +12,6 @@ class CelebrationWidget extends StatefulWidget {
 
 class _CelebrationWidgetState extends State<CelebrationWidget> {
   List<dynamic> _birthdays = [];
-  List<dynamic> _anniversaries = []; 
   bool _isLoading = true;
 
   @override
@@ -22,27 +21,28 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
   }
 
   Future<void> _loadCelebrants() async {
-    // Dynamic return type handles both List (old) and Map (new)
-    final result = await DataService().fetchCelebrants(); 
-    
-    if (mounted) {
-      setState(() {
-        if (result is Map) {
-            _birthdays = result['birthdays'] ?? [];
-            _anniversaries = result['anniversaries'] ?? [];
-        } else if (result is List) {
-            // Fallback for older backend versions
-            _birthdays = result; 
-            _anniversaries = [];
-        }
-        _isLoading = false;
-      });
+    try {
+      final result = await DataService().fetchCelebrants(); 
+      
+      if (mounted) {
+        setState(() {
+          if (result is Map) {
+              _birthdays = result['birthdays'] ?? [];
+          } else if (result is List) {
+              _birthdays = result; 
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isLoading && _birthdays.isEmpty && _anniversaries.isEmpty) return const SizedBox.shrink();
+    // If no birthdays, hide the widget entirely
+    if (!_isLoading && _birthdays.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -66,44 +66,31 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Birthdays Section
-          if (_birthdays.isNotEmpty) ...[
-              _buildHeader("Celebrating Today! 🎂", Colors.deepOrange[900]!),
-              const SizedBox(height: 12),
-              _buildHorizontalList(_birthdays, isAnniversary: false),
-          ],
-
-          // 2. Anniversaries Section
-          if (_anniversaries.isNotEmpty) ...[
-              if (_birthdays.isNotEmpty) const Divider(height: 24, color: Colors.orangeAccent),
-              _buildHeader("Class Anniversaries 🎓", Colors.blue[800]!),
-              const SizedBox(height: 12),
-              _buildHorizontalList(_anniversaries, isAnniversary: true),
-          ],
+          // Birthdays Header
+          Row(
+            children: [
+              const Icon(Icons.cake_rounded, color: Colors.deepOrange, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                "Celebrating Today! 🎂", 
+                style: GoogleFonts.lato(
+                  fontSize: 16, 
+                  fontWeight: FontWeight.bold, 
+                  color: Colors.deepOrange[900]
+                )
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          
+          // Birthdays List
+          _buildBirthdayList(),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(String title, Color color) {
-     return Row(
-       children: [
-         if (title.contains("Today")) const Icon(Icons.cake_rounded, color: Colors.deepOrange, size: 20),
-         if (title.contains("Class")) const Icon(Icons.school, color: Colors.blue, size: 20),
-         const SizedBox(width: 8),
-         Text(
-           title, 
-           style: GoogleFonts.lato(
-             fontSize: 16, 
-             fontWeight: FontWeight.bold, 
-             color: color
-           )
-         ),
-       ],
-     );
-  }
-
-  Widget _buildHorizontalList(List<dynamic> items, {required bool isAnniversary}) {
+  Widget _buildBirthdayList() {
     if (_isLoading) {
        return const Padding(
           padding: EdgeInsets.all(8.0),
@@ -118,19 +105,11 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
       height: 90,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: items.length,
+        itemCount: _birthdays.length,
         itemBuilder: (context, index) {
-            final item = items[index];
-            
-            final String title = isAnniversary 
-                ? "Class of ${item['year']}" 
-                : (item['fullName'] ?? "User").split(" ")[0]; 
-            
-            final String subtitle = isAnniversary 
-                ? "${item['yearsAgo']} Years" 
-                : "Birthday";
-
-            final String? img = isAnniversary ? null : item['profilePicture'];
+            final item = _birthdays[index];
+            final String name = (item['fullName'] ?? "User").split(" ")[0]; 
+            final String? img = item['profilePicture'];
 
             return Padding(
               padding: const EdgeInsets.only(right: 20.0),
@@ -142,37 +121,61 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: CircleAvatar(
-                      radius: 24,
-                      backgroundColor: isAnniversary ? Colors.blue[100] : Colors.white,
-                      backgroundImage: (img != null && img.isNotEmpty) 
-                          ? CachedNetworkImageProvider(img) 
-                          : null,
-                      child: (img == null || img.isEmpty) 
-                          ? Icon(
-                              isAnniversary ? Icons.school : Icons.person, 
-                              color: isAnniversary ? Colors.blue : Colors.grey
-                            ) 
-                          : null,
-                    ),
+                    child: _buildAvatar(img, name),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    title, 
+                    name, 
                     style: GoogleFonts.lato(
                       fontSize: 11, 
                       fontWeight: FontWeight.w600, 
                       color: Colors.brown[800]
                     )
                   ),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 10, color: Colors.grey)
+                  const Text(
+                    "Birthday",
+                    style: TextStyle(fontSize: 10, color: Colors.deepOrange)
                   ),
                 ],
               ),
             );
         },
+      ),
+    );
+  }
+
+  // ✅ FIXED: Using CachedNetworkImage to prevent "EncodingError" crash
+  Widget _buildAvatar(String? url, String name) {
+    if (url != null && url.isNotEmpty) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        imageBuilder: (context, imageProvider) => CircleAvatar(
+          radius: 24,
+          backgroundImage: imageProvider,
+          backgroundColor: Colors.white,
+        ),
+        placeholder: (context, url) => const CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.white,
+          child: Icon(Icons.person, color: Colors.grey),
+        ),
+        errorWidget: (context, url, error) => CircleAvatar(
+          radius: 24,
+          backgroundColor: Colors.white,
+          child: Text(
+            name.isNotEmpty ? name.substring(0, 1).toUpperCase() : "?",
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
+          ),
+        ),
+      );
+    }
+    
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: Colors.white,
+      child: Text(
+        name.isNotEmpty ? name.substring(0, 1).toUpperCase() : "?",
+        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
       ),
     );
   }

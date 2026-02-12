@@ -61,6 +61,18 @@
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>remote-notification</string>
+        <string>voip</string>
+        <string>audio</string>
+    </array>
+
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>We need access to bluetooth to connect to your wireless headphones during calls.</string>
+    <key>NSBluetoothPeripheralUsageDescription</key>
+    <string>We need access to bluetooth to connect to your wireless headphones during calls.</string>
     </dict>
 
     <key>LSApplicationQueriesSchemes</key>

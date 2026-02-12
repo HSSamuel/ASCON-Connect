@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../viewmodels/chat_view_model.dart';
 import '../widgets/shimmer_utils.dart';
-import '../widgets/chat/call_logs_tab.dart'; // ✅ Point to renamed file
+import '../widgets/chat/call_logs_tab.dart'; 
 import 'chat_screen.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
@@ -118,7 +118,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTick
                     ),
                   ),
                   
-                  // ✅ TAB BAR (Updated Title)
+                  // TAB BAR
                   TabBar(
                     controller: _tabController,
                     labelColor: primaryColor,
@@ -128,7 +128,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTick
                     labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16),
                     tabs: const [
                       Tab(text: "Chats"),
-                      Tab(text: "Call Logs"), // ✅ Renamed
+                      Tab(text: "Call Logs"), 
                     ],
                   ),
                 ],
@@ -148,7 +148,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTick
                         child: _buildChatListTab(chatState, notifier),
                       ),
                   
-                  // TAB 2: CALL LOGS (New Widget)
+                  // TAB 2: CALL LOGS
                   const CallLogsTab(), 
                 ],
               ),
@@ -235,15 +235,24 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTick
           children: [
             Stack(
               children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: (user['profilePicture'] != null && user['profilePicture'] != "") 
-                      ? CachedNetworkImageProvider(user['profilePicture']) 
-                      : null,
-                  child: (user['profilePicture'] == null || user['profilePicture'] == "") 
-                      ? const Icon(Icons.person, color: Colors.grey) 
-                      : null,
+                // ✅ FIXED: Using CachedNetworkImage with error fallback
+                CachedNetworkImage(
+                  imageUrl: user['profilePicture'] ?? "",
+                  imageBuilder: (context, imageProvider) => CircleAvatar(
+                    radius: 28,
+                    backgroundImage: imageProvider,
+                    backgroundColor: Colors.grey[200],
+                  ),
+                  placeholder: (context, url) => CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.grey[200],
+                    child: const Icon(Icons.person, color: Colors.grey),
+                  ),
+                  errorWidget: (context, url, error) => CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.grey[200],
+                    child: const Icon(Icons.person, color: Colors.grey),
+                  ),
                 ),
                 Positioned(
                   right: 2, bottom: 2,
@@ -331,15 +340,24 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTick
             children: [
               Stack(
                 children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: (other['profilePicture'] != null && other['profilePicture'] != "") 
-                        ? CachedNetworkImageProvider(other['profilePicture']) 
-                        : null,
-                    child: (other['profilePicture'] == null || other['profilePicture'] == "") 
-                        ? const Icon(Icons.person, color: Colors.grey) 
-                        : null,
+                  // ✅ FIXED: Using CachedNetworkImage with error fallback
+                  CachedNetworkImage(
+                    imageUrl: other['profilePicture'] ?? "",
+                    imageBuilder: (context, imageProvider) => CircleAvatar(
+                      radius: 28,
+                      backgroundImage: imageProvider,
+                      backgroundColor: Colors.grey[200],
+                    ),
+                    placeholder: (context, url) => CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.grey[200],
+                      child: const Icon(Icons.person, color: Colors.grey),
+                    ),
+                    errorWidget: (context, url, error) => CircleAvatar(
+                      radius: 28,
+                      backgroundColor: Colors.grey[200],
+                      child: const Icon(Icons.person, color: Colors.grey),
+                    ),
                   ),
                   if (isOnline)
                     Positioned(
