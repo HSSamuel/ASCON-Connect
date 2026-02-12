@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../viewmodels/events_view_model.dart';
 import '../widgets/shimmer_utils.dart'; 
 import 'event_detail_screen.dart';
+import 'admin/add_content_screen.dart'; // ✅ Import Add Content Screen
 
 class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});
@@ -55,6 +56,25 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
     }
   }
 
+  // ✅ NEW: Confirm Delete Dialog for Admins
+  Future<void> _confirmDelete(String id) async {
+    final confirm = await showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Delete Event?"),
+        content: const Text("This action cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      ref.read(eventsProvider.notifier).deleteEvent(id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // ✅ WATCH PROVIDER STATE
@@ -89,6 +109,16 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
 
     return Scaffold(
       backgroundColor: scaffoldBg,
+      // ✅ FAB for Admins to Add Events
+      floatingActionButton: eventsState.isAdmin ? FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const AddContentScreen(type: 'Event')));
+        },
+        backgroundColor: primaryColor,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text("Add Event", style: TextStyle(color: Colors.white)),
+      ) : null,
+
       body: SafeArea(
         child: Column(
           children: [
@@ -207,12 +237,13 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                           else
                             SliverList(
                               delegate: SliverChildBuilderDelegate(
-                                (context, index) => _buildEventRow(filteredEvents[index]),
+                                // ✅ Updated to pass isAdmin
+                                (context, index) => _buildEventRow(filteredEvents[index], eventsState.isAdmin),
                                 childCount: filteredEvents.length,
                               ),
                             ),
                             
-                          const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+                          const SliverPadding(padding: EdgeInsets.only(bottom: 80)), // Extra padding for FAB
                         ],
                       ),
                     ),
@@ -299,7 +330,8 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
     );
   }
 
-  Widget _buildEventRow(Map<String, dynamic> event) {
+  // ✅ Updated to accept isAdmin parameter
+  Widget _buildEventRow(Map<String, dynamic> event, bool isAdmin) {
     final title = event['title'] ?? "Event";
     final location = event['location'] ?? "TBA";
     final id = event['_id'] ?? event['id'] ?? DateTime.now().toString();
@@ -368,11 +400,19 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.blue),
-                onPressed: () => _addToCalendar(event),
-                tooltip: "Add to Calendar",
-              )
+              // ✅ CONDITIONAL BUTTON: Delete if Admin, Calendar if User
+              if (isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () => _confirmDelete(id.toString()),
+                  tooltip: "Delete Event",
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 20, color: Colors.blue),
+                  onPressed: () => _addToCalendar(event),
+                  tooltip: "Add to Calendar",
+                )
             ],
           ),
         ),

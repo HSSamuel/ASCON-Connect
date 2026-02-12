@@ -17,6 +17,7 @@ import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
+import 'admin/add_content_screen.dart'; // ✅ Import Add Content Screen
 
 import '../widgets/celebration_card.dart';
 import '../widgets/active_poll_card.dart'; 
@@ -25,9 +26,11 @@ import '../widgets/digital_id_card.dart';
 import '../widgets/shimmer_utils.dart';
 
 import '../viewmodels/dashboard_view_model.dart';
+import '../viewmodels/events_view_model.dart'; // ✅ Needed for delete logic
 import '../services/socket_service.dart'; 
 import '../services/api_client.dart'; 
 import '../services/notification_service.dart';
+import '../services/auth_service.dart'; // ✅ Needed to check Admin status
 
 class HomeScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -342,22 +345,47 @@ class DashboardView extends ConsumerStatefulWidget {
 
 class _DashboardViewState extends ConsumerState<DashboardView> {
   String _displayName = "Alumni";
+  bool _isAdmin = false; // ✅ Track Admin Status
 
   @override
   void initState() {
     super.initState();
     Future.microtask(() => ref.read(dashboardProvider.notifier).loadData());
-    _loadName();
+    _loadUser();
   }
 
-  Future<void> _loadName() async {
-    if (widget.userName != null) {
-      setState(() => _displayName = widget.userName!);
-    } else {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString('user_name');
-      if (saved != null && mounted) {
-        setState(() => _displayName = saved);
+  Future<void> _loadUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('user_name');
+    final isAdmin = await AuthService().isAdmin; // ✅ Check Admin Status
+    
+    if (mounted) {
+      setState(() {
+        if (saved != null) _displayName = saved;
+        _isAdmin = isAdmin;
+      });
+    }
+  }
+
+  // ✅ NEW: Delete Programme Logic
+  Future<void> _deleteProgramme(String id) async {
+    final confirm = await showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Delete Programme?"),
+        content: const Text("Are you sure? This cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await ref.read(eventsProvider.notifier).deleteProgramme(id);
+      if (success) {
+        ref.read(dashboardProvider.notifier).loadData(isRefresh: true);
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Programme deleted")));
       }
     }
   }
@@ -564,13 +592,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text("Programme Updates", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.w900, color: textColor)),
-                      Row(
-                        children: [
-                          Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF607D8B), shape: BoxShape.circle)),
-                          const SizedBox(width: 4),
-                          Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF607D8B).withOpacity(0.5), shape: BoxShape.circle)),
-                        ],
-                      )
+                      // ✅ Admin Add Button
+                      if (_isAdmin)
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, color: Colors.green),
+                          onPressed: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AddContentScreen(type: 'Programme')));
+                          },
+                          tooltip: "Add Programme",
+                        )
+                      else
+                        Row(
+                          children: [
+                            Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF607D8B), shape: BoxShape.circle)),
+                            const SizedBox(width: 4),
+                            Container(width: 6, height: 6, decoration: BoxDecoration(color: const Color(0xFF607D8B).withOpacity(0.5), shape: BoxShape.circle)),
+                          ],
+                        )
                     ],
                   ),
                 ),
@@ -764,6 +802,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
   Widget _buildNewsUpdateCard(BuildContext context, Map<String, dynamic> data) {
     final String title = data['title'] ?? "Highlights";
     final String? imageUrl = data['image'] ?? data['imageUrl'];
+    final String id = data['_id'] ?? data['id'] ?? "";
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
     final cardColor = Theme.of(context).cardColor; 
@@ -815,6 +854,20 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   ],
                 ),
               ),
+              // ✅ Admin Delete Button
+              if (_isAdmin)
+                Positioned(
+                  top: 8, right: 8,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.white.withOpacity(0.8),
+                    radius: 16,
+                    child: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+                      onPressed: () => _deleteProgramme(id),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ),
+                )
             ],
           ),
         ),

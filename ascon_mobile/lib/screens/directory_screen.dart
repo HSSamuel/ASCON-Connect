@@ -79,56 +79,92 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
 
     final sortedKeys = state.groupedAlumni.keys.toList();
 
-    // ✅ FIX: Define content widget using IF/ELSE instead of nested ternary
+    // ✅ FIX: Define content widget using IF/ELSE logic with Swipe-to-Refresh
     Widget content;
 
     if (state.activeFilter == "Near Me") {
       // --- NEAR ME VIEW ---
-      if (state.isLoadingNearMe) {
+      // Show Skeleton ONLY if loading AND we have no data yet (Initial Load)
+      if (state.isLoadingNearMe && state.nearbyAlumni.isEmpty) {
         content = const DirectorySkeleton();
-      } else if (state.nearbyAlumni.isEmpty) {
-        content = _buildEmptyState(context, "No alumni found nearby.");
-      } else {
-        content = ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: state.nearbyAlumni.length,
-          itemBuilder: (context, index) {
-            final rawUser = state.nearbyAlumni[index];
-            final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
-            return _buildAlumniCard(userMap, context, isDark, primaryColor, showLocation: true);
-          },
+      } 
+      // If empty state (and not loading), allow pull-to-refresh to try again
+      else if (state.nearbyAlumni.isEmpty && !state.isLoadingNearMe) {
+        content = RefreshIndicator(
+          onRefresh: () async => await notifier.loadNearMe(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: _buildEmptyState(context, "No alumni found nearby.")
+            ),
+          ),
+        );
+      } 
+      // Show List with Pull-to-Refresh
+      else {
+        content = RefreshIndicator(
+          onRefresh: () async => await notifier.loadNearMe(),
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(), // Important for small lists
+            padding: const EdgeInsets.all(16),
+            itemCount: state.nearbyAlumni.length,
+            itemBuilder: (context, index) {
+              final rawUser = state.nearbyAlumni[index];
+              final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
+              return _buildAlumniCard(userMap, context, isDark, primaryColor, showLocation: true);
+            },
+          ),
         );
       }
     } else {
       // --- STANDARD DIRECTORY VIEW (All, Mentors, Classmates) ---
-      if (state.isLoadingDirectory) {
+      // Show Skeleton ONLY if loading AND we have no data yet
+      if (state.isLoadingDirectory && sortedKeys.isEmpty) {
         content = const DirectorySkeleton();
-      } else if (sortedKeys.isEmpty) {
-        content = _buildEmptyState(context, "No alumni found.");
-      } else {
-        content = ListView.builder(
-          padding: const EdgeInsets.only(bottom: 40),
-          itemCount: sortedKeys.length,
-          itemBuilder: (context, index) {
-            final year = sortedKeys[index];
-            final users = state.groupedAlumni[year] ?? [];
-            final isExpanded = _expandedSections.contains(year);
-            
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildYearHeader(year, users.length, primaryColor, isDark, isExpanded),
-                if (isExpanded)
-                  ...users.map((rawUser) {
-                    final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: _buildAlumniCard(userMap, context, isDark, primaryColor),
-                    );
-                  }),
-              ],
-            );
-          },
+      } 
+      // If empty state, allow pull-to-refresh
+      else if (sortedKeys.isEmpty && !state.isLoadingDirectory) {
+        content = RefreshIndicator(
+          onRefresh: () async => await notifier.loadDirectory(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.6,
+              child: _buildEmptyState(context, "No alumni found.")
+            ),
+          ),
+        );
+      } 
+      // Show List with Pull-to-Refresh
+      else {
+        content = RefreshIndicator(
+          onRefresh: () async => await notifier.loadDirectory(),
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 40),
+            itemCount: sortedKeys.length,
+            itemBuilder: (context, index) {
+              final year = sortedKeys[index];
+              final users = state.groupedAlumni[year] ?? [];
+              final isExpanded = _expandedSections.contains(year);
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildYearHeader(year, users.length, primaryColor, isDark, isExpanded),
+                  if (isExpanded)
+                    ...users.map((rawUser) {
+                      final userMap = rawUser is Map ? Map<String, dynamic>.from(rawUser) : <String, dynamic>{};
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: _buildAlumniCard(userMap, context, isDark, primaryColor),
+                      );
+                    }),
+                ],
+              );
+            },
+          ),
         );
       }
     }
@@ -203,7 +239,7 @@ class _DirectoryScreenState extends ConsumerState<DirectoryScreen> {
               ),
             ),
 
-            // 2. LIST (Using the clean content widget)
+            // 2. LIST (Using the clean content widget with RefreshIndicator)
             Expanded(child: content),
           ],
         ),

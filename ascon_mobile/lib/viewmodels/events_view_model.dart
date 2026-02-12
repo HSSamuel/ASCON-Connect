@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
@@ -83,13 +82,25 @@ class EventsNotifier extends StateNotifier<EventsState> {
   }
 
   Future<bool> deleteEvent(String eventId) async {
-    state = state.copyWith(isLoading: true);
+    // Optimistic Update
+    final previousEvents = state.events;
+    state = state.copyWith(events: state.events.where((e) => (e['_id'] ?? e['id']) != eventId).toList());
+
     try {
       await _api.delete('/api/events/$eventId');
-      await loadEvents(silent: true);
       return true;
     } catch (e) {
-      state = state.copyWith(isLoading: false, errorMessage: "Failed to delete event.");
+      state = state.copyWith(events: previousEvents, errorMessage: "Failed to delete event.");
+      return false;
+    }
+  }
+
+  // ✅ ADDED: Delete Programme Logic
+  Future<bool> deleteProgramme(String programmeId) async {
+    try {
+      await _api.delete('/api/admin/programmes/$programmeId');
+      return true;
+    } catch (e) {
       return false;
     }
   }
@@ -103,30 +114,62 @@ class EventsNotifier extends StateNotifier<EventsState> {
     required DateTime date,
     XFile? image,
   }) async {
-    state = state.copyWith(isPosting: true);
+    return _uploadContent(
+      endpoint: '/api/events',
+      fields: {
+        'title': title,
+        'description': description,
+        'location': location,
+        'time': time,
+        'type': type,
+        'date': date.toIso8601String(),
+      },
+      image: image,
+    );
+  }
 
+  // ✅ ADDED: Create Programme Logic
+  Future<String?> createProgramme({
+    required String title,
+    required String description,
+    required String location,
+    required String duration,
+    required String fee,
+    required XFile image,
+  }) async {
+    return _uploadContent(
+      endpoint: '/api/admin/programmes',
+      fields: {
+        'title': title,
+        'description': description,
+        'location': location,
+        'duration': duration,
+        'fee': fee,
+      },
+      image: image,
+    );
+  }
+
+  // ✅ ADDED: Generic Upload Helper (Handles Images for both Events & Programmes)
+  Future<String?> _uploadContent({
+    required String endpoint,
+    required Map<String, String> fields,
+    XFile? image,
+  }) async {
+    state = state.copyWith(isPosting: true);
     try {
       final token = await _authService.getToken();
-      var request = http.MultipartRequest(
-          'POST', Uri.parse('${AppConfig.baseUrl}/api/events'));
+      var request = http.MultipartRequest('POST', Uri.parse('${AppConfig.baseUrl}$endpoint'));
       request.headers['auth-token'] = token ?? '';
 
-      request.fields['title'] = title;
-      request.fields['description'] = description;
-      request.fields['location'] = location;
-      request.fields['time'] = time;
-      request.fields['type'] = type;
-      request.fields['date'] = date.toIso8601String();
+      fields.forEach((key, value) => request.fields[key] = value);
 
       if (image != null) {
         if (kIsWeb) {
           var bytes = await image.readAsBytes();
-          request.files.add(http.MultipartFile.fromBytes(
-              'image', bytes,
-              filename: image.name));
+          request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: image.name));
         } else {
-          request.files.add(await http.MultipartFile.fromPath(
-              'image', image.path));
+          request.files.add(await http.MultipartFile.fromPath('image', image.path));
         }
       }
 
@@ -137,7 +180,7 @@ class EventsNotifier extends StateNotifier<EventsState> {
 
       if (response.statusCode == 201) {
         await loadEvents(silent: true);
-        return null; 
+        return null; // Success (No error message)
       } else {
         final errorJson = jsonDecode(respStr);
         return errorJson['message'] ?? "Upload failed";

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../viewmodels/chat_view_model.dart';
 import '../widgets/shimmer_utils.dart';
+import '../widgets/chat/call_logs_tab.dart'; // ✅ Point to renamed file
 import 'chat_screen.dart';
 
 class ChatListScreen extends ConsumerStatefulWidget {
@@ -17,21 +18,29 @@ class ChatListScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatListScreen> createState() => _ChatListScreenState();
 }
 
-class _ChatListScreenState extends ConsumerState<ChatListScreen> {
+class _ChatListScreenState extends ConsumerState<ChatListScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize TabController for 2 tabs
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // ✅ SAFELY GET OTHER PARTICIPANT (Prevents Map Cast Error)
+  // SAFELY GET OTHER PARTICIPANT (Prevents Map Cast Error)
   Map<String, dynamic> _getOtherParticipant(Map<String, dynamic> conversation, String myId) {
     if (conversation['isGroup'] == true) {
       final groupRaw = conversation['groupId'];
       if (groupRaw is Map) {
-        // Safe Cast
         final group = Map<String, dynamic>.from(groupRaw);
         return {
           '_id': group['_id'],
@@ -71,15 +80,16 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
       backgroundColor: scaffoldBg,
       body: SafeArea(
         child: Column(
           children: [
-            // 1. CUSTOM APP BAR
+            // 1. CUSTOM APP BAR WITH TABS
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               decoration: BoxDecoration(
                 color: cardColor,
                 boxShadow: [
@@ -89,13 +99,17 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Messages", style: GoogleFonts.lato(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
+                  Text("Connect", style: GoogleFonts.lato(fontSize: 28, fontWeight: FontWeight.w900, color: textColor)),
                   const SizedBox(height: 16),
+                  
+                  // SEARCH BAR
                   TextField(
                     controller: _searchController,
-                    onChanged: notifier.searchConversations,
+                    onChanged: (val) {
+                      notifier.searchConversations(val);
+                    },
                     decoration: InputDecoration(
-                      hintText: "Search chats...",
+                      hintText: "Search conversations...",
                       prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
                       filled: true,
                       fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
@@ -103,92 +117,112 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                       contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     ),
                   ),
+                  
+                  // ✅ TAB BAR (Updated Title)
+                  TabBar(
+                    controller: _tabController,
+                    labelColor: primaryColor,
+                    unselectedLabelColor: Colors.grey,
+                    indicatorColor: primaryColor,
+                    indicatorWeight: 3,
+                    labelStyle: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16),
+                    tabs: const [
+                      Tab(text: "Chats"),
+                      Tab(text: "Call Logs"), // ✅ Renamed
+                    ],
+                  ),
                 ],
               ),
             ),
 
-            // 2. CONTENT
+            // 2. TAB CONTENT
             Expanded(
-              child: chatState.isLoading 
-                ? const ChatListSkeleton() 
-                : RefreshIndicator(
-                    onRefresh: () async => notifier.loadConversations(),
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // A. ACTIVE NOW RAIL
-                          if (chatState.onlineUsers.isNotEmpty) ...[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-                              child: Text("Active Now", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
-                            ),
-                            SizedBox(
-                              height: 90,
-                              child: ListView.builder(
-                                scrollDirection: Axis.horizontal,
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: chatState.onlineUsers.length,
-                                itemBuilder: (context, index) {
-                                  // ✅ SAFE CAST 1
-                                  final rawChat = chatState.onlineUsers[index];
-                                  if (rawChat is Map) {
-                                    final chat = Map<String, dynamic>.from(rawChat);
-                                    // Based on ViewModel logic, 'chat' here is the conversation map.
-                                    // We need to extract the user from it.
-                                    final user = _getOtherParticipant(chat, chatState.myId);
-                                    return _buildActiveUserBubble(user);
-                                  }
-                                  return const SizedBox.shrink();
-                                },
-                              ),
-                            ),
-                          ],
-
-                          // B. CHAT LIST
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                            child: Text("Recent", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
-                          ),
-                          
-                          if (chatState.filteredConversations.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.all(40.0),
-                              child: Center(child: Column(
-                                children: [
-                                  Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[300]),
-                                  const SizedBox(height: 10),
-                                  Text("No conversations found.", style: TextStyle(color: Colors.grey[500])),
-                                ],
-                              )),
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: chatState.filteredConversations.length,
-                              separatorBuilder: (c, i) => Divider(height: 1, indent: 80, color: Colors.grey.withOpacity(0.1)),
-                              itemBuilder: (context, index) {
-                                // ✅ SAFE CAST 2
-                                final rawChat = chatState.filteredConversations[index];
-                                if (rawChat is Map) {
-                                  final chat = Map<String, dynamic>.from(rawChat);
-                                  return _buildChatTile(chat, chatState.myId, chatState.typingStatus, notifier);
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                            
-                          const SizedBox(height: 20),
-                        ],
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // TAB 1: CHATS
+                  chatState.isLoading 
+                    ? const ChatListSkeleton() 
+                    : RefreshIndicator(
+                        onRefresh: () async => notifier.loadConversations(),
+                        child: _buildChatListTab(chatState, notifier),
                       ),
-                    ),
-                  ),
+                  
+                  // TAB 2: CALL LOGS (New Widget)
+                  const CallLogsTab(), 
+                ],
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildChatListTab(ChatState chatState, ChatNotifier notifier) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        // A. ACTIVE NOW RAIL
+        if (chatState.onlineUsers.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+            child: Text("Active Now", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+          ),
+          SizedBox(
+            height: 90,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: chatState.onlineUsers.length,
+              itemBuilder: (context, index) {
+                final rawChat = chatState.onlineUsers[index];
+                if (rawChat is Map) {
+                  final chat = Map<String, dynamic>.from(rawChat);
+                  final user = _getOtherParticipant(chat, chatState.myId);
+                  return _buildActiveUserBubble(user);
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ],
+
+        // B. CHAT LIST
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Text("Recent", style: GoogleFonts.lato(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+        ),
+        
+        if (chatState.filteredConversations.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(40.0),
+            child: Center(child: Column(
+              children: [
+                Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[300]),
+                const SizedBox(height: 10),
+                Text("No conversations found.", style: TextStyle(color: Colors.grey[500])),
+              ],
+            )),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: chatState.filteredConversations.length,
+            separatorBuilder: (c, i) => Divider(height: 1, indent: 80, color: Colors.grey.withOpacity(0.1)),
+            itemBuilder: (context, index) {
+              final rawChat = chatState.filteredConversations[index];
+              if (rawChat is Map) {
+                final chat = Map<String, dynamic>.from(rawChat);
+                return _buildChatTile(chat, chatState.myId, chatState.typingStatus, notifier);
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          
+        const SizedBox(height: 20),
+      ],
     );
   }
 

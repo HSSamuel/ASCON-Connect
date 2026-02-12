@@ -169,16 +169,20 @@ class ApiClient {
       body = {}; 
     }
     
-    // Allow 404 to pass through (for Login "User Not Found")
-    if ((response.statusCode >= 200 && response.statusCode < 300) || response.statusCode == 404) {
+    // ✅ FIX: Only treat 200-299 as success. 
+    // If you need to handle 404 specifically for login, handle it in the Login ViewModel, not here.
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return {
         'success': true,
         'statusCode': response.statusCode,
         'data': body
       };
     } else {
-      // ✅ IMPROVED: Throw typed exception so UI can handle it specifically
-      final errorMessage = body['message'] ?? 'Request failed with status ${response.statusCode}';
+      // ✅ Throw exception for 404 so the UI catches it instead of trying to parse bad data
+      final errorMessage = (body is Map && body['message'] != null) 
+          ? body['message'] 
+          : 'Request failed with status ${response.statusCode}';
+      
       throw ApiException(errorMessage, statusCode: response.statusCode);
     }
   }

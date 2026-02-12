@@ -102,6 +102,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _audioRecorder = AudioRecorder();
     _setupAudioPlayerListeners();
     _setupScrollListener();
+    
+    // ✅ Trigger Read Receipt when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+       ref.read(_provider.notifier).markUnreadAsRead();
+    });
   }
 
   void _setupScrollListener() {

@@ -18,6 +18,10 @@ class SocketService with WidgetsBindingObserver {
   final _callEventsController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get callEvents => _callEventsController.stream;
 
+  // ✅ New Streams for Status Updates
+  final _messageStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  Stream<Map<String, dynamic>> get messageStatusStream => _messageStatusController.stream;
+
   static final SocketService _instance = SocketService._internal();
   factory SocketService() => _instance;
 
@@ -106,6 +110,31 @@ class SocketService with WidgetsBindingObserver {
       if (data != null) _userStatusController.add(Map<String, dynamic>.from(data));
     });
 
+    // ✅ Listen for incoming messages to send Delivery Receipts
+    socket!.on('new_message', (data) {
+      // Auto-acknowledge delivery immediately
+      if (data != null && data['message'] != null && data['conversationId'] != null) {
+        final msgId = data['message']['_id'] ?? data['message']['id'];
+        final senderId = data['message']['sender'] is Map 
+            ? data['message']['sender']['_id'] 
+            : data['message']['sender'];
+
+        // Only mark delivered if I am NOT the sender
+        if (senderId != _currentUserId) {
+          markMessageAsDelivered(msgId, data['conversationId']);
+        }
+      }
+    });
+
+    // ✅ Listen for updates to MY sent messages (Sent -> Delivered / Read)
+    socket!.on('messages_read_update', (data) {
+       _messageStatusController.add({'type': 'read', 'data': data});
+    });
+
+    socket!.on('message_status_update', (data) {
+       _messageStatusController.add({'type': 'status_update', 'data': data});
+    });
+
     // ============================================
     // 📞 CALL SIGNALING EVENTS (CRASH FIX)
     // ============================================
@@ -146,6 +175,27 @@ class SocketService with WidgetsBindingObserver {
 
     socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
     socket!.onError((data) => debugPrint('⚠️ Socket Error: $data'));
+  }
+
+  // ✅ New Methods for Status Updates
+
+  void markMessagesAsRead(String chatId, List<String> messageIds, String userId) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('mark_messages_read', {
+        'chatId': chatId,
+        'messageIds': messageIds,
+        'userId': userId,
+      });
+    }
+  }
+
+  void markMessageAsDelivered(String messageId, String chatId) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('message_delivered', {
+        'messageId': messageId,
+        'chatId': chatId,
+      });
+    }
   }
 
   void checkUserStatus(String targetUserId) {

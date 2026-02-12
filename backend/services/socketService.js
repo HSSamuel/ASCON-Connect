@@ -1,4 +1,3 @@
-// backend/services/socketService.js
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
@@ -6,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
+const Message = require("../models/Message");
 const logger = require("../utils/logger");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
@@ -101,6 +101,62 @@ const initializeSocket = async (server) => {
 
     socket.on("join_room", (room) => socket.join(room));
     socket.on("leave_room", (room) => socket.leave(room));
+
+    // ==========================================
+    // C. MESSAGE STATUS HANDLERS (NEW)
+    // ==========================================
+
+    // 1. Handle "Mark as Read" (When receiver opens the chat)
+    socket.on(
+      "mark_messages_read",
+      async ({ chatId, messageIds, userId: readerId }) => {
+        try {
+          if (!messageIds || messageIds.length === 0) return;
+
+          // Update in DB
+          await Message.updateMany(
+            { _id: { $in: messageIds }, conversationId: chatId },
+            { $set: { status: "read", isRead: true } },
+          );
+
+          // Notify the OTHER participants in the chat (The Senders)
+          // We broadcast to the chat room, excluding the sender (who is the reader)
+          socket.to(chatId).emit("messages_read_update", {
+            chatId,
+            messageIds,
+            readerId,
+          });
+
+          logger.info(
+            `✅ Messages marked read in chat: ${chatId} by ${readerId}`,
+          );
+        } catch (error) {
+          logger.error("❌ Error marking messages read:", error);
+        }
+      },
+    );
+
+    // 2. Handle "Delivered" (When app receives message)
+    socket.on("message_delivered", async ({ messageId, chatId }) => {
+      try {
+        const msg = await Message.findByIdAndUpdate(
+          messageId,
+          { status: "delivered" },
+          { new: true },
+        );
+
+        if (msg) {
+          // Notify the sender specifically via the chat room
+          io.to(chatId).emit("message_status_update", {
+            messageId,
+            status: "delivered",
+            chatId,
+          });
+        }
+      } catch (error) {
+        logger.error("Delivered status error:", error);
+      }
+    });
 
     // ==========================================
     // D. WEBRTC SIGNALING (VOICE CALLS)

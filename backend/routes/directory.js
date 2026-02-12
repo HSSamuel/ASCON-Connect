@@ -27,7 +27,7 @@ router.get("/", verifyToken, async (req, res) => {
       settingsMatch["settings.isOpenToMentorship"] = true;
     }
 
-    // ✅ FIX: Filter by Classmates (Same Year)
+    // Filter by Classmates (Same Year)
     if (classmates === "true") {
       const currentUser = await UserProfile.findOne({
         userId: req.user._id,
@@ -35,8 +35,6 @@ router.get("/", verifyToken, async (req, res) => {
       if (currentUser && currentUser.yearOfAttendance) {
         profileMatch.yearOfAttendance = currentUser.yearOfAttendance;
       } else {
-        // If user has no year, return empty or handle gracefully
-        // Here we ensure it won't match anything if year is missing
         profileMatch.yearOfAttendance = -1;
       }
     }
@@ -64,8 +62,8 @@ router.get("/", verifyToken, async (req, res) => {
           as: "auth",
         },
       },
-      { $unwind: "$auth" }, // ✅ Crucial: Drops profiles where Auth doesn't exist
-      { $match: { "auth.isVerified": true } }, // Only show verified users
+      { $unwind: "$auth" },
+      { $match: { "auth.isVerified": true } },
 
       // Join with Settings table
       {
@@ -77,7 +75,7 @@ router.get("/", verifyToken, async (req, res) => {
         },
       },
       { $unwind: "$settings" },
-      { $match: settingsMatch }, // Apply settings filters (e.g., mentorship)
+      { $match: settingsMatch },
 
       // Sorting: Online first, then Mentors, then Year
       {
@@ -92,7 +90,7 @@ router.get("/", verifyToken, async (req, res) => {
       // Project final fields
       {
         $project: {
-          _id: "$userId", // ✅ Send Auth ID as the main _id for consistency
+          _id: "$userId",
           fullName: 1,
           profilePicture: 1,
           programmeTitle: 1,
@@ -238,10 +236,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
     const currentUserId = new mongoose.Types.ObjectId(req.user._id);
     const { city } = req.query;
 
-    // Fetch profile to get default location
     const currentProfile = await UserProfile.findOne({ userId: currentUserId });
-
-    // ✅ IMPROVEMENT: Fallback to State if City is missing
     const targetLocation = city || currentProfile.city || currentProfile.state;
 
     if (!targetLocation) {
@@ -376,68 +371,8 @@ router.get("/recommendations", verifyToken, async (req, res) => {
 });
 
 // =========================================================
-// 5. SINGLE ALUMNI DETAILS
+// 5. BIRTHDAY & ANNIVERSARY CELEBRATIONS
 // =========================================================
-router.get("/:userId", verifyToken, async (req, res) => {
-  try {
-    const [auth, profile, settings] = await Promise.all([
-      UserAuth.findById(req.params.userId).select(
-        "email isOnline lastSeen isVerified",
-      ),
-      UserProfile.findOne({ userId: req.params.userId }),
-      UserSettings.findOne({ userId: req.params.userId }),
-    ]);
-
-    if (!profile || !auth)
-      return res.status(404).json({ message: "User not found" });
-
-    const fullDetails = {
-      _id: auth._id,
-      email: auth.email,
-      isOnline: auth.isOnline,
-      lastSeen: auth.lastSeen,
-      isVerified: auth.isVerified,
-      ...profile.toObject(),
-      ...settings?.toObject(),
-    };
-
-    res.json({ success: true, data: fullDetails });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// =========================================================
-// 6. VERIFICATION ENDPOINT (PUBLIC)
-// =========================================================
-router.get("/verify/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const formattedId = id.replace(/-/g, "/");
-
-    const profile = await UserProfile.findOne({ alumniId: formattedId });
-    if (!profile) return res.status(404).json({ message: "ID not found" });
-
-    const auth = await UserAuth.findById(profile.userId);
-
-    const publicProfile = {
-      fullName: profile.fullName,
-      profilePicture: profile.profilePicture,
-      programmeTitle: profile.programmeTitle,
-      yearOfAttendance: profile.yearOfAttendance,
-      alumniId: profile.alumniId,
-      status: auth?.isVerified ? "Active" : "Pending",
-      jobTitle: profile.jobTitle,
-      organization: profile.organization,
-    };
-
-    res.json(publicProfile);
-  } catch (err) {
-    res.status(500).json({ message: "Server Error" });
-  }
-});
-
-// GET Birthday & Anniversary Celebrants
 router.get("/celebrations", verifyToken, async (req, res) => {
   try {
     const today = new Date();
@@ -445,7 +380,22 @@ router.get("/celebrations", verifyToken, async (req, res) => {
     const month = today.getMonth() + 1;
     const currentYear = today.getFullYear();
 
+    // ✅ FIX 1: Correctly join UserSettings BEFORE accessing fields
     const birthdays = await UserProfile.aggregate([
+      {
+        $match: {
+          dateOfBirth: { $exists: true, $ne: null }, // ✅ Safety check for valid dates
+        },
+      },
+      {
+        $lookup: {
+          from: "usersettings",
+          localField: "userId",
+          foreignField: "userId",
+          as: "settings",
+        },
+      },
+      { $unwind: "$settings" }, // ✅ Unwind settings array
       {
         $project: {
           fullName: 1,
@@ -453,10 +403,16 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           jobTitle: 1,
           dobDay: { $dayOfMonth: "$dateOfBirth" },
           dobMonth: { $month: "$dateOfBirth" },
-          isVisible: "$settings.isBirthdayVisible",
+          isVisible: "$settings.isBirthdayVisible", // ✅ Now accessible
         },
       },
-      { $match: { dobDay: day, dobMonth: month, isVisible: true } },
+      {
+        $match: {
+          dobDay: day,
+          dobMonth: month,
+          isVisible: true,
+        },
+      },
     ]);
 
     const milestoneYears = [];
@@ -496,7 +452,70 @@ router.get("/celebrations", verifyToken, async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("Celebration Error:", err);
     res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 6. SINGLE ALUMNI DETAILS
+// =========================================================
+router.get("/:userId", verifyToken, async (req, res) => {
+  try {
+    const [auth, profile, settings] = await Promise.all([
+      UserAuth.findById(req.params.userId).select(
+        "email isOnline lastSeen isVerified",
+      ),
+      UserProfile.findOne({ userId: req.params.userId }),
+      UserSettings.findOne({ userId: req.params.userId }),
+    ]);
+
+    if (!profile || !auth)
+      return res.status(404).json({ message: "User not found" });
+
+    const fullDetails = {
+      _id: auth._id,
+      email: auth.email,
+      isOnline: auth.isOnline,
+      lastSeen: auth.lastSeen,
+      isVerified: auth.isVerified,
+      ...profile.toObject(),
+      ...settings?.toObject(),
+    };
+
+    res.json({ success: true, data: fullDetails });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// =========================================================
+// 7. VERIFICATION ENDPOINT (PUBLIC)
+// =========================================================
+router.get("/verify/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const formattedId = id.replace(/-/g, "/");
+
+    const profile = await UserProfile.findOne({ alumniId: formattedId });
+    if (!profile) return res.status(404).json({ message: "ID not found" });
+
+    const auth = await UserAuth.findById(profile.userId);
+
+    const publicProfile = {
+      fullName: profile.fullName,
+      profilePicture: profile.profilePicture,
+      programmeTitle: profile.programmeTitle,
+      yearOfAttendance: profile.yearOfAttendance,
+      alumniId: profile.alumniId,
+      status: auth?.isVerified ? "Active" : "Pending",
+      jobTitle: profile.jobTitle,
+      organization: profile.organization,
+    };
+
+    res.json(publicProfile);
+  } catch (err) {
+    res.status(500).json({ message: "Server Error" });
   }
 });
 

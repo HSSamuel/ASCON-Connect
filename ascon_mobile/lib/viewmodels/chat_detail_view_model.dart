@@ -106,6 +106,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   Timer? _statusHeartbeat;
   Timer? _typingExpiryTimer; 
   StreamSubscription? _statusSubscription;
+  StreamSubscription? _messageStatusSubscription; // ✅ Listener for read receipts
 
   ChatDetailNotifier({
     required this.receiverId, 
@@ -127,6 +128,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     _statusHeartbeat?.cancel();
     _typingExpiryTimer?.cancel();
     _statusSubscription?.cancel();
+    _messageStatusSubscription?.cancel(); // ✅ Clean up
     sendStopTyping();
     
     if (isGroup && groupId != null) {
@@ -134,7 +136,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
     
     _socket.socket?.off('new_message');
-    _socket.socket?.off('messages_read');
+    _socket.socket?.off('messages_read'); // Keeping for legacy/other listeners
     _socket.socket?.off('messages_deleted_bulk');
     _socket.socket?.off('typing_start');
     _socket.socket?.off('typing_stop');
@@ -246,7 +248,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               isLoading: false,
               hasMoreMessages: newMessages.length >= 20
             );
-            if (initial) _markRead();
+            if (initial) markUnreadAsRead(); // ✅ Mark read when opening
           }
         }
       } else if (result['statusCode'] == 403) {
@@ -372,7 +374,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       replyToSenderName: replyingToMessage != null ? (replyingToMessage.senderId == state.myUserId ? "You" : "User") : null,
       replyToType: replyingToMessage?.type,
       createdAt: DateTime.now(),
-      status: MessageStatus.sending,
+      status: MessageStatus.sending, // ✅ Initially Sending
     );
 
     state = state.copyWith(messages: [...state.messages, tempMessage]);
@@ -407,6 +409,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         try {
           final data = jsonDecode(response.body);
           final realMessage = ChatMessage.fromJson(data);
+          // ✅ Update temp message with real ID and 'Sent' status
           final updated = state.messages.map((m) => m.id == tempId ? realMessage : m).toList();
           state = state.copyWith(messages: updated);
           return null; 
@@ -429,9 +432,29 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     state = state.copyWith(messages: updated);
   }
 
-  void _markRead() {
-    if (state.conversationId != null) {
-      _api.put('/api/chat/read/${state.conversationId}', {});
+  // ✅ NEW: Trigger marking unread messages as read
+  void markUnreadAsRead() {
+    if (state.conversationId == null) return;
+    
+    // Identify messages sent by others that are not yet read
+    final unreadIds = state.messages
+      .where((msg) => msg.senderId != state.myUserId && (msg.status != MessageStatus.read && !msg.isRead))
+      .map((msg) => msg.id)
+      .toList();
+
+    if (unreadIds.isNotEmpty) {
+      // 1. Emit to server
+      _socket.markMessagesAsRead(state.conversationId!, unreadIds, state.myUserId);
+      
+      // 2. Optimistic Update Local
+      final updated = state.messages.map((m) {
+        if (unreadIds.contains(m.id)) {
+          m.isRead = true;
+          m.status = MessageStatus.read;
+        }
+        return m;
+      }).toList();
+      state = state.copyWith(messages: updated);
     }
   }
 
@@ -452,20 +475,45 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             messages: [...state.messages, newMessage],
             isPeerTyping: false 
           );
-          _markRead();
+          
+          // ✅ Mark new incoming message as read since we are on the screen
+          markUnreadAsRead();
         } catch (e) {
           debugPrint("Error parsing incoming message: $e");
         }
       }
     });
 
-    socket.on('messages_read', (data) {
-      if (mounted && data['conversationId'] == state.conversationId) {
-        final updated = state.messages.map((m) {
-          if (m.senderId == state.myUserId) m.isRead = true;
-          return m;
-        }).toList();
-        state = state.copyWith(messages: updated);
+    // ✅ Listen for Status Updates (Read/Delivered) from SocketService Stream
+    _messageStatusSubscription = _socket.messageStatusStream.listen((event) {
+      if (!mounted) return;
+      
+      if (event['type'] == 'read') {
+         final data = event['data'];
+         if (data['chatId'] == state.conversationId) {
+            final List<String> readIds = List<String>.from(data['messageIds']);
+            
+            final updated = state.messages.map((m) {
+              if (readIds.contains(m.id)) {
+                m.isRead = true;
+                m.status = MessageStatus.read; // ✅ Update to Double Blue
+              }
+              return m;
+            }).toList();
+            state = state.copyWith(messages: updated);
+         }
+      } else if (event['type'] == 'status_update') {
+         final data = event['data'];
+         if (data['chatId'] == state.conversationId && data['status'] == 'delivered') {
+            final msgId = data['messageId'];
+            final updated = state.messages.map((m) {
+              if (m.id == msgId && m.status != MessageStatus.read) {
+                 m.status = MessageStatus.delivered; // ✅ Update to Double Grey
+              }
+              return m;
+            }).toList();
+            state = state.copyWith(messages: updated);
+         }
       }
     });
 

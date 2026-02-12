@@ -34,7 +34,6 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   final CallService _callService = CallService();
   final SocketService _socketService = SocketService();
-  final AuthService _authService = AuthService();
   
   late AnimationController _pulseController;
   late AudioPlayer _audioPlayer;
@@ -42,7 +41,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   String _status = "Initializing...";
   bool _isMuted = false;
-  bool _isSpeakerOn = false;
+  bool _isSpeakerOn = false; 
   bool _hasAnswered = false;
   bool _permissionDenied = false;
 
@@ -91,8 +90,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       switch (state) {
         case CallState.connected:
           _stopRinging();
-          
-          // ✅ 1. VIBRATE ON ANSWER (Double Pulse)
           _triggerVibration(pattern: [0, 100, 50, 100]); 
           
           _startCallTimer();
@@ -104,8 +101,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           
         case CallState.idle:
           _stopRinging();
-          
-          // ✅ 2. VIBRATE ON HANGUP (Single Long Pulse)
           _triggerVibration(pattern: [0, 500]);
           
           _callTimer?.cancel();
@@ -151,6 +146,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       debugPrint("Call Init Error: $e");
       _stopRinging();
       
+      // ✅ SAFETY CHECK: Do not call setState if widget is disposed
+      if (!mounted) return;
+
       if (e.toString().contains("NotAllowedError") || e.toString().contains("Permission dismissed")) {
         setState(() {
           _status = "Microphone Permission Denied";
@@ -168,7 +166,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.play(AssetSource(sound));
 
-      // Continuous vibration while ringing (Optional)
       if (!kIsWeb && !isDialing && await Vibration.hasVibrator() == true) {
         Vibration.vibrate(pattern: [500, 1000, 500, 1000], repeat: 1);
       }
@@ -177,7 +174,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ✅ VIBRATION TRIGGER
   Future<void> _triggerVibration({required List<int> pattern}) async {
     if (kIsWeb) return;
     try {
@@ -204,6 +200,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         });
         await _callService.answerCall(widget.offer!, widget.remoteId);
       } catch (e) {
+        if (!mounted) return;
         setState(() {
            _status = "Microphone Blocked";
            _permissionDenied = true;
@@ -239,7 +236,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. BACKGROUND (Remote User Avatar)
           if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
             CachedNetworkImage(
               imageUrl: widget.remoteAvatar!,
@@ -248,7 +244,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           else
             Container(color: const Color(0xFF0F3621)), 
 
-          // 2. BLUR OVERLAY
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
@@ -256,33 +251,19 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // 3. MAIN CONTENT
           SafeArea(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Spacer(flex: 1),
-
-                // CENTER AVATAR
                 _buildAvatar(widget.remoteAvatar, 150, _status.contains("Incoming") || _status.contains("Calling")),
-                
                 const SizedBox(height: 25),
-
-                // REMOTE NAME
                 Text(
                   widget.remoteName,
-                  style: GoogleFonts.lato(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
+                  style: GoogleFonts.lato(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                   textAlign: TextAlign.center,
                 ),
-                
                 const SizedBox(height: 8),
-
-                // STATUS / TIMER
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
@@ -301,7 +282,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-
                 if (_permissionDenied)
                   Padding(
                     padding: const EdgeInsets.only(top: 20.0),
@@ -312,10 +292,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                       onPressed: _initCallSequence,
                     ),
                   ),
-
                 const Spacer(flex: 2),
-
-                // CONTROLS
                 Container(
                   padding: const EdgeInsets.only(bottom: 50, top: 30),
                   decoration: BoxDecoration(
@@ -360,17 +337,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         alignment: Alignment.center,
         children: [
           ScaleTransition(
-            scale: Tween(begin: 1.0, end: 1.3).animate(
-              CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut)
-            ),
-            child: Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.1), 
-              ),
-            ),
+            scale: Tween(begin: 1.0, end: 1.3).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut)),
+            child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.1))),
           ),
           image,
         ],
@@ -383,22 +351,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
-        _buildCircleButton(
-          color: Colors.redAccent,
-          icon: Icons.call_end,
-          label: "Decline",
-          onTap: _onDecline,
-        ),
-        
+        _buildCircleButton(color: Colors.redAccent, icon: Icons.call_end, label: "Decline", onTap: _onDecline),
         ScaleTransition(
           scale: Tween(begin: 1.0, end: 1.1).animate(_pulseController),
-          child: _buildCircleButton(
-            color: const Color(0xFF1B5E3A),
-            icon: Icons.call,
-            label: "Answer",
-            onTap: _onAnswer,
-            size: 80,
-          ),
+          child: _buildCircleButton(color: const Color(0xFF1B5E3A), icon: Icons.call, label: "Answer", onTap: _onAnswer, size: 80),
         ),
       ],
     );
@@ -417,7 +373,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             _callService.toggleMute(_isMuted);
           },
         ),
-
         FloatingActionButton.large(
           onPressed: () {
             _stopRinging();
@@ -427,7 +382,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           backgroundColor: Colors.redAccent,
           child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 36),
         ),
-
         _buildGlassOption(
           icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
           label: "Speaker",

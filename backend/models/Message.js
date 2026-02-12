@@ -1,4 +1,3 @@
-// backend/models/Message.js
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -15,6 +14,13 @@ const messageSchema = new mongoose.Schema(
       // ✅ Added 'poll' to allowed types
       enum: ["text", "image", "audio", "file", "poll"],
       default: "text",
+    },
+
+    // ✅ NEW: Message Status Tracking
+    status: {
+      type: String,
+      enum: ["sent", "delivered", "read"],
+      default: "sent",
     },
 
     text: { type: String, default: "" },
@@ -34,7 +40,7 @@ const messageSchema = new mongoose.Schema(
       default: null,
     },
 
-    isRead: { type: Boolean, default: false },
+    isRead: { type: Boolean, default: false }, // Kept for backward compatibility
     isEdited: { type: Boolean, default: false },
 
     // Soft Delete (Delete for Everyone)

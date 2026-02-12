@@ -125,21 +125,22 @@ class MessageBubble extends StatelessWidget {
     IconData statusIcon;
     Color statusColor;
 
+    // ✅ NEW STATUS ICONS LOGIC
     switch (msg.status) {
       case MessageStatus.sending:
         statusIcon = Icons.access_time;
         statusColor = Colors.grey;
         break;
       case MessageStatus.sent:
-        statusIcon = Icons.check;
+        statusIcon = Icons.check; // Single Grey Tick
         statusColor = Colors.grey;
         break;
       case MessageStatus.delivered:
-        statusIcon = Icons.done_all;
+        statusIcon = Icons.done_all; // Double Grey Tick
         statusColor = Colors.grey;
         break;
       case MessageStatus.read:
-        statusIcon = Icons.done_all;
+        statusIcon = Icons.done_all; // Double Blue Tick
         statusColor = Colors.blue;
         break;
       case MessageStatus.error:
@@ -232,7 +233,7 @@ class MessageBubble extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(time, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-                        if (isMe) ...[const SizedBox(width: 4), Icon(statusIcon, size: 12, color: statusColor)],
+                        if (isMe) ...[const SizedBox(width: 4), Icon(statusIcon, size: 16, color: statusColor)], // ✅ Updated Icon Size
                       ],
                     ),
                   ),

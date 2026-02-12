@@ -49,16 +49,32 @@ class CallService {
     _callStateController.add(CallState.calling);
 
     await _createPeerConnection();
+    // ✅ SAFETY CHECK 1: Call might have ended while creating peer connection
+    if (_peerConnection == null) return;
+
     await _getUserMedia(video: video);
+    // ✅ SAFETY CHECK 2: Call might have ended while getting media
+    if (_peerConnection == null) return;
+
+    // Force audio routing to earpiece (default for calls)
+    if (!kIsWeb) {
+      try {
+        Helper.setSpeakerphoneOn(false);
+      } catch (e) {
+        debugPrint("Error setting initial audio route: $e");
+      }
+    }
 
     RTCSessionDescription offer = await _peerConnection!.createOffer({
       'offerToReceiveAudio': true,
       'offerToReceiveVideo': video,
     });
 
+    // ✅ SAFETY CHECK 3: Call might have ended while creating offer
+    if (_peerConnection == null) return;
+
     await _peerConnection!.setLocalDescription(offer);
 
-    // ✅ FIXED: Null-safe access to socket
     SocketService().socket?.emit('call_user', {
       'userToCall': remoteUserId,
       'offer': offer.toMap(),
@@ -66,32 +82,39 @@ class CallService {
   }
 
   // --- 2. ANSWER CALL (Receiver) ---
-  // ✅ ADDED: This matches the method called in CallScreen
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, {bool video = false}) async {
     _remoteId = callerId;
     _isCallActive = true;
     _callStateController.add(CallState.connected);
 
     await _createPeerConnection();
-    
-    // Set Remote Description (Offer from Caller)
+    if (_peerConnection == null) return;
+
+    // Force audio routing to earpiece
+    if (!kIsWeb) {
+      try {
+        Helper.setSpeakerphoneOn(false);
+      } catch (e) {
+        debugPrint("Error setting initial audio route: $e");
+      }
+    }
+
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(offer['sdp'], offer['type']),
     );
 
-    // Get Local Media
     await _getUserMedia(video: video);
+    if (_peerConnection == null) return;
 
-    // Create Answer
     RTCSessionDescription answer = await _peerConnection!.createAnswer({
       'offerToReceiveAudio': true,
       'offerToReceiveVideo': video,
     });
 
+    if (_peerConnection == null) return;
+
     await _peerConnection!.setLocalDescription(answer);
 
-    // Send Answer back to Caller
-    // ✅ FIXED: Null-safe access to socket
     SocketService().socket?.emit('make_answer', {
       'to': _remoteId,
       'answer': answer.toMap(),
@@ -99,7 +122,6 @@ class CallService {
   }
 
   // --- 3. HANDLE ANSWER (Caller) ---
-  // ✅ ADDED: Public method called by CallScreen when 'answer_made' event arrives
   Future<void> handleAnswer(dynamic answerData) async {
     if (_peerConnection == null) return;
     
@@ -110,7 +132,6 @@ class CallService {
   }
 
   // --- 4. HANDLE ICE CANDIDATES (Both) ---
-  // ✅ ADDED: Public method called by CallScreen when 'ice_candidate' event arrives
   Future<void> handleIceCandidate(dynamic candidateData) async {
     if (_peerConnection != null) {
       await _peerConnection!.addCandidate(
@@ -136,7 +157,6 @@ class CallService {
 
     _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
       if (_remoteId != null) {
-        // ✅ FIXED: Null-safe access
         SocketService().socket?.emit('ice_candidate', {
           'to': _remoteId,
           'candidate': {
@@ -151,6 +171,12 @@ class CallService {
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
+        
+        // Explicitly enable remote audio tracks
+        _remoteStream!.getAudioTracks().forEach((track) {
+          track.enabled = true;
+        });
+
         _remoteStreamController.add(_remoteStream);
       }
     };
@@ -166,27 +192,29 @@ class CallService {
 
   Future<void> _getUserMedia({bool video = false}) async {
     final Map<String, dynamic> mediaConstraints = {
-      'audio': true,
+      'audio': true, 
       'video': video ? {'facingMode': 'user'} : false,
     };
 
     _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     _localStreamController.add(_localStream);
     
-    _localStream!.getTracks().forEach((track) {
-      _peerConnection!.addTrack(track, _localStream!);
+    // Explicitly enable local audio tracks
+    _localStream!.getAudioTracks().forEach((track) {
+      track.enabled = true; 
     });
+
+    if (_peerConnection != null) {
+      _localStream!.getTracks().forEach((track) {
+        _peerConnection!.addTrack(track, _localStream!);
+      });
+    }
   }
   
   Future<void> toggleSpeaker(bool enable) async {
     if (kIsWeb) return; 
-
     try {
-      if (_localStream != null) {
-        _localStream!.getAudioTracks().forEach((track) {
-          track.enableSpeakerphone(enable);
-        });
-      }
+      await Helper.setSpeakerphoneOn(enable);
     } catch (e) {
       debugPrint("Error toggling speaker: $e");
     }

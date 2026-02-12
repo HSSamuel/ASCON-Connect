@@ -85,8 +85,19 @@ class ChatMessage {
       isDeleted: json['isDeleted'] ?? false,
       isEdited: json['isEdited'] ?? false,
       isRead: json['isRead'] ?? false,
-      status: MessageStatus.sent, 
+      status: _parseStatus(json['status'], json['isRead']), 
     );
+  }
+
+  // ✅ Helper to parse status string to enum
+  static MessageStatus _parseStatus(String? status, bool? isRead) {
+    if (isRead == true || status == 'read') return MessageStatus.read;
+    switch (status) {
+      case 'delivered': return MessageStatus.delivered;
+      case 'sent': return MessageStatus.sent;
+      case 'read': return MessageStatus.read;
+      default: return MessageStatus.sent;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -108,6 +119,7 @@ class ChatMessage {
       'isDeleted': isDeleted,
       'isEdited': isEdited,
       'isRead': isRead,
+      'status': status.name,
     };
   }
 }
