@@ -6,11 +6,12 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
 import '../services/socket_service.dart'; 
-import '../services/biometric_service.dart'; // ✅ Added import
+import '../services/biometric_service.dart'; 
 import '../config.dart'; 
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'welcome_dialog.dart'; 
+import 'edit_profile_screen.dart'; // ✅ Required for profile completion
 
 class LoginScreen extends StatefulWidget {
   final Map<String, dynamic>? pendingNavigation;
@@ -25,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-  final BiometricService _biometricService = BiometricService(); // ✅ Instance
+  final BiometricService _biometricService = BiometricService(); 
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? AppConfig.googleWebClientId : null,
@@ -38,13 +39,21 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _canCheckBiometrics = false;
 
   @override
-void initState() {
-  super.initState();
-  // ✅ Only check biometrics if NOT running on Web
-  if (!kIsWeb) {
-    _checkBiometrics();
+  void initState() {
+    super.initState();
+    // ✅ Only check biometrics if NOT running on Web
+    if (!kIsWeb) {
+      _checkBiometrics();
+    }
   }
-}
+
+  // ✅ ADDED: Dispose method to prevent memory leaks
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _checkBiometrics() async {
     bool available = await _biometricService.isBiometricAvailable;
@@ -116,6 +125,25 @@ void initState() {
     }
 
     String safeName = user['fullName'] ?? "Alumni"; 
+
+    // ✅ CRITICAL: ENFORCE PROFILE COMPLETION
+    // If yearOfAttendance is missing (null, 0, or "null"), stop here and redirect.
+    var year = user['yearOfAttendance'];
+    if (year == null || year == 0 || year == "null" || year.toString().trim().isEmpty) {
+      debugPrint("⚠️ Incomplete Profile Detected. Redirecting to Edit Profile.");
+      if (!mounted) return;
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EditProfileScreen(
+            userData: user,
+            isFirstTime: true, // ✅ Forces "Onboarding Mode" (No back button)
+          ),
+        ),
+      );
+      return;
+    }
 
     // Handle Pending Navigation
     if (widget.pendingNavigation != null) {

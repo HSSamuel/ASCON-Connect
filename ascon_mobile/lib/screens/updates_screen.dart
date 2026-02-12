@@ -568,7 +568,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
               if (updateState.isLoading)
                 const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
               else if (updateState.filteredPosts.isEmpty)
-                SliverFillRemaining(child: Center(child: Text("No updates found.", style: GoogleFonts.lato(color: Colors.grey))))
+                SliverFillRemaining(child: Center(child: Text("No updates.", style: GoogleFonts.lato(color: Colors.grey))))
               else
                 SliverList(
                   delegate: SliverChildBuilderDelegate(

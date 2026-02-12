@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/socket_service.dart';
+import 'edit_profile_screen.dart'; // ✅ Added Import
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -59,6 +60,33 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         NotificationService().init();
       } catch (e) {
         debugPrint("⚠️ Init error: $e");
+      }
+
+      // ✅ 3b. SPLASH GUARD: CHECK PROFILE COMPLETENESS
+      // If the user has no Year of Attendance, force them to complete profile now.
+      final user = await _authService.getCachedUser();
+      var year = user?['yearOfAttendance'];
+      
+      // Check for null, 0, string "null", or empty string
+      bool isProfileIncomplete = year == null || 
+                                 year == 0 || 
+                                 year == "null" || 
+                                 year.toString().trim().isEmpty;
+
+      if (isProfileIncomplete) {
+        debugPrint("⚠️ Splash Guard: Incomplete Profile Detected. Redirecting to Edit Profile.");
+        if (!mounted) return;
+        
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EditProfileScreen(
+              userData: user ?? {},
+              isFirstTime: true, // Forces "Onboarding Mode" (No back button)
+            ),
+          ),
+        );
+        return; // 🛑 STOP EXECUTION HERE
       }
     }
 

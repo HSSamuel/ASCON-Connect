@@ -19,7 +19,7 @@ import 'chat_list_screen.dart';
 import 'about_screen.dart';
 import 'admin/add_content_screen.dart'; 
 
-import '../widgets/celebration_card.dart'; // ✅ Added Back
+import '../widgets/celebration_card.dart'; 
 import '../widgets/active_poll_card.dart'; 
 import '../widgets/chapter_card.dart';     
 import '../widgets/digital_id_card.dart';
@@ -42,7 +42,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
-  bool _hasUnreadMessages = false; 
+  bool _hasUnreadMessages = false;
+  int _unreadNotifications = 0; 
   final ApiClient _api = ApiClient();
   
   DateTime? _lastPressedAt;
@@ -77,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _refreshUnreadState() {
     _checkUnreadStatus(); 
+    _checkNotificationStatus(); 
     _listenForMessages(); 
   }
 
@@ -90,6 +92,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     } catch (e) {
       debugPrint("Check status error: $e");
+    }
+  }
+
+  Future<void> _checkNotificationStatus() async {
+    try {
+      final result = await _api.get('/api/notifications/unread-count');
+      if (mounted && result['success'] == true) {
+        final int count = result['count'] ?? 0;
+        setState(() => _unreadNotifications = count);
+      }
+    } catch (e) {
+      debugPrint("Check notification error: $e");
     }
   }
 
@@ -201,10 +215,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
-                IconButton(
-    icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : primaryColor, size: 24),
-    onPressed: () => context.push('/notifications'),
-  ),
+                Stack(
+                  alignment: Alignment.topRight,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : primaryColor, size: 24),
+                      onPressed: () async {
+                        await context.push('/notifications');
+                        _checkNotificationStatus();
+                      },
+                    ),
+                    if (_unreadNotifications > 0)
+                      Positioned(
+                        right: 8, top: 8,
+                        child: Container(
+                          width: 8, height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.red, 
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Theme.of(context).cardColor, width: 1.5)
+                          ),
+                        ),
+                      )
+                  ],
+                ),
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
@@ -469,12 +503,10 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   imageUrl: dashboardState.profileImage,
                 ),
 
-                if (!dashboardState.isLoading && !dashboardState.isProfileComplete)
-                  _buildProfileAlert(context, primaryColor, dashboardState.profileCompletionPercent),
+                // ✅ REMOVED: Profile Alert Widget logic was here. Now redundant.
 
                 const ChapterCard(),
 
-                // ✅ 2. RESTORED CelebrationWidget (Birthdays Only)
                 const CelebrationWidget(),
 
                 const SizedBox(height: 10),
@@ -626,68 +658,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     );
   }
 
-  Widget _buildProfileAlert(BuildContext context, Color primaryColor, double percent) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 5, 16, 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF424242) : const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.withOpacity(0.5)),
-      ),
-      child: Row(
-        children: [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: percent,
-                backgroundColor: Colors.amber.withOpacity(0.2),
-                color: Colors.amber[800],
-                strokeWidth: 3, 
-              ),
-              Text(
-                "${(percent * 100).toInt()}%", 
-                style: TextStyle(
-                  fontSize: 10, 
-                  fontWeight: FontWeight.bold, 
-                  color: isDark ? Colors.white : Colors.brown[800]
-                )
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "Complete ur profile (${(percent * 100).toInt()}%)", 
-                  style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              context.go('/profile'); 
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber[800],
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-              minimumSize: const Size(0, 32),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text("Finish", style: TextStyle(fontSize: 12)),
-          )
-        ],
-      ),
-    );
-  }
+  // _buildProfileAlert WAS REMOVED FROM HERE
 
   Widget _buildUpcomingEventCard(BuildContext context, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

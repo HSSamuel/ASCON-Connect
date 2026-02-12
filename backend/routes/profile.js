@@ -2,9 +2,11 @@ const router = require("express").Router();
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const UserSettings = require("../models/UserSettings");
-const Group = require("../models/Group"); // ✅ Added Group Import
+const Group = require("../models/Group");
 const verifyToken = require("./verifyToken");
 const upload = require("../config/cloudinary");
+// ✅ ADDED: Import ID Generator
+const { generateAlumniId } = require("../utils/idGenerator");
 
 // ✅ Centralized Profile Completeness Logic
 const calculateProfileCompleteness = (profile) => {
@@ -57,16 +59,27 @@ router.put("/update", verifyToken, (req, res) => {
         return res.status(404).json({ message: "User profile not found" });
       }
 
+      // ✅ NEW: GENERATE ID IF MISSING
+      // If the user doesn't have an ID yet, generate it now based on the NEW year provided.
+      let generatedAlumniId = currentProfile.alumniId;
+      if (!generatedAlumniId && newYear) {
+        console.log(
+          `🆕 First-time setup: Generating Alumni ID for Year ${newYear}`,
+        );
+        generatedAlumniId = await generateAlumniId(newYear);
+      }
+
       // 3. ✅ GROUP SYNC LOGIC (Year Change)
       const oldYear = currentProfile.yearOfAttendance;
 
       // Check if year changed (using loose equality to handle string/number diffs)
-      if (newYear != oldYear) {
+      // OR if we are assigning it for the first time (oldYear is null)
+      if (newYear && newYear != oldYear) {
         console.log(
           `🔄 Year changed from ${oldYear} to ${newYear}. Syncing Groups...`,
         );
 
-        // A. Remove from Old Group
+        // A. Remove from Old Group (Only if exists)
         if (oldYear) {
           const oldGroupName = `Class of ${oldYear}`;
           await Group.findOneAndUpdate(
@@ -76,19 +89,17 @@ router.put("/update", verifyToken, (req, res) => {
         }
 
         // B. Add to New Group
-        if (newYear) {
-          const newGroupName = `Class of ${newYear}`;
-          await Group.findOneAndUpdate(
-            { name: newGroupName, type: "Class" },
-            {
-              $addToSet: { members: req.user._id },
-              $setOnInsert: {
-                description: `Official group for the ${newGroupName}`,
-              },
+        const newGroupName = `Class of ${newYear}`;
+        await Group.findOneAndUpdate(
+          { name: newGroupName, type: "Class" },
+          {
+            $addToSet: { members: req.user._id },
+            $setOnInsert: {
+              description: `Official group for the ${newGroupName}`,
             },
-            { upsert: true, new: true },
-          );
-        }
+          },
+          { upsert: true, new: true },
+        );
       }
 
       // Handle Boolean Toggles
@@ -114,6 +125,7 @@ router.put("/update", verifyToken, (req, res) => {
         linkedin: req.body.linkedin,
         phoneNumber: req.body.phoneNumber,
         yearOfAttendance: newYear, // Use sanitized year
+        alumniId: generatedAlumniId, // ✅ Save the potentially new ID
         programmeTitle: req.body.programmeTitle,
         customProgramme: req.body.customProgramme,
         industry: req.body.industry || "",

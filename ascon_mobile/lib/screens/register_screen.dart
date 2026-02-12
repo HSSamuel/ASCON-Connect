@@ -27,10 +27,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Controllers
   late TextEditingController _nameController;
   late TextEditingController _emailController;
-  final _yearController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _customProgrammeController = TextEditingController();
   
   // ✅ DOB Controller
   final TextEditingController _dobController = TextEditingController();
@@ -39,23 +37,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _completePhoneNumber = ""; 
 
   bool _obscurePassword = true;
-
-  final List<String> _programmes = [
-    "Management Programme",
-    "Computer Programme",
-    "Financial Management",
-    "Leadership Development Programme",
-    "Public Administration and Management",
-    "Public Administration and Policy (Advanced)",
-    "Public Sector Management Course",
-    "Performance Improvement Course",
-    "Creativity and Innovation Course",
-    "Mandatory & Executive Programmes",
-    "Postgraduate Diploma in Public Administration and Management",
-    "Other"
-  ];
-
-  String? _selectedProgramme;
 
   @override
   void initState() {
@@ -67,6 +48,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _dobController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -192,13 +177,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       builder: (context) => const LoadingDialog(message: "Creating Account..."),
     );
 
-    String finalProgrammeTitle;
-    if (_selectedProgramme == "Other") {
-      finalProgrammeTitle = _customProgrammeController.text.trim();
-    } else {
-      finalProgrammeTitle = _selectedProgramme!;
-    }
-
     try {
       final AuthService authService = AuthService();
       final result = await authService.register(
@@ -206,10 +184,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         phoneNumber: _completePhoneNumber, 
-        programmeTitle: finalProgrammeTitle,
-        yearOfAttendance: _yearController.text.trim(),
+        // ✅ Simplified: We pass empty strings here.
+        // The backend has been updated to ignore these and force profile completion later.
+        programmeTitle: "",
+        yearOfAttendance: "",
         googleToken: widget.googleToken,
-        // ✅ Send Date of Birth
         dateOfBirth: _selectedDate?.toIso8601String(),
       );
 
@@ -324,40 +303,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     _completePhoneNumber = phone.completeNumber; 
                   },
                 ),
-                const SizedBox(height: 16),
                 
-                DropdownButtonFormField<String>(
-                  value: _selectedProgramme,
-                  dropdownColor: Theme.of(context).cardColor, 
-                  decoration: InputDecoration(
-                    labelText: "Programme Attended",
-                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-                    prefixIcon: Icon(Icons.school_outlined, color: primaryColor, size: 20),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  items: _programmes.map((prog) {
-                    return DropdownMenuItem(
-                      value: prog,
-                      child: Text(
-                        prog,
-                        style: TextStyle(fontSize: 14, color: textColor),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (val) => setState(() => _selectedProgramme = val),
-                  validator: (val) => val == null ? 'Please select a programme' : null,
-                  isExpanded: true,
-                ),
+                // ❌ REMOVED: Programme Dropdown & Custom Programme Field
+                // ❌ REMOVED: Year of Attendance Field
 
-                if (_selectedProgramme == "Other") ...[
-                  const SizedBox(height: 16),
-                  _buildTextField("Type Programme Name", _customProgrammeController, Icons.edit_outlined),
-                ],
-
-                const SizedBox(height: 16),
-                
-                _buildTextField("Year of Attendance (e.g. 2015)", _yearController, Icons.calendar_today_outlined, isNumber: true),
                 const SizedBox(height: 16),
                 
                 _buildTextField("Password", _passwordController, Icons.lock_outline, isPassword: true),

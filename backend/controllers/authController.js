@@ -10,7 +10,7 @@ const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
-const { generateAlumniId } = require("../utils/idGenerator");
+// ✅ REMOVED: generateAlumniId is deferred to profile update
 const asyncHandler = require("../utils/asyncHandler");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
@@ -24,6 +24,7 @@ const registerSchema = Joi.object({
   email: Joi.string().min(6).required().email(),
   password: Joi.string().min(6).required(),
   phoneNumber: Joi.string().required(),
+  // ✅ OPTIONAL/IGNORED FIELDS (Kept optional to not break legacy requests)
   programmeTitle: Joi.string().optional().allow(""),
   yearOfAttendance: Joi.alternatives()
     .try(Joi.string(), Joi.number())
@@ -74,10 +75,10 @@ exports.register = asyncHandler(async (req, res) => {
     email,
     password,
     phoneNumber,
-    yearOfAttendance,
-    programmeTitle,
-    customProgramme,
-    city,
+    // yearOfAttendance, // ❌ REMOVED: Deferred
+    // programmeTitle,   // ❌ REMOVED: Deferred
+    // customProgramme,  // ❌ REMOVED: Deferred
+    // city,             // ❌ REMOVED: Deferred
     fcmToken,
     dateOfBirth,
   } = req.body;
@@ -94,7 +95,7 @@ exports.register = asyncHandler(async (req, res) => {
   try {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const newAlumniId = await generateAlumniId(yearOfAttendance);
+    // ❌ REMOVED: const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     // STEP 1: Create Auth
     const newUserAuth = new UserAuth({
@@ -107,16 +108,13 @@ exports.register = asyncHandler(async (req, res) => {
     });
     const savedAuth = await newUserAuth.save({ session });
 
-    // STEP 2: Create Profile
+    // STEP 2: Create Profile (Minimal Data)
     const newUserProfile = new UserProfile({
       userId: savedAuth._id,
       fullName,
       phoneNumber,
-      yearOfAttendance,
-      programmeTitle,
-      customProgramme: customProgramme || "",
-      city: city || "",
-      alumniId: newAlumniId,
+      // ✅ NOTE: yearOfAttendance, programmeTitle, & alumniId are intentionally undefined
+      // This forces the user to complete their profile later to get an ID.
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
     });
     await newUserProfile.save({ session });
@@ -131,34 +129,7 @@ exports.register = asyncHandler(async (req, res) => {
     });
     await newUserSettings.save({ session });
 
-    // STEP 4: Auto-Join Groups
-    if (yearOfAttendance) {
-      const classGroupName = `Class of ${yearOfAttendance}`;
-      await Group.findOneAndUpdate(
-        { name: classGroupName, type: "Class" },
-        {
-          $addToSet: { members: savedAuth._id },
-          $setOnInsert: {
-            description: `Official group for the ${classGroupName}`,
-          },
-        },
-        { upsert: true, new: true, session },
-      );
-    }
-
-    if (city) {
-      const chapterName = `${city} Chapter`;
-      await Group.findOneAndUpdate(
-        { name: chapterName, type: "Chapter" },
-        {
-          $addToSet: { members: savedAuth._id },
-          $setOnInsert: {
-            description: `Official chapter for alumni in ${city}`,
-          },
-        },
-        { upsert: true, new: true, session },
-      );
-    }
+    // ❌ REMOVED: Auto-Join Groups Logic (Moved to Profile Update)
 
     await session.commitTransaction();
     session.endSession();
@@ -173,14 +144,7 @@ exports.register = asyncHandler(async (req, res) => {
         });
       }
 
-      if (city) {
-        await sendPersonalNotification(
-          savedAuth._id,
-          `Welcome to the ${city} Chapter!`,
-          `You have been automatically added to the ${city} alumni group. Tap to say hi!`,
-          { route: "chapter_chat", id: `${city} Chapter` },
-        );
-      }
+      // ❌ REMOVED: Welcome to Chapter Notification (Since they aren't in one yet)
     } catch (notifyErr) {
       console.error("Post-registration notification error:", notifyErr);
     }
@@ -205,7 +169,7 @@ exports.register = asyncHandler(async (req, res) => {
         id: savedAuth._id,
         fullName: newUserProfile.fullName,
         email: savedAuth.email,
-        alumniId: newUserProfile.alumniId,
+        alumniId: null, // ✅ Explicitly null
         hasSeenWelcome: false,
       },
     });
@@ -288,6 +252,8 @@ exports.login = asyncHandler(async (req, res) => {
       profilePicture: userProfile.profilePicture,
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
+      // ✅ Return year so frontend can guard against incomplete profiles
+      yearOfAttendance: userProfile.yearOfAttendance,
     },
   });
 });
@@ -323,11 +289,11 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   let userProfile, userSettings;
 
   if (!userAuth) {
-    const currentYear = new Date().getFullYear();
+    // ❌ REMOVED: const currentYear = new Date().getFullYear();
     const randomPassword = crypto.randomBytes(16).toString("hex");
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(randomPassword, salt);
-    const newAlumniId = await generateAlumniId(currentYear);
+    // ❌ REMOVED: const newAlumniId = await generateAlumniId(currentYear);
 
     userAuth = new UserAuth({
       email: email,
@@ -343,8 +309,9 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       userId: userAuth._id,
       fullName: name,
       profilePicture: picture,
-      yearOfAttendance: currentYear,
-      alumniId: newAlumniId,
+      // ✅ NOTE: Intentionally undefined to force profile completion
+      // yearOfAttendance: currentYear,
+      // alumniId: newAlumniId,
     });
     await userProfile.save();
 
@@ -354,18 +321,7 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     });
     await userSettings.save();
 
-    // ✅ FIX 1: Auto-Join Class Group for Google Users
-    const classGroupName = `Class of ${currentYear}`;
-    await Group.findOneAndUpdate(
-      { name: classGroupName, type: "Class" },
-      {
-        $addToSet: { members: userAuth._id },
-        $setOnInsert: {
-          description: `Official group for the ${classGroupName}`,
-        },
-      },
-      { upsert: true, new: true },
-    );
+    // ❌ REMOVED: Auto-Join Class Group for Google Users
 
     if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
   } else {
@@ -418,6 +374,8 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       profilePicture: userProfile.profilePicture,
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
+      // ✅ Return year to frontend check
+      yearOfAttendance: userProfile.yearOfAttendance,
     },
   });
 });

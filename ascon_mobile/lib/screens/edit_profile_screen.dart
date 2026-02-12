@@ -2,13 +2,19 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
-import 'package:intl/intl.dart'; // ✅ Needed for Date Format
+import 'package:intl/intl.dart'; 
+import 'package:go_router/go_router.dart'; // ✅ CRITICAL IMPORT ADDED
 import '../services/data_service.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
+  final bool isFirstTime;
 
-  const EditProfileScreen({super.key, required this.userData});
+  const EditProfileScreen({
+    super.key, 
+    required this.userData,
+    this.isFirstTime = false, 
+  });
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -19,6 +25,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final DataService _dataService = DataService(); 
   bool _isLoading = false;
 
+  // ✅ 1. Name Controller for Editing
+  late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _jobController;
   late TextEditingController _orgController;
@@ -28,7 +36,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _cityController;
   late TextEditingController _stateController;
   
-  // ✅ DOB Controller
   final TextEditingController _dobController = TextEditingController();
   DateTime? _selectedDate;
 
@@ -37,7 +44,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   
   bool _isOpenToMentorship = false; 
   bool _isLocationVisible = false; 
-  bool _isBirthdayVisible = true; // ✅ New Privacy Toggle
+  bool _isBirthdayVisible = true; 
 
   Uint8List? _selectedImageBytes; 
   XFile? _pickedFile; 
@@ -61,6 +68,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ 2. Initialize Name
+    _nameController = TextEditingController(text: widget.userData['fullName'] ?? '');
+    
     _bioController = TextEditingController(text: widget.userData['bio'] ?? '');
     _jobController = TextEditingController(text: widget.userData['jobTitle'] ?? '');
     _orgController = TextEditingController(text: widget.userData['organization'] ?? '');
@@ -73,9 +83,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _completePhoneNumber = widget.userData['phoneNumber'] ?? '';
     _isOpenToMentorship = widget.userData['isOpenToMentorship'] == true;
     _isLocationVisible = widget.userData['isLocationVisible'] == true; 
-    _isBirthdayVisible = widget.userData['isBirthdayVisible'] ?? true; // ✅ Load setting
+    _isBirthdayVisible = widget.userData['isBirthdayVisible'] ?? true; 
 
-    // ✅ Initialize Date of Birth
     if (widget.userData['dateOfBirth'] != null) {
       try {
         _selectedDate = DateTime.parse(widget.userData['dateOfBirth']);
@@ -101,6 +110,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _bioController.dispose();
     _jobController.dispose();
     _orgController.dispose();
@@ -162,10 +172,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Force Year Selection
+    if (_yearController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Year of Attendance is required."), backgroundColor: Colors.red),
+        );
+        return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final Map<String, String> fields = {
+        // ✅ 3. Send Updated Name
+        'fullName': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
         'jobTitle': _jobController.text.trim(),
         'organization': _orgController.text.trim(),
@@ -177,11 +197,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'state': _stateController.text.trim(),
         'isLocationVisible': _isLocationVisible.toString(),
         'isOpenToMentorship': _isOpenToMentorship.toString(), 
-        // ✅ Send Privacy Setting
         'isBirthdayVisible': _isBirthdayVisible.toString(),
       };
 
-      // ✅ ADD DOB TO PAYLOAD
       if (_selectedDate != null) {
         fields['dateOfBirth'] = _selectedDate!.toIso8601String();
       }
@@ -199,10 +217,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
 
       if (success) {
-        Navigator.pop(context, true); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Profile Updated Successfully!")),
         );
+        
+        // ✅ 4. FIXED NAVIGATION LOGIC
+        if (widget.isFirstTime) {
+          // Use GoRouter context.go() instead of Navigator
+          context.go('/home'); 
+        } else {
+          Navigator.pop(context, true);
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -222,7 +247,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   ImageProvider? getImageProvider() {
     if (_selectedImageBytes != null) return MemoryImage(_selectedImageBytes!);
-    if (_currentUrl != null && _currentUrl!.startsWith('http')) return NetworkImage(_currentUrl!);
+    
+    // Safety check for broken Google URLs
+    if (_currentUrl != null && _currentUrl!.startsWith('http')) {
+      if (_currentUrl!.contains("profile/picture/0")) {
+        return null; 
+      }
+      return NetworkImage(_currentUrl!);
+    }
     return null;
   }
 
@@ -248,8 +280,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         alignLabelWithHint: maxLines > 1,
       ),
       validator: (value) {
+        if (label == "Full Name" && (value == null || value.isEmpty)) {
+          return "Name cannot be empty";
+        }
         if (label == "Specify Programme Name" && _selectedProgramme == "Other" && (value == null || value.isEmpty)) {
           return "Please specify";
+        }
+        if (label == "Class Year" && (value == null || value.isEmpty)) {
+          return "Required";
         }
         return null;
       },
@@ -282,240 +320,276 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       initialPhoneNumber = initialPhoneNumber.substring(1); 
     }
 
-    return Scaffold(
-      backgroundColor: scaffoldBg,
-      appBar: AppBar(
-        title: const Text("Edit Profile"),
-        backgroundColor: primaryColor,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: primaryColor,
-                      backgroundImage: getImageProvider(),
-                      child: getImageProvider() == null
-                          ? const Icon(Icons.person, size: 60, color: Colors.white)
-                          : null,
+    return PopScope(
+      canPop: !widget.isFirstTime, 
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Please complete your profile to continue.")),
+        );
+      },
+      child: Scaffold(
+        backgroundColor: scaffoldBg,
+        appBar: AppBar(
+          title: Text(widget.isFirstTime ? "Complete Profile" : "Edit Profile"),
+          backgroundColor: primaryColor,
+          foregroundColor: Colors.white,
+          automaticallyImplyLeading: !widget.isFirstTime,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                
+                if (widget.isFirstTime)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber),
                     ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFD4AF37),
-                            shape: BoxShape.circle,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline, color: Colors.brown),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            "Please review your details and set your Class Year to join the community.",
+                            style: TextStyle(color: Colors.brown, fontSize: 13),
                           ),
-                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                Center(
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: primaryColor,
+                        backgroundImage: getImageProvider(),
+                        child: getImageProvider() == null
+                            ? const Icon(Icons.person, size: 60, color: Colors.white)
+                            : null,
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _pickImage,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFD4AF37),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // ✅ 5. Full Name Field (Editable)
+                _buildTextField("Full Name", _nameController, Icons.person),
+                const SizedBox(height: 12),
+
+                _buildTextField("Job Title", _jobController, Icons.work),
+                const SizedBox(height: 12),
+                _buildTextField("Organization", _orgController, Icons.business),
+                const SizedBox(height: 12),
+
+                _buildTextField(
+                  "Date of Birth",
+                  _dobController,
+                  Icons.cake,
+                  readOnly: true,
+                  onTap: _pickDate,
+                ),
+                const SizedBox(height: 12),
+
+                DropdownButtonFormField<String>(
+                  value: _selectedProgramme,
+                  isExpanded: true,
+                  isDense: true,
+                  dropdownColor: cardColor,
+                  decoration: InputDecoration(
+                    labelText: "Programme Attended",
+                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                    prefixIcon: Icon(Icons.school, color: primaryColor, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  ),
+                  items: _programmeOptions.map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(
+                        value,
+                        style: TextStyle(fontSize: 13, color: textColor),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (newValue) {
+                    setState(() {
+                      _selectedProgramme = newValue;
+                    });
+                  },
+                  validator: (value) => value == null ? 'Please select a programme' : null,
+                ),
+
+                if (_selectedProgramme == "Other") ...[
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    "Specify Programme Name",
+                    _otherProgrammeController,
+                    Icons.edit_note,
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
+                _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
+                
+                const SizedBox(height: 12),
+
+                IntlPhoneField(
+                  initialValue: initialPhoneNumber,
+                  initialCountryCode: initialCountryCode,
+                  decoration: InputDecoration(
+                    labelText: 'Phone Number',
+                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                  ),
+                  style: TextStyle(fontSize: 14, color: textColor),
+                  dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
+                  onChanged: (phone) {
+                    _completePhoneNumber = phone.completeNumber; 
+                  },
+                ),
+
+                const SizedBox(height: 12),
+                _buildTextField("LinkedIn URL", _linkedinController, Icons.link),
+                const SizedBox(height: 12),
+                
+                _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
+
+                const SizedBox(height: 24),
+
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField("City", _cityController, Icons.location_city),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildTextField("State", _stateController, Icons.map_outlined),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-
-              _buildTextField("Job Title", _jobController, Icons.work),
-              const SizedBox(height: 12),
-              _buildTextField("Organization", _orgController, Icons.business),
-              const SizedBox(height: 12),
-
-              // ✅ DATE OF BIRTH PICKER
-              _buildTextField(
-                "Date of Birth",
-                _dobController,
-                Icons.cake,
-                readOnly: true,
-                onTap: _pickDate,
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _selectedProgramme,
-                isExpanded: true,
-                isDense: true,
-                dropdownColor: cardColor,
-                decoration: InputDecoration(
-                  labelText: "Programme Attended",
-                  labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-                  prefixIcon: Icon(Icons.school, color: primaryColor, size: 20),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                ),
-                items: _programmeOptions.map((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(
-                      value,
-                      style: TextStyle(fontSize: 13, color: textColor),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-                onChanged: (newValue) {
-                  setState(() {
-                    _selectedProgramme = newValue;
-                  });
-                },
-                validator: (value) => value == null ? 'Please select a programme' : null,
-              ),
-
-              if (_selectedProgramme == "Other") ...[
                 const SizedBox(height: 12),
-                _buildTextField(
-                  "Specify Programme Name",
-                  _otherProgrammeController,
-                  Icons.edit_note,
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text("Make Location Visible", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text("Allow nearby alumni to find you on the map.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    value: _isLocationVisible,
+                    activeColor: Colors.blue,
+                    inactiveThumbColor: Colors.grey, 
+                    inactiveTrackColor: Colors.grey.withOpacity(0.2),
+                    onChanged: (bool value) {
+                      setState(() {
+                        _isLocationVisible = value;
+                      });
+                    },
+                    secondary: Icon(Icons.location_on, color: _isLocationVisible ? Colors.blue : Colors.grey),
+                  ),
                 ),
+
+                const SizedBox(height: 12),
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text("Open to Mentorship", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text("Allow other alumni to contact you for guidance.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    value: _isOpenToMentorship,
+                    activeColor: const Color(0xFFD4AF37), 
+                    inactiveThumbColor: Colors.grey, 
+                    inactiveTrackColor: Colors.grey.withOpacity(0.2),
+
+                    onChanged: (bool value) {
+                      setState(() {
+                        _isOpenToMentorship = value;
+                      });
+                    },
+                    secondary: Icon(Icons.stars, color: _isOpenToMentorship ? const Color(0xFFD4AF37) : Colors.grey),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text("Show Birthday", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: const Text("Announce my birthday to alumni on the dashboard.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    value: _isBirthdayVisible,
+                    activeColor: Colors.pinkAccent,
+                    inactiveThumbColor: Colors.grey, 
+                    inactiveTrackColor: Colors.grey.withOpacity(0.2),
+                    onChanged: (bool value) {
+                      setState(() => _isBirthdayVisible = value);
+                    },
+                    secondary: Icon(Icons.cake, color: _isBirthdayVisible ? Colors.pinkAccent : Colors.grey),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 45,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : saveProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _isLoading
+                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text("SAVE CHANGES"),
+                  ),
+                )
               ],
-
-              const SizedBox(height: 12),
-
-              _buildTextField("Class Year", _yearController, Icons.calendar_today, isNumber: true),
-              
-              const SizedBox(height: 12),
-
-              IntlPhoneField(
-                initialValue: initialPhoneNumber,
-                initialCountryCode: initialCountryCode,
-                decoration: InputDecoration(
-                  labelText: 'Phone Number',
-                  labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-                ),
-                style: TextStyle(fontSize: 14, color: textColor),
-                dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
-                onChanged: (phone) {
-                  _completePhoneNumber = phone.completeNumber; 
-                },
-              ),
-
-              const SizedBox(height: 12),
-              _buildTextField("LinkedIn URL", _linkedinController, Icons.link),
-              const SizedBox(height: 12),
-              
-              _buildTextField("Short Bio", _bioController, Icons.person, maxLines: 3),
-
-              const SizedBox(height: 24),
-
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text("Location", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: primaryColor)),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField("City", _cityController, Icons.location_city),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildTextField("State", _stateController, Icons.map_outlined),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: SwitchListTile(
-                  title: const Text("Make Location Visible", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("Allow nearby alumni to find you on the map.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _isLocationVisible,
-                  activeColor: Colors.blue,
-                  inactiveThumbColor: Colors.grey, 
-                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
-                  onChanged: (bool value) {
-                    setState(() {
-                      _isLocationVisible = value;
-                    });
-                  },
-                  secondary: Icon(Icons.location_on, color: _isLocationVisible ? Colors.blue : Colors.grey),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: SwitchListTile(
-                  title: const Text("Open to Mentorship", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: Text("Allow other alumni to contact you for guidance.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _isOpenToMentorship,
-                  activeColor: const Color(0xFFD4AF37), // Gold for Mentors
-                  inactiveThumbColor: Colors.grey, 
-                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
-
-                  onChanged: (bool value) {
-                    setState(() {
-                      _isOpenToMentorship = value;
-                    });
-                  },
-                  secondary: Icon(Icons.stars, color: _isOpenToMentorship ? const Color(0xFFD4AF37) : Colors.grey),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ✅ PRIVACY TOGGLE FOR BIRTHDAY
-              Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade300),
-                ),
-                child: SwitchListTile(
-                  title: const Text("Show Birthday", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  subtitle: const Text("Announce my birthday to alumni on the dashboard.", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _isBirthdayVisible,
-                  activeColor: Colors.pinkAccent,
-                  inactiveThumbColor: Colors.grey, 
-                  inactiveTrackColor: Colors.grey.withOpacity(0.2),
-                  onChanged: (bool value) {
-                    setState(() => _isBirthdayVisible = value);
-                  },
-                  secondary: Icon(Icons.cake, color: _isBirthdayVisible ? Colors.pinkAccent : Colors.grey),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              SizedBox(
-                width: double.infinity,
-                height: 45,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text("SAVE CHANGES"),
-                ),
-              )
-            ],
+            ),
           ),
         ),
       ),
