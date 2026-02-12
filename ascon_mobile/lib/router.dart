@@ -14,6 +14,7 @@ import 'screens/chat_screen.dart';
 import 'screens/about_screen.dart';
 import 'screens/polls_screen.dart';
 import 'screens/notification_permission_screen.dart'; 
+import 'screens/call_screen.dart'; // ✅ ADD THIS IMPORT
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> homeNavKey = GlobalKey<NavigatorState>();
@@ -31,7 +32,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const SplashScreen(),
     ),
     
-    // ✅ NEW ROUTE FOR NOTIFICATION PERMISSION
     GoRoute(
       path: '/notification_permission',
       builder: (context, state) {
@@ -146,6 +146,22 @@ final GoRouter appRouter = GoRouter(
       path: '/polls',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const PollsScreen(),
+    ),
+
+    // ✅ NEW CALL ROUTE (Fixes Navigation Crash)
+    GoRoute(
+      path: '/call',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) {
+        final args = state.extra as Map<String, dynamic>;
+        return CallScreen(
+          remoteName: args['remoteName'],
+          remoteId: args['remoteId'],
+          remoteAvatar: args['remoteAvatar'],
+          isCaller: args['isCaller'],
+          offer: args['offer'],
+        );
+      },
     ),
   ],
 );

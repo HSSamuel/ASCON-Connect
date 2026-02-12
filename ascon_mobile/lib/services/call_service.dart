@@ -1,133 +1,198 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; 
-import 'package:permission_handler/permission_handler.dart'; 
-import 'socket_service.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO; // Added for type definition
+import '../services/socket_service.dart';
+
+enum CallState {
+  idle,
+  calling,
+  incoming,
+  connected,
+}
 
 class CallService {
+  // Singleton
+  static final CallService _instance = CallService._internal();
+  factory CallService() => _instance;
+  CallService._internal();
+
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
+  MediaStream? _remoteStream;
+  String? _remoteId;
+  bool _isCallActive = false;
   
-  // ✅ FIX: Use a getter to access the current active socket instance.
-  // Previously: final _socket = SocketService().socket; (This caused the bug)
-  IO.Socket? get _socket => SocketService().socket;
+  // Call State Streams
+  final _callStateController = StreamController<CallState>.broadcast();
+  Stream<CallState> get callStateStream => _callStateController.stream;
 
-  // Request Permissions Helper
-  Future<bool> _checkPermissions() async {
-    var status = await Permission.microphone.request();
-    return status.isGranted;
+  final _remoteStreamController = StreamController<MediaStream?>.broadcast();
+  Stream<MediaStream?> get remoteStreamStream => _remoteStreamController.stream;
+
+  final _localStreamController = StreamController<MediaStream?>.broadcast();
+  Stream<MediaStream?> get localStreamStream => _localStreamController.stream;
+
+  void dispose() {
+    _closePeerConnection();
+    _callStateController.close();
+    _remoteStreamController.close();
+    _localStreamController.close();
   }
 
-  Future<Map<String, dynamic>> _getIceServers() async {
-    List<Map<String, dynamic>> iceServers = [
-      {'urls': 'stun:stun.l.google.com:19302'},
-      {'urls': 'stun:stun1.l.google.com:19302'},
-    ];
+  // --- 1. START CALL (Caller) ---
 
-    final String? turnUrlRaw = dotenv.env['TURN_URL'];
-    final String? turnUser = dotenv.env['TURN_USERNAME'];
-    final String? turnPass = dotenv.env['TURN_PASSWORD'];
+  Future<void> startCall(String remoteUserId, {bool video = false}) async {
+    if (_isCallActive) return;
+    
+    _remoteId = remoteUserId;
+    _isCallActive = true;
+    _callStateController.add(CallState.calling);
 
-    if (turnUrlRaw != null && turnUrlRaw.isNotEmpty && 
-        turnUser != null && turnUser.isNotEmpty && 
-        turnPass != null && turnPass.isNotEmpty) {
-      
-      List<String> turnUrls = turnUrlRaw.split(',').map((e) => e.trim()).toList();
-      iceServers.add({
-        'urls': turnUrls, 
-        'username': turnUser,
-        'credential': turnPass,
-      });
-    }
+    await _createPeerConnection();
+    await _getUserMedia(video: video);
 
-    return {
-      'iceServers': iceServers,
-      'iceTransportPolicy': 'all', 
-    };
-  }
-
-  Future<void> startCall(String receiverId) async {
-    if (_socket == null) return;
-    if (!await _checkPermissions()) throw Exception("Microphone permission denied");
-
-    final configuration = await _getIceServers();
-    _peerConnection = await createPeerConnection(configuration);
-
-    _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
-    _localStream!.getTracks().forEach((track) {
-      _peerConnection!.addTrack(track, _localStream!);
+    RTCSessionDescription offer = await _peerConnection!.createOffer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': video,
     });
 
-    _peerConnection!.onIceCandidate = (candidate) {
-      _socket?.emit('ice_candidate', {
-        'to': receiverId,
-        'candidate': candidate.toMap(),
-      });
-    };
-
-    RTCSessionDescription offer = await _peerConnection!.createOffer();
     await _peerConnection!.setLocalDescription(offer);
 
-    _socket?.emit('call_user', {
-      'userToCall': receiverId,
+    // ✅ FIXED: Null-safe access to socket
+    SocketService().socket?.emit('call_user', {
+      'userToCall': remoteUserId,
       'offer': offer.toMap(),
     });
   }
 
-  Future<void> answerCall(Map<String, dynamic> offer, String callerId) async {
-    if (_socket == null) return;
-    if (!await _checkPermissions()) throw Exception("Microphone permission denied");
+  // --- 2. ANSWER CALL (Receiver) ---
+  // ✅ ADDED: This matches the method called in CallScreen
+  Future<void> answerCall(Map<String, dynamic> offer, String callerId, {bool video = false}) async {
+    _remoteId = callerId;
+    _isCallActive = true;
+    _callStateController.add(CallState.connected);
 
-    final configuration = await _getIceServers();
-    _peerConnection = await createPeerConnection(configuration);
-
-    _localStream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
-    _localStream!.getTracks().forEach((track) {
-      _peerConnection!.addTrack(track, _localStream!);
-    });
-
-    _peerConnection!.onIceCandidate = (candidate) {
-      _socket?.emit('ice_candidate', {
-        'to': callerId,
-        'candidate': candidate.toMap(),
-      });
-    };
-
+    await _createPeerConnection();
+    
+    // Set Remote Description (Offer from Caller)
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(offer['sdp'], offer['type']),
     );
 
-    RTCSessionDescription answer = await _peerConnection!.createAnswer();
+    // Get Local Media
+    await _getUserMedia(video: video);
+
+    // Create Answer
+    RTCSessionDescription answer = await _peerConnection!.createAnswer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': video,
+    });
+
     await _peerConnection!.setLocalDescription(answer);
 
-    _socket?.emit('make_answer', {
-      'to': callerId,
+    // Send Answer back to Caller
+    // ✅ FIXED: Null-safe access to socket
+    SocketService().socket?.emit('make_answer', {
+      'to': _remoteId,
       'answer': answer.toMap(),
     });
   }
 
-  Future<void> handleAnswer(Map<String, dynamic> answer) async {
-    if (_peerConnection != null) {
-      await _peerConnection!.setRemoteDescription(
-        RTCSessionDescription(answer['sdp'], answer['type']),
-      );
-    }
+  // --- 3. HANDLE ANSWER (Caller) ---
+  // ✅ ADDED: Public method called by CallScreen when 'answer_made' event arrives
+  Future<void> handleAnswer(dynamic answerData) async {
+    if (_peerConnection == null) return;
+    
+    await _peerConnection!.setRemoteDescription(
+      RTCSessionDescription(answerData['sdp'], answerData['type']),
+    );
+    _callStateController.add(CallState.connected);
   }
 
-  Future<void> handleIceCandidate(Map<String, dynamic> candidate) async {
+  // --- 4. HANDLE ICE CANDIDATES (Both) ---
+  // ✅ ADDED: Public method called by CallScreen when 'ice_candidate' event arrives
+  Future<void> handleIceCandidate(dynamic candidateData) async {
     if (_peerConnection != null) {
       await _peerConnection!.addCandidate(
         RTCIceCandidate(
-          candidate['candidate'],
-          candidate['sdpMid'],
-          candidate['sdpMLineIndex'],
+          candidateData['candidate'],
+          candidateData['sdpMid'],
+          candidateData['sdpMLineIndex'],
         ),
       );
     }
   }
 
-  // Toggle Mute
-  void toggleMute(bool mute) {
+  // --- 5. UTILS & CONTROLS ---
+
+  Future<void> _createPeerConnection() async {
+    Map<String, dynamic> configuration = {
+      "iceServers": [
+        {"urls": "stun:stun.l.google.com:19302"},
+      ]
+    };
+
+    _peerConnection = await createPeerConnection(configuration);
+
+    _peerConnection!.onIceCandidate = (RTCIceCandidate candidate) {
+      if (_remoteId != null) {
+        // ✅ FIXED: Null-safe access
+        SocketService().socket?.emit('ice_candidate', {
+          'to': _remoteId,
+          'candidate': {
+            'candidate': candidate.candidate,
+            'sdpMid': candidate.sdpMid,
+            'sdpMLineIndex': candidate.sdpMLineIndex,
+          }
+        });
+      }
+    };
+
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      if (event.streams.isNotEmpty) {
+        _remoteStream = event.streams[0];
+        _remoteStreamController.add(_remoteStream);
+      }
+    };
+    
+    _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        endCall();
+      }
+    };
+  }
+
+  Future<void> _getUserMedia({bool video = false}) async {
+    final Map<String, dynamic> mediaConstraints = {
+      'audio': true,
+      'video': video ? {'facingMode': 'user'} : false,
+    };
+
+    _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+    _localStreamController.add(_localStream);
+    
+    _localStream!.getTracks().forEach((track) {
+      _peerConnection!.addTrack(track, _localStream!);
+    });
+  }
+  
+  Future<void> toggleSpeaker(bool enable) async {
+    if (kIsWeb) return; 
+
+    try {
+      if (_localStream != null) {
+        _localStream!.getAudioTracks().forEach((track) {
+          track.enableSpeakerphone(enable);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error toggling speaker: $e");
+    }
+  }
+
+  Future<void> toggleMute(bool mute) async {
     if (_localStream != null) {
       _localStream!.getAudioTracks().forEach((track) {
         track.enabled = !mute;
@@ -135,19 +200,18 @@ class CallService {
     }
   }
 
-  // Toggle Speaker
-  void toggleSpeaker(bool enable) {
-    if (_localStream != null) {
-      _localStream!.getAudioTracks().forEach((track) {
-        track.enableSpeakerphone(enable);
-      });
-    }
+  void endCall() {
+    _closePeerConnection();
+    _callStateController.add(CallState.idle);
+    _isCallActive = false;
+    _remoteId = null;
   }
 
-  void endCall() {
-    _localStream?.dispose();
+  void _closePeerConnection() {
     _peerConnection?.close();
-    _localStream = null;
     _peerConnection = null;
+    _localStream?.dispose();
+    _localStream = null;
+    _remoteStream = null;
   }
 }

@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart'; // ✅ Needed for SchedulerBinding
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import '../config.dart';
 import '../config/storage_config.dart';
-import '../router.dart'; // ✅ Needed for Navigation
-import '../screens/call_screen.dart'; // ✅ Needed to open call
+import '../router.dart'; 
 
 class SocketService with WidgetsBindingObserver {
   IO.Socket? socket;
@@ -12,11 +12,9 @@ class SocketService with WidgetsBindingObserver {
   String? _currentUserId;
   String? _connectedUserId; 
 
-  // ✅ 1. General User Status Stream
   final _userStatusController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get userStatusStream => _userStatusController.stream;
 
-  // ✅ 2. Call Signaling Stream (Answer, ICE Candidates)
   final _callEventsController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get callEvents => _callEventsController.stream;
 
@@ -89,7 +87,6 @@ class SocketService with WidgetsBindingObserver {
     socket!.onConnect((_) {
       debugPrint('✅ Socket Connected');
       if (_currentUserId != null) {
-        // Ensure backend knows we are here (Double check)
         socket!.emit("user_connected", _currentUserId);
       }
     });
@@ -110,38 +107,39 @@ class SocketService with WidgetsBindingObserver {
     });
 
     // ============================================
-    // 📞 CALL SIGNALING EVENTS
+    // 📞 CALL SIGNALING EVENTS (CRASH FIX)
     // ============================================
 
-    // 1. INCOMING CALL (Global Navigation)
     socket!.on('call_made', (data) {
       debugPrint("📞 INCOMING CALL RECEIVED! Payload: $data");
       
-      final currentState = rootNavigatorKey.currentState;
-      if (currentState != null) {
-        debugPrint("🚀 Navigating to CallScreen...");
-        currentState.push(
-          MaterialPageRoute(
-            builder: (_) => CallScreen(
-              remoteName: "Incoming Call...", 
-              remoteId: data['callerId'] ?? "Unknown",
-              isCaller: false,
-              offer: data['offer'],
-            ),
-          ),
-        );
-      } else {
-        debugPrint("❌ Navigator State is NULL. Cannot open Call Screen.");
-      }
+      // ✅ FIX 1: Use SchedulerBinding to ensure we are not in the middle of a build
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        // ✅ FIX 2: Check if Navigator is mounted before pushing
+        if (rootNavigatorKey.currentState != null) {
+          try {
+            debugPrint("🚀 Safe Navigation to CallScreen...");
+            appRouter.push('/call', extra: {
+              'remoteName': data['callerName'] ?? "Unknown Caller",
+              'remoteId': data['callerId'] ?? "Unknown",
+              'remoteAvatar': data['callerPic'],
+              'isCaller': false,
+              'offer': data['offer'],
+            });
+          } catch (e) {
+            debugPrint("❌ Navigation Failed: $e");
+          }
+        } else {
+          debugPrint("⚠️ Navigator not ready. Call notification missed.");
+        }
+      });
     });
 
-    // 2. ANSWER RECEIVED (For Caller)
     socket!.on('answer_made', (data) {
       debugPrint("✅ Call Answered by Peer");
       _callEventsController.add({'type': 'answer_made', 'data': data});
     });
 
-    // 3. ICE CANDIDATE (Connectivity)
     socket!.on('ice_candidate_received', (data) {
       _callEventsController.add({'type': 'ice_candidate', 'data': data});
     });

@@ -28,7 +28,6 @@ class MessageBubble extends StatelessWidget {
   final Function(String) onToggleSelection;
   final Function(String, String) onReply;
   final Function(String) onEdit;
-  // Updated: onDelete now accepts (id, deleteForEveryone)
   final Function(String, bool) onDelete; 
   final Function(String) onPlayAudio;
   final Function(String, String) onPauseAudio;
@@ -86,8 +85,8 @@ class MessageBubble extends StatelessWidget {
                 leading: const Icon(Icons.copy),
                 title: const Text("Copy"),
                 onTap: () {
-                  // Copy logic here if needed
                   Navigator.pop(ctx);
+                  // Trigger copy from parent if needed, or handle here
                 },
               ),
             ],
@@ -100,17 +99,16 @@ class MessageBubble extends StatelessWidget {
                 title: const Text("Delete for Everyone"),
                 onTap: () {
                   Navigator.pop(ctx);
-                  onDelete(msg.id, true); // true = delete for everyone
+                  onDelete(msg.id, true); 
                 },
               ),
             
-            // "Clear Trace" allows removing the "This message was deleted" bubble
             ListTile(
               leading: const Icon(Icons.delete_outline, color: Colors.red),
               title: Text(isDeletedContent ? "Clear Trace" : "Delete for Me"),
               onTap: () {
                 Navigator.pop(ctx);
-                onDelete(msg.id, false); // false = delete for me (or clear trace)
+                onDelete(msg.id, false); 
               },
             ),
           ],
@@ -122,11 +120,8 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time = DateFormat('h:mm a').format(msg.createdAt);
-    
-    // ✅ CHECK DELETED STATUS
     final bool isDeletedMessage = msg.isDeleted || msg.text.contains("This message was deleted");
 
-    // ✅ VISUAL FIX: Handle Error Status
     IconData statusIcon;
     Color statusColor;
 
@@ -159,17 +154,15 @@ class MessageBubble extends StatelessWidget {
       confirmDismiss: (d) async { onSwipeReply(msg.id); return false; },
       background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: Colors.transparent, child: Icon(Icons.reply, color: primaryColor)),
       child: GestureDetector(
-        // ✅ UPDATED: Long press shows smart options now, unless in selection mode
-        onLongPress: () {
-          if (isSelectionMode) {
-            onToggleSelection(msg.id);
-          } else {
-            _showOptions(context);
-          }
+        // ✅ START SELECTION ON LONG PRESS
+        onLongPress: () => onToggleSelection(msg.id),
+        // ✅ TOGGLE SELECTION ON TAP IF MODE ACTIVE
+        onTap: () { 
+          if (isSelectionMode) onToggleSelection(msg.id); 
         },
-        onTap: () { if (isSelectionMode) onToggleSelection(msg.id); },
         child: Container(
-          color: isSelected ? primaryColor.withOpacity(0.2) : Colors.transparent,
+          // ✅ HIGHLIGHT SELECTED MESSAGE
+          color: isSelected ? primaryColor.withOpacity(0.3) : Colors.transparent,
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Align(
             alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -219,7 +212,6 @@ class MessageBubble extends StatelessWidget {
                         if (msg.text.isNotEmpty)
                           Padding(
                             padding: (msg.type == 'image' || msg.type == 'file' || msg.type == 'audio') ? const EdgeInsets.only(top: 8) : EdgeInsets.zero,
-                            // ✅ APPLY ITALICS FOR DELETED MESSAGES
                             child: Text(
                               msg.text, 
                               style: GoogleFonts.lato(
@@ -257,6 +249,11 @@ class MessageBubble extends StatelessWidget {
     if (msg.type == 'image') {
       return GestureDetector(
         onTap: () {
+           // Disable media tap if selecting
+           if (isSelectionMode) {
+             onToggleSelection(msg.id);
+             return;
+           }
            if (msg.fileUrl != null) Navigator.push(context, MaterialPageRoute(builder: (_) => FullScreenImage(imageUrl: msg.fileUrl!, heroTag: msg.id)));
         },
         child: ClipRRect(
@@ -287,6 +284,10 @@ class MessageBubble extends StatelessWidget {
           children: [
             GestureDetector(
               onTap: () {
+                if (isSelectionMode) {
+                  onToggleSelection(msg.id);
+                  return;
+                }
                 if (isPlaying) {
                   onPauseAudio(msg.id, msg.fileUrl ?? "");
                 } else {
@@ -319,45 +320,55 @@ class MessageBubble extends StatelessWidget {
     } 
     else if (msg.type == 'file') {
       final isDownloading = downloadingFileId == msg.id;
-      
-      return Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.withOpacity(0.3))
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.insert_drive_file, color: isMe ? Colors.white70 : Colors.grey[700], size: 30),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(msg.fileName ?? "Attachment", maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text("Document", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
-                ],
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (isSelectionMode) onToggleSelection(msg.id);
+        },
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.withOpacity(0.3))
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.insert_drive_file, color: isMe ? Colors.white70 : Colors.grey[700], size: 30),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(msg.fileName ?? "Attachment", maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text("Document", style: TextStyle(fontSize: 10, color: isMe ? Colors.white70 : Colors.grey)),
+                  ],
+                ),
               ),
-            ),
-            if (msg.fileUrl != null)
-              FutureBuilder<bool>(
-                future: _isFileDownloaded(msg.fileName),
-                builder: (context, snapshot) {
-                  final bool isDownloaded = snapshot.data ?? false;
-                  
-                  return GestureDetector(
-                    onTap: () => onDownloadFile(msg.fileUrl!, msg.fileName ?? "file"),
-                    child: isDownloading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Icon(
-                          isDownloaded ? Icons.folder_open_rounded : Icons.download_rounded, 
-                          color: isMe ? Colors.white : primaryColor
-                        ),
-                  );
-                },
-              ),
-          ],
+              if (msg.fileUrl != null)
+                FutureBuilder<bool>(
+                  future: _isFileDownloaded(msg.fileName),
+                  builder: (context, snapshot) {
+                    final bool isDownloaded = snapshot.data ?? false;
+                    return GestureDetector(
+                      onTap: () {
+                        if (isSelectionMode) {
+                          onToggleSelection(msg.id);
+                          return;
+                        }
+                        onDownloadFile(msg.fileUrl!, msg.fileName ?? "file");
+                      },
+                      child: isDownloading 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(
+                            isDownloaded ? Icons.folder_open_rounded : Icons.download_rounded, 
+                            color: isMe ? Colors.white : primaryColor
+                          ),
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       );
     }

@@ -59,6 +59,11 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
     final Color accentGold = const Color(0xFFD4AF37);
     final Color bg = isDark ? const Color(0xFF121212) : Colors.white;
     final Color cardBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    
+    // ✅ FIX: Calculate responsive height to prevent overflow on small screens
+    final screenHeight = MediaQuery.of(context).size.height;
+    // Use 50% of screen height, but cap it at 420px for larger devices
+    final double imageHeight = (screenHeight * 0.5 > 420) ? 420 : screenHeight * 0.5;
 
     return Scaffold(
       backgroundColor: bg,
@@ -111,7 +116,7 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
                           children: [
                             // Main Image Card
                             Container(
-                              height: 420, // ✅ INCREASED HEIGHT
+                              height: imageHeight, // ✅ APPLIED RESPONSIVE HEIGHT
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: cardBg,
@@ -157,7 +162,6 @@ class _NotificationPermissionScreenState extends State<NotificationPermissionScr
                             ),
 
                             // Floating Notification Badge (Pulsing)
-                            // ✅ FIXED: Used 'right' instead of invalid 'center' parameter
                             Positioned(
                               top: 15, 
                               right: 15, 

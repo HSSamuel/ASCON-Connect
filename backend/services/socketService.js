@@ -106,48 +106,52 @@ const initializeSocket = async (server) => {
     // D. WEBRTC SIGNALING (VOICE CALLS)
     // ==========================================
 
-    // 1. Initiate Call (FIXED)
+    // 1. Initiate Call (FIXED with Caller Info)
     socket.on("call_user", async (data) => {
       const receiverId = data.userToCall;
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
-      // ✅ FIX: ALWAYS emit the event first (Fire-and-forget logic)
-      // This ensures if the socket is alive but not tracked, it still rings.
-      io.to(receiverId).emit("call_made", {
-        offer: data.offer,
-        socket: socket.id,
-        callerId: socket.userId,
-      });
+      try {
+        // ✅ FETCH CALLER PROFILE
+        const callerProfile = await UserProfile.findOne({
+          userId: socket.userId,
+        }).select("fullName profilePicture");
 
-      // Check "official" online status for Notification fallback
-      const isReceiverOnline =
-        onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
+        const callerName = callerProfile
+          ? callerProfile.fullName
+          : "Unknown Caller";
+        const callerPic = callerProfile ? callerProfile.profilePicture : null;
 
-      if (!isReceiverOnline) {
-        logger.info(
-          `📴 User ${receiverId} appears offline. Sending Push Notification.`,
-        );
-        try {
-          const callerProfile = await UserProfile.findOne({
-            userId: socket.userId,
-          }).select("fullName");
-          const callerName = callerProfile
-            ? callerProfile.fullName
-            : "Unknown Caller";
+        // ✅ EMIT WITH NAME & PIC
+        io.to(receiverId).emit("call_made", {
+          offer: data.offer,
+          socket: socket.id,
+          callerId: socket.userId,
+          callerName: callerName,
+          callerPic: callerPic,
+        });
 
+        // Check "official" online status for Notification fallback
+        const isReceiverOnline =
+          onlineUsers.has(receiverId) && onlineUsers.get(receiverId).size > 0;
+
+        if (!isReceiverOnline) {
+          logger.info(
+            `📴 User ${receiverId} appears offline. Sending Push Notification.`,
+          );
           await sendPersonalNotification(
             receiverId,
             "Incoming Call 📞",
             `${callerName} is calling you...`,
             {
-              type: "call_incoming", // Changed to trigger ring if app wakes up
+              type: "call_incoming",
               callerId: socket.userId,
               callerName: callerName,
             },
           );
-        } catch (err) {
-          logger.error(`Failed to send call notification: ${err.message}`);
         }
+      } catch (err) {
+        logger.error(`Call Error: ${err.message}`);
       }
     });
 

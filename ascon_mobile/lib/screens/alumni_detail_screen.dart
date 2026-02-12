@@ -221,6 +221,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
   void _startVoiceCall() {
     final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     final String fullName = _currentAlumniData['fullName'] ?? 'Alumni Member';
+    final String? profilePic = _currentAlumniData['profilePicture']; // Get the image
 
     Navigator.push(
       context,
@@ -228,6 +229,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
         builder: (_) => CallScreen(
           remoteName: fullName,
           remoteId: targetId,
+          remoteAvatar: profilePic,
           isCaller: true,
         ),
       ),
