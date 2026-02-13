@@ -17,6 +17,7 @@ import 'screens/notification_permission_screen.dart';
 import 'screens/call_screen.dart'; 
 import 'screens/notifications_screen.dart';
 
+// ✅ Global Keys used for Context-less Navigation
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> homeNavKey = GlobalKey<NavigatorState>();
 final GlobalKey<NavigatorState> eventsNavKey = GlobalKey<NavigatorState>();
@@ -155,7 +156,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PollsScreen(),
     ),
 
-    // ✅ NEW CALL ROUTE (Fixed: Added callLogId)
+    // ✅ CALL ROUTE
     GoRoute(
       path: '/call',
       parentNavigatorKey: rootNavigatorKey,
@@ -167,7 +168,7 @@ final GoRouter appRouter = GoRouter(
           remoteAvatar: args['remoteAvatar'],
           isCaller: args['isCaller'],
           offer: args['offer'],
-          callLogId: args['callLogId'], // ✅ Essential for logging logic
+          callLogId: args['callLogId'], 
         );
       },
     ),

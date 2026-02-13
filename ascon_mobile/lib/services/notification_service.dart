@@ -1,25 +1,24 @@
-import 'dart:convert'; 
-import 'dart:io';
-import 'dart:typed_data'; 
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart'; 
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart'; 
-import 'package:audioplayers/audioplayers.dart'; // ✅ Added for foreground ringing
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:go_router/go_router.dart'; // ✅ Required for context-based navigation
+
 import '../config.dart';
-import '../main.dart'; 
+import '../router.dart'; // ✅ Import router keys (rootNavigatorKey)
 
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
-import '../screens/facility_detail_screen.dart'; 
-import '../screens/mentorship_dashboard_screen.dart'; 
-import '../screens/chat_screen.dart'; 
-import '../screens/login_screen.dart'; 
-import '../screens/call_screen.dart'; // ✅ Added for call navigation
+import '../screens/facility_detail_screen.dart';
+import '../screens/mentorship_dashboard_screen.dart';
+import '../screens/login_screen.dart';
 import '../services/socket_service.dart';
 
 @pragma('vm:entry-point')
@@ -34,23 +33,21 @@ class NotificationService {
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  final AudioPlayer _foregroundRingPlayer = AudioPlayer(); // ✅ Player for foreground calls
-  
+  final AudioPlayer _foregroundRingPlayer = AudioPlayer();
+
   final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
   bool _isInitialized = false;
 
   Future<void> init() async {
-    if (_isInitialized) return; 
+    if (_isInitialized) return;
     _isInitialized = true;
 
     if (!kIsWeb) {
       await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-        alert: true, // ✅ Changed to true so heads-up displays show
+        alert: true,
         badge: true,
         sound: true,
       );
@@ -62,16 +59,21 @@ class NotificationService {
       await _localNotifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          _stopRingtone(); // ✅ Stop ringing if user taps notification
+          _stopRingtone();
           if (response.payload != null) {
-            handleNavigation(jsonDecode(response.payload!));
+            try {
+              final data = jsonDecode(response.payload!);
+              handleNavigation(data);
+            } catch (e) {
+              debugPrint("Error parsing payload: $e");
+            }
           }
         },
       );
 
-      // 1. Standard Channel (Beep)
+      // 1. Standard Channel
       const AndroidNotificationChannel standardChannel = AndroidNotificationChannel(
-        AppConfig.notificationChannelId, 
+        AppConfig.notificationChannelId,
         AppConfig.notificationChannelName,
         description: AppConfig.notificationChannelDesc,
         importance: Importance.max,
@@ -80,23 +82,22 @@ class NotificationService {
         showBadge: true,
       );
 
-      // 2. ✅ Call Channel (Ringtone)
-      // NOTE: 'ringtone' must exist in android/app/src/main/res/raw/ringtone.mp3
+      // 2. Call Channel (High Priority & Sound)
       const AndroidNotificationChannel callChannel = AndroidNotificationChannel(
-        'ascon_call_channel', 
+        'ascon_call_channel',
         'Incoming Calls',
         description: 'Ringtone for incoming calls',
         importance: Importance.max,
         enableVibration: true,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound('ringtone'), // ✅ Uses custom sound
+        sound: RawResourceAndroidNotificationSound('ringtone'),
         showBadge: true,
       );
 
       final plugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       if (plugin != null) {
         await plugin.createNotificationChannel(standardChannel);
-        await plugin.createNotificationChannel(callChannel); // ✅ Register call channel
+        await plugin.createNotificationChannel(callChannel);
       }
     }
 
@@ -105,7 +106,6 @@ class NotificationService {
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint("🔔 Foreground Message: ${message.notification?.title}");
       if (message.notification != null || message.data.isNotEmpty) {
         if (!kIsWeb) {
           _showLocalNotification(message);
@@ -114,177 +114,186 @@ class NotificationService {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _stopRingtone(); // ✅ Stop ringing
-      debugPrint("🚀 App Opened from Notification: ${message.data}");
+      _stopRingtone();
       handleNavigation(message.data);
     });
 
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
-      _stopRingtone(); // ✅ Stop ringing
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      _stopRingtone();
+      // Allow router to mount before navigating
+      Future.delayed(const Duration(milliseconds: 800), () {
         handleNavigation(initialMessage.data);
       });
     }
 
     _firebaseMessaging.onTokenRefresh.listen((newToken) {
-      debugPrint("🔄 Token Rotated: $newToken");
-      syncToken(tokenOverride: newToken, retry: true); 
+      syncToken(tokenOverride: newToken, retry: true);
     });
 
     await syncToken(retry: true);
   }
 
-  // ✅ Helper to stop ringing (called on tap or answer)
   void _stopRingtone() {
-    _foregroundRingPlayer.stop();
+    try {
+      _foregroundRingPlayer.stop();
+    } catch (_) {}
   }
 
+  /// 🚀 **Improved Navigation Handler**
   Future<void> handleNavigation(Map<String, dynamic> data) async {
-    final route = data['route'];
-    final type = data['type']; 
-    final id = data['id'] ?? data['eventId']; 
+    _stopRingtone();
 
-    _stopRingtone(); // Ensure sound stops on navigation
+    final String? route = data['route'];
+    final String? type = data['type'];
+    final String? id = data['id'] ?? data['eventId'] ?? data['_id'];
 
-    if (route == null && type != 'chat_message' && type != 'call_offer') return; 
-
+    // 1. Verify Authentication
     String? token = await _storage.read(key: 'auth_token');
     if (token == null) {
       final prefs = await SharedPreferences.getInstance();
       token = prefs.getString('auth_token');
     }
 
+    // Get reliable context from Root Navigator
+    final BuildContext? context = rootNavigatorKey.currentContext;
+
     if (token == null) {
-      debugPrint("🔒 User logged out. Redirecting to Login.");
-      navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => LoginScreen(pendingNavigation: data), 
-        ),
-        (route) => false,
+      if (context != null) {
+        GoRouter.of(context).go('/login', extra: data); // Pass payload to handle after login
+      }
+      return;
+    }
+
+    if (context == null) {
+      debugPrint("❌ Navigation Context is null. Cannot navigate.");
+      return;
+    }
+
+    // ======================================================
+    // 📞 CASE 1: INCOMING CALL
+    // ======================================================
+    if (type == 'call_offer' || type == 'video_call') {
+      debugPrint("📞 Navigating to Answer Call Screen...");
+      
+      SocketService().initSocket(); // Ensure socket is ready
+
+      context.push('/call', extra: {
+        'remoteName': data['callerName'] ?? "Unknown Caller",
+        'remoteId': data['callerId'],
+        'remoteAvatar': data['callerAvatar'],
+        'isCaller': false, // We are answering
+        'offer': data['offer'] is String ? jsonDecode(data['offer']) : data['offer'],
+        'callLogId': data['callLogId'],
+      });
+      return;
+    }
+
+    // ======================================================
+    // 💬 CASE 2: CHAT MESSAGE (Group or 1-on-1)
+    // ======================================================
+    if (type == 'chat_message') {
+      final conversationId = data['conversationId'];
+      final senderId = data['senderId'];
+      final isGroup = data['isGroup'].toString().toLowerCase() == 'true';
+      final groupId = data['groupId'];
+      
+      String displayName = isGroup 
+          ? (data['groupName'] ?? "Group Chat") 
+          : (data['senderName'] ?? "Alumni Member");
+          
+      final senderProfilePic = data['senderProfilePic'];
+
+      if (conversationId != null) {
+        SocketService().initSocket();
+        
+        context.push('/chat_detail', extra: {
+          'conversationId': conversationId,
+          'receiverId': senderId,
+          'receiverName': displayName,
+          'receiverProfilePic': senderProfilePic,
+          'isGroup': isGroup,
+          'groupId': groupId,
+          'isOnline': false, // Assume offline until socket updates
+        });
+      }
+      return;
+    }
+
+    // ======================================================
+    // 📢 CASE 3: POSTS / UPDATES
+    // ======================================================
+    if (type == 'new_update' || route == 'updates') {
+      // Switch to "Updates" Tab (Index 2 in Shell)
+      context.go('/updates'); 
+      return;
+    }
+
+    // ======================================================
+    // 🎓 CASE 4: PROGRAMME & EVENT DETAILS
+    // ======================================================
+    if (route == 'mentorship_requests') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
       );
       return;
     }
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (navigatorKey.currentState == null) return;
-
-      // ✅ Handle Incoming Call Navigation
-      if (type == 'call_offer' || type == 'video_call') {
-        // Here we assume the socket will handle the actual connection, 
-        // but we navigate to CallScreen or show incoming call dialog
-        // For simplicity, we just bring the app to foreground. 
-        // Real connection is handled by CallService & SocketService.
-        return;
-      }
-
-      if (type == 'chat_message') {
-        final conversationId = data['conversationId'];
-        final senderId = data['senderId']; 
-        
-        final isGroup = data['isGroup'].toString().toLowerCase() == 'true';
-        final groupId = data['groupId']; 
-        
-        String displayName;
-        if (isGroup) {
-          displayName = data['groupName'] ?? "Group Chat";
-        } else {
-          displayName = data['senderName'] ?? "Alumni Member";
-        }
-        
-        final senderProfilePic = data['senderProfilePic'];
-
-        if (conversationId != null && senderId != null) {
-          SocketService().initSocket(); 
-
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(
-                conversationId: conversationId,
-                receiverId: senderId, 
-                receiverName: displayName, 
-                receiverProfilePic: senderProfilePic,
-                isOnline: false, 
-                isGroup: isGroup, 
-                groupId: groupId, 
-              ),
+    if (id != null) {
+      if (route == 'event_detail') {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => EventDetailScreen(
+              eventData: {'_id': id.toString(), 'title': 'Loading...'},
             ),
-          );
-        }
-        return;
-      }
-
-      if (route == 'mentorship_requests') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => const MentorshipDashboardScreen()),
+          ),
         );
-        return;
+      } else if (route == 'programme_detail') {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ProgrammeDetailScreen(
+              programme: {'_id': id.toString(), 'title': 'Loading...'},
+            ),
+          ),
+        );
+      } else if (route == 'facility_detail') {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => FacilityDetailScreen(
+              facility: {'_id': id.toString(), 'title': 'Loading...'},
+            ),
+          ),
+        );
       }
-
-      if (id != null) {
-        if (route == 'event_detail') {
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (_) => EventDetailScreen(
-                eventData: {'_id': id.toString(), 'title': 'Loading details...'}, 
-              ),
-            ),
-          );
-        } else if (route == 'programme_detail') {
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (_) => ProgrammeDetailScreen(
-                programme: {'_id': id.toString(), 'title': 'Loading details...'},
-              ),
-            ),
-          );
-        } else if (route == 'facility_detail') {
-          navigatorKey.currentState?.push(
-            MaterialPageRoute(
-              builder: (_) => FacilityDetailScreen(
-                facility: {'_id': id.toString(), 'title': 'Loading details...'},
-              ),
-            ),
-          );
-        }
-      }
-    });
+    }
   }
 
   Future<void> _showLocalNotification(RemoteMessage message) async {
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
     
-    // ✅ Check if this is a Call
     final type = message.data['type'];
-    final isCall = type == 'call_offer' || type == 'video_call' || (type?.toString().contains('call') ?? false);
+    final isCall = type == 'call_offer' || type == 'video_call';
 
-    // ✅ Select Channel based on type
     final channelId = isCall ? 'ascon_call_channel' : AppConfig.notificationChannelId;
     final channelName = isCall ? 'Incoming Calls' : AppConfig.notificationChannelName;
-    final sound = isCall 
-        ? const RawResourceAndroidNotificationSound('ringtone') 
-        : null; // Null means default
+    
+    // Explicitly set sound only for calls to ensure ringtone plays
+    final sound = isCall ? const RawResourceAndroidNotificationSound('ringtone') : null;
 
-    // ✅ Foreground Ringing Logic
-    // If the app is open, system notifications often just "peek" without long sound.
-    // We force loop the ringtone here for calls.
+    // ✅ Ring in foreground for calls
     if (isCall) {
       try {
         await _foregroundRingPlayer.setSource(AssetSource('sounds/ringtone.mp3'));
-        await _foregroundRingPlayer.setReleaseMode(ReleaseMode.loop); // Loop it
+        await _foregroundRingPlayer.setReleaseMode(ReleaseMode.loop);
         await _foregroundRingPlayer.resume();
-        
-        // Auto-stop after 30 seconds if not answered
-        Future.delayed(const Duration(seconds: 30), () {
-          _stopRingtone();
-        });
+        Future.delayed(const Duration(seconds: 30), () => _stopRingtone());
       } catch (e) {
-        debugPrint("Error playing foreground ringtone: $e");
+        debugPrint("Error playing ringtone: $e");
       }
     }
 
-    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]); // Aggressive vibration for calls
+    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]);
 
     final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
       body,
@@ -294,107 +303,65 @@ class NotificationService {
     );
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      channelId, 
-      channelName, 
+      channelId,
+      channelName,
       importance: Importance.max,
       priority: Priority.high,
       color: const Color(0xFF1B5E3A),
       icon: 'ic_notification',
       enableVibration: true,
       vibrationPattern: vibrationPattern,
-      enableLights: true,
-      ledColor: const Color(0xFF1B5E3A),
-      ledOnMs: 1000,
-      ledOffMs: 500,
       styleInformation: bigTextStyleInformation,
-      sound: sound, // ✅ Use custom sound
-      fullScreenIntent: isCall, // ✅ Try to wake screen for calls
+      sound: sound,
+      fullScreenIntent: isCall, // Wakes up screen for calls
       category: isCall ? AndroidNotificationCategory.call : AndroidNotificationCategory.message,
     );
 
-    final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
-
     await _localNotifications.show(
-      message.hashCode, 
-      originalTitle,   
-      body,             
-      platformDetails,  
-      payload: jsonEncode(message.data), 
+      message.hashCode,
+      originalTitle,
+      body,
+      NotificationDetails(android: androidDetails),
+      payload: jsonEncode(message.data),
     );
   }
 
-  // ... (Permission & Token Sync code remains unchanged)
   Future<AuthorizationStatus> getAuthorizationStatus() async {
-    final settings = await _firebaseMessaging.getNotificationSettings();
-    return settings.authorizationStatus;
+    return (await _firebaseMessaging.getNotificationSettings()).authorizationStatus;
   }
 
   Future<void> requestPermission() async {
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+    final settings = await _firebaseMessaging.requestPermission(
       alert: true, badge: true, sound: true, provisional: false,
     );
-
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('✅ User granted notifications');
-      await syncToken(retry: false); 
-    } else {
-      debugPrint('❌ User declined notifications');
+      await syncToken(retry: false);
     }
   }
 
   Future<void> syncToken({String? tokenOverride, bool retry = false}) async {
     try {
-      debugPrint("🔄 NotificationService: Starting Token Sync...");
-
-      String? fcmToken;
-      
-      if (tokenOverride != null) {
-        fcmToken = tokenOverride;
-      } else if (kIsWeb) {
-        String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
-        if (vapidKey != null && vapidKey.isNotEmpty) {
-          fcmToken = await _firebaseMessaging.getToken(vapidKey: vapidKey);
-        } else {
-          return;
-        }
-      } else {
-        fcmToken = await _firebaseMessaging.getToken();
-      }
+      String? fcmToken = tokenOverride ?? (kIsWeb 
+          ? await _firebaseMessaging.getToken(vapidKey: dotenv.env['FIREBASE_VAPID_KEY']) 
+          : await _firebaseMessaging.getToken());
 
       if (fcmToken == null) return;
 
       String? authToken = await _storage.read(key: 'auth_token');
-
       if (authToken == null) {
         final prefs = await SharedPreferences.getInstance();
         authToken = prefs.getString('auth_token');
       }
 
-      if (authToken == null && retry) {
-        await Future.delayed(const Duration(milliseconds: 1500));
-        authToken = await _storage.read(key: 'auth_token');
-        
-        if (authToken == null) {
-           final prefs = await SharedPreferences.getInstance();
-           authToken = prefs.getString('auth_token');
-        }
-      }
-
       if (authToken != null) {
-        final url = Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token');
-        
-        final response = await http.post(
-          url,
+        await http.post(
+          Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token'),
           headers: {'Content-Type': 'application/json', 'auth-token': authToken},
           body: jsonEncode({"fcmToken": fcmToken}),
         );
-
-        if (response.statusCode == 200) {
-           debugPrint("✅ Token synced successfully to Backend!");
-        }
       }
     } catch (e) {
-      debugPrint("❌ Error syncing token: $e");
+      debugPrint("Sync Error: $e");
     }
   }
 }

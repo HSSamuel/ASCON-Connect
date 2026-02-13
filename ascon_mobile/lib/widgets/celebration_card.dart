@@ -1,48 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../services/data_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../viewmodels/dashboard_view_model.dart';
 
-class CelebrationWidget extends StatefulWidget {
+// Changed from StatefulWidget to ConsumerWidget
+class CelebrationWidget extends ConsumerWidget {
   const CelebrationWidget({super.key});
 
   @override
-  State<CelebrationWidget> createState() => _CelebrationWidgetState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    // ✅ WATCH THE PROVIDER
+    final dashboardState = ref.watch(dashboardProvider);
+    final birthdays = dashboardState.birthdays;
+    final isLoading = dashboardState.isLoading;
 
-class _CelebrationWidgetState extends State<CelebrationWidget> {
-  List<dynamic> _birthdays = [];
-  bool _isLoading = true;
+    // If not loading and no birthdays, hide completely
+    if (!isLoading && birthdays.isEmpty) return const SizedBox.shrink();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCelebrants();
-  }
-
-  Future<void> _loadCelebrants() async {
-    try {
-      final result = await DataService().fetchCelebrants(); 
-      
-      if (mounted) {
-        setState(() {
-          if (result is Map) {
-              _birthdays = result['birthdays'] ?? [];
-          } else if (result is List) {
-              _birthdays = result; 
-          }
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // If no birthdays, hide the widget entirely
-    if (!_isLoading && _birthdays.isEmpty) return const SizedBox.shrink();
+    // If loading effectively (initial load), show nothing or skeleton
+    if (isLoading && birthdays.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -66,7 +43,6 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Birthdays Header
           Row(
             children: [
               const Icon(Icons.cake_rounded, color: Colors.deepOrange, size: 20),
@@ -83,31 +59,21 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
           ),
           const SizedBox(height: 12),
           
-          // Birthdays List
-          _buildBirthdayList(),
+          // ✅ Pass the list directly
+          _buildBirthdayList(birthdays),
         ],
       ),
     );
   }
 
-  Widget _buildBirthdayList() {
-    if (_isLoading) {
-       return const Padding(
-          padding: EdgeInsets.all(8.0),
-          child: SizedBox(
-            height: 20, width: 20, 
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepOrange)
-          ),
-        );
-    }
-
+  Widget _buildBirthdayList(List<dynamic> birthdays) {
     return SizedBox(
       height: 90,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: _birthdays.length,
+        itemCount: birthdays.length,
         itemBuilder: (context, index) {
-            final item = _birthdays[index];
+            final item = birthdays[index];
             final String name = (item['fullName'] ?? "User").split(" ")[0]; 
             final String? img = item['profilePicture'];
 
@@ -144,7 +110,6 @@ class _CelebrationWidgetState extends State<CelebrationWidget> {
     );
   }
 
-  // ✅ FIXED: Using CachedNetworkImage to prevent "EncodingError" crash
   Widget _buildAvatar(String? url, String name) {
     if (url != null && url.isNotEmpty) {
       return CachedNetworkImage(

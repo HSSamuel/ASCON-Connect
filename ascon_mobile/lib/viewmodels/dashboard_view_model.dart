@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
@@ -12,6 +11,7 @@ class DashboardState {
   final List<dynamic> events;
   final List<dynamic> programmes;
   final List<dynamic> topAlumni;
+  final List<dynamic> birthdays; // ✅ Added birthdays list
   final String profileImage;
   final String programme;
   final String year;
@@ -26,6 +26,7 @@ class DashboardState {
     this.events = const [],
     this.programmes = const [],
     this.topAlumni = const [],
+    this.birthdays = const [], // ✅ Initialize birthdays
     this.profileImage = "",
     this.programme = "Member",
     this.year = "....",
@@ -41,6 +42,7 @@ class DashboardState {
     List<dynamic>? events,
     List<dynamic>? programmes,
     List<dynamic>? topAlumni,
+    List<dynamic>? birthdays, // ✅ Add to copyWith
     String? profileImage,
     String? programme,
     String? year,
@@ -55,6 +57,7 @@ class DashboardState {
       events: events ?? this.events,
       programmes: programmes ?? this.programmes,
       topAlumni: topAlumni ?? this.topAlumni,
+      birthdays: birthdays ?? this.birthdays, // ✅ Update birthdays
       profileImage: profileImage ?? this.profileImage,
       programme: programme ?? this.programme,
       year: year ?? this.year,
@@ -81,13 +84,16 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
       final String? myId = await _authService.currentUserId;
 
+      // ✅ Fetch birthdays concurrently with other data (Index 4)
       final results = await Future.wait([
         _dataService.fetchEvents(),                  
         _authService.getProgrammes(),                
         _dataService.fetchProfile(),                 
-        _dataService.fetchDirectory(query: ""),      
+        _dataService.fetchDirectory(query: ""),
+        _dataService.fetchCelebrants(),      
       ]);
 
+      // 1. Process Events
       var fetchedEvents = List.from(results[0] as List);
       fetchedEvents.sort((a, b) {
         final idA = a['_id'] ?? a['id'] ?? '';
@@ -95,6 +101,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         return idB.toString().compareTo(idA.toString());
       });
 
+      // 2. Process Programmes
       var fetchedProgrammes = List.from(results[1] as List);
       fetchedProgrammes.sort((a, b) {
         final idA = a['_id'] ?? a['id'] ?? '';
@@ -102,6 +109,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         return idB.toString().compareTo(idA.toString());
       });
 
+      // 3. Process Profile
       String profileImage = "";
       String programme = "Member";
       String year = "....";
@@ -132,6 +140,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         }
       }
 
+      // 4. Process Directory (Top Alumni)
       var fetchedAlumni = List.from(results[3] as List);
 
       if (myId != null) {
@@ -144,6 +153,15 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       fetchedAlumni.shuffle(); 
       final topAlumni = fetchedAlumni.take(8).toList(); 
 
+      // 5. ✅ Process Birthdays
+      List<dynamic> fetchedBirthdays = [];
+      final celebrationResult = results[4];
+      if (celebrationResult is Map) {
+        fetchedBirthdays = celebrationResult['birthdays'] ?? [];
+      } else if (celebrationResult is List) {
+        fetchedBirthdays = celebrationResult;
+      }
+
       if (mounted) {
         state = state.copyWith(
           isLoading: false,
@@ -151,6 +169,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
           events: fetchedEvents,
           programmes: fetchedProgrammes,
           topAlumni: topAlumni,
+          birthdays: fetchedBirthdays, // ✅ Update State
           profileImage: profileImage,
           programme: programme,
           year: year,
