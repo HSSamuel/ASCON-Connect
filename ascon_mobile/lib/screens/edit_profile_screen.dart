@@ -1,12 +1,17 @@
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl/intl.dart'; 
-import 'package:go_router/go_router.dart'; // ✅ CRITICAL IMPORT ADDED
+import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 import '../services/data_service.dart'; 
+import '../viewmodels/profile_view_model.dart'; 
+import '../viewmodels/dashboard_view_model.dart'; 
 
-class EditProfileScreen extends StatefulWidget {
+class EditProfileScreen extends ConsumerStatefulWidget { 
   final Map<String, dynamic> userData;
   final bool isFirstTime;
 
@@ -17,15 +22,14 @@ class EditProfileScreen extends StatefulWidget {
   });
 
   @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final DataService _dataService = DataService(); 
   bool _isLoading = false;
 
-  // ✅ 1. Name Controller for Editing
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _jobController;
@@ -68,9 +72,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // ✅ 2. Initialize Name
     _nameController = TextEditingController(text: widget.userData['fullName'] ?? '');
-    
     _bioController = TextEditingController(text: widget.userData['bio'] ?? '');
     _jobController = TextEditingController(text: widget.userData['jobTitle'] ?? '');
     _orgController = TextEditingController(text: widget.userData['organization'] ?? '');
@@ -89,9 +91,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       try {
         _selectedDate = DateTime.parse(widget.userData['dateOfBirth']);
         _dobController.text = DateFormat('MMM d, y').format(_selectedDate!);
-      } catch (e) {
-        // Ignore invalid date formats
-      }
+      } catch (e) { }
     }
 
     String existingProg = widget.userData['programmeTitle'] ?? '';
@@ -169,10 +169,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  Future<void> _updateLocalCache(Map<String, String> fields) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      await prefs.setString('user_name', fields['fullName']!);
+      
+      String? userJson = prefs.getString('cached_user');
+      Map<String, dynamic> userMap = {};
+      
+      if (userJson != null) {
+        userMap = jsonDecode(userJson);
+      } else {
+        userMap = Map<String, dynamic>.from(widget.userData);
+      }
+
+      userMap['fullName'] = fields['fullName'];
+      userMap['yearOfAttendance'] = int.tryParse(fields['yearOfAttendance'] ?? '') ?? fields['yearOfAttendance'];
+      userMap['programmeTitle'] = fields['programmeTitle'];
+      userMap['isBirthdayVisible'] = fields['isBirthdayVisible'] == 'true';
+      userMap['isLocationVisible'] = fields['isLocationVisible'] == 'true';
+      userMap['isOpenToMentorship'] = fields['isOpenToMentorship'] == 'true';
+
+      await prefs.setString('cached_user', jsonEncode(userMap));
+    } catch (e) {
+      debugPrint("❌ Cache Update Failed: $e");
+    }
+  }
+
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Force Year Selection
     if (_yearController.text.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Year of Attendance is required."), backgroundColor: Colors.red),
@@ -184,7 +211,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     try {
       final Map<String, String> fields = {
-        // ✅ 3. Send Updated Name
         'fullName': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
         'jobTitle': _jobController.text.trim(),
@@ -192,7 +218,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'linkedin': _linkedinController.text.trim(),
         'phoneNumber': _completePhoneNumber, 
         'yearOfAttendance': _yearController.text.trim(),
-        
         'city': _cityController.text.trim(),
         'state': _stateController.text.trim(),
         'isLocationVisible': _isLocationVisible.toString(),
@@ -217,13 +242,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
 
       if (success) {
+        await _updateLocalCache(fields);
+        ref.invalidate(profileProvider);
+        ref.invalidate(dashboardProvider);
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Profile Updated Successfully!")),
         );
         
-        // ✅ 4. FIXED NAVIGATION LOGIC
         if (widget.isFirstTime) {
-          // Use GoRouter context.go() instead of Navigator
           context.go('/home'); 
         } else {
           Navigator.pop(context, true);
@@ -245,17 +272,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  ImageProvider? getImageProvider() {
-    if (_selectedImageBytes != null) return MemoryImage(_selectedImageBytes!);
-    
-    // Safety check for broken Google URLs
-    if (_currentUrl != null && _currentUrl!.startsWith('http')) {
-      if (_currentUrl!.contains("profile/picture/0")) {
-        return null; 
-      }
-      return NetworkImage(_currentUrl!);
+  // ✅ UI HELPER: Constructs the image widget safely
+  Widget _buildProfileImage(double radius) {
+    if (_selectedImageBytes != null) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: MemoryImage(_selectedImageBytes!),
+        backgroundColor: Colors.grey[200],
+      );
     }
-    return null;
+
+    if (_currentUrl != null && _currentUrl!.startsWith('http')) {
+      // ✅ We use Image.network inside ClipOval instead of backgroundImage
+      // This allows 'errorBuilder' to catch the 429 error and show the Icon fallback
+      return ClipOval(
+        child: SizedBox(
+          width: radius * 2,
+          height: radius * 2,
+          child: Image.network(
+            _currentUrl!,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // If Google link fails (429), this runs and shows the default person icon
+              return Container(
+                color: Theme.of(context).primaryColor,
+                child: const Icon(Icons.person, size: 60, color: Colors.white),
+              );
+            },
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                color: Colors.grey[200],
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    // Default if no image exists at all
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).primaryColor,
+      child: const Icon(Icons.person, size: 60, color: Colors.white),
+    );
   }
 
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1, bool isNumber = false, bool readOnly = false, VoidCallback? onTap}) {
@@ -342,7 +403,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             key: _formKey,
             child: Column(
               children: [
-                
                 if (widget.isFirstTime)
                   Container(
                     margin: const EdgeInsets.only(bottom: 20),
@@ -369,14 +429,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 Center(
                   child: Stack(
                     children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: primaryColor,
-                        backgroundImage: getImageProvider(),
-                        child: getImageProvider() == null
-                            ? const Icon(Icons.person, size: 60, color: Colors.white)
-                            : null,
-                      ),
+                      // ✅ UPDATED: Using helper method for robust image handling
+                      _buildProfileImage(50),
+                      
                       Positioned(
                         bottom: 0,
                         right: 0,
@@ -397,7 +452,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // ✅ 5. Full Name Field (Editable)
                 _buildTextField("Full Name", _nameController, Icons.person),
                 const SizedBox(height: 12),
 

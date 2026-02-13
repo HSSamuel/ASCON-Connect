@@ -18,6 +18,7 @@ import 'alumni_detail_screen.dart';
 import 'chat_list_screen.dart'; 
 import 'about_screen.dart';
 import 'admin/add_content_screen.dart'; 
+import 'welcome_dialog.dart'; 
 
 import '../widgets/celebration_card.dart'; 
 import '../widgets/active_poll_card.dart'; 
@@ -43,7 +44,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasUnreadMessages = false;
-  int _unreadNotifications = 0; 
+  // ❌ REMOVED: _unreadNotifications variable
   final ApiClient _api = ApiClient();
   
   DateTime? _lastPressedAt;
@@ -54,11 +55,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _refreshUnreadState();
 
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstTimeWelcome());
+
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         NotificationService().requestPermission();
       }
     });
+  }
+
+  Future<void> _checkFirstTimeWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('cached_user');
+    if (userJson == null) return;
+
+    final user = jsonDecode(userJson);
+    final bool hasSeenWelcome = user['hasSeenWelcome'] ?? false;
+
+    if (!hasSeenWelcome && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => WelcomeDialog(
+          userName: user['fullName'] ?? "Alumni",
+          onGetStarted: () async {
+            try {
+              await AuthService().markWelcomeSeen(); 
+              user['hasSeenWelcome'] = true;
+              await prefs.setString('cached_user', jsonEncode(user));
+            } catch (e) {
+              debugPrint("Welcome status update error: $e");
+            }
+            if (mounted) Navigator.pop(context);
+          }, 
+        ),
+      );
+    }
   }
 
   @override
@@ -78,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _refreshUnreadState() {
     _checkUnreadStatus(); 
-    _checkNotificationStatus(); 
+    // ❌ REMOVED: _checkNotificationStatus();
     _listenForMessages(); 
   }
 
@@ -95,17 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _checkNotificationStatus() async {
-    try {
-      final result = await _api.get('/api/notifications/unread-count');
-      if (mounted && result['success'] == true) {
-        final int count = result['count'] ?? 0;
-        setState(() => _unreadNotifications = count);
-      }
-    } catch (e) {
-      debugPrint("Check notification error: $e");
-    }
-  }
+  // ❌ REMOVED: _checkNotificationStatus method
 
   void _listenForMessages() {
     final socket = SocketService().socket;
@@ -215,30 +237,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
-                Stack(
-                  alignment: Alignment.topRight,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.notifications_outlined, color: isDark ? Colors.white : primaryColor, size: 24),
-                      onPressed: () async {
-                        await context.push('/notifications');
-                        _checkNotificationStatus();
-                      },
-                    ),
-                    if (_unreadNotifications > 0)
-                      Positioned(
-                        right: 8, top: 8,
-                        child: Container(
-                          width: 8, height: 8,
-                          decoration: BoxDecoration(
-                            color: Colors.red, 
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Theme.of(context).cardColor, width: 1.5)
-                          ),
-                        ),
-                      )
-                  ],
-                ),
+                // ❌ REMOVED: The Notification Bell Stack completely
+                
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
@@ -382,6 +382,12 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     _loadUser();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadUser();
+  }
+
   Future<void> _loadUser() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString('user_name');
@@ -502,8 +508,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                   alumniID: dashboardState.alumniID,
                   imageUrl: dashboardState.profileImage,
                 ),
-
-                // ✅ REMOVED: Profile Alert Widget logic was here. Now redundant.
 
                 const ChapterCard(),
 
@@ -657,8 +661,6 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
       ),
     );
   }
-
-  // _buildProfileAlert WAS REMOVED FROM HERE
 
   Widget _buildUpcomingEventCard(BuildContext context, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;

@@ -27,16 +27,29 @@ void main() async {
   // ✅ 1. Initialize Global Error Handling
   ErrorHandler.init();
 
-  // ✅ 2. Run App Logic guarded by a Zone
+  // ✅ 2. SILENCE GSI LOGS
+  var defaultDebugPrint = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) {
+      if (message.contains("GSI_LOGGER")) return;
+      if (message.contains("access_token")) return;
+    }
+    defaultDebugPrint(message, wrapWidth: wrapWidth);
+  };
+
+  // ✅ 3. SILENCE 429 IMAGE ERRORS
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (details.exception.toString().contains("statusCode: 429")) return;
+    FlutterError.presentError(details);
+  };
+
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
     await dotenv.load(fileName: ".env");
     
-    // Initialize Socket Service (Silent until login)
     SocketService().initSocket();
 
-    // Firebase Initialization
     if (kIsWeb) {
       await Firebase.initializeApp(
         options: FirebaseOptions(
@@ -54,34 +67,24 @@ void main() async {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
-    // Notifications Initialization (Listeners only)
     if (!kIsWeb) {
        await NotificationService().init();
     }
 
-    // ✅ WRAP APP IN PROVIDER SCOPE FOR RIVERPOD
     runApp(const ProviderScope(child: MyApp()));
   }, (error, stack) {
-    // ========================================================
-    // ✅ NOISE FILTER: Silence harmless Web/Async errors
-    // ========================================================
     String errorText = error.toString();
-
-    // 1. Logout Race Condition (Future completed twice)
     if (errorText.contains("Future already completed")) return;
-
-    // 2. Firebase Web Internals (Harmless noise)
     if (errorText.contains("FirebaseException") && errorText.contains("JavaScriptObject")) return;
-
-    // 3. Asset Manifest (Hot Restart Glitch)
     if (errorText.contains("AssetManifest.bin.json")) return;
+    if (errorText.contains("deactivated widget")) return;
+    // Also catch exception here for good measure
+    if (errorText.contains("statusCode: 429")) return;
 
-    // Log genuine errors
     debugPrint("🔴 Uncaught Zone Error: $error");
   });
 }
 
-// ✅ CHANGED TO STATELESS WIDGET (Listener moved to SocketService)
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -97,7 +100,6 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: currentMode,
-          // ✅ Add a default error builder for navigation failures
           builder: (context, child) {
             return child ?? const SizedBox.shrink();
           },
