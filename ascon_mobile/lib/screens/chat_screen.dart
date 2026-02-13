@@ -102,14 +102,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setupAudioPlayerListeners();
     _setupScrollListener();
     
+    // ✅ SAFEGUARD: Only mark as read if conversation exists
     WidgetsBinding.instance.addPostFrameCallback((_) {
-       ref.read(_provider.notifier).markUnreadAsRead();
+       if (widget.conversationId != null) {
+         ref.read(_provider.notifier).markUnreadAsRead();
+       }
     });
   }
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
-      if (_scrollController.hasClients && _scrollController.position.pixels == 0) {
+      // ✅ SAFEGUARD: Don't load more if chat doesn't exist yet
+      if (_scrollController.hasClients && 
+          _scrollController.position.pixels == 0 &&
+          widget.conversationId != null) {
         ref.read(_provider.notifier).loadMoreMessages();
       }
     });
@@ -162,7 +168,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (_isTypingEmit) {
         _isTypingEmit = false;
         _typingDebounce?.cancel();
-        ref.read(_provider.notifier).sendStopTyping();
+        // Only send stop typing if convo exists
+        if (widget.conversationId != null) {
+          ref.read(_provider.notifier).sendStopTyping();
+        }
       }
 
       if (_editingMessage != null && type == 'text') {
@@ -215,6 +224,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleTyping(String val) {
+    if (widget.conversationId == null) return; // Don't emit typing if no chat exists yet
+
     final notifier = ref.read(_provider.notifier);
 
     if (val.isNotEmpty) {
@@ -394,7 +405,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             _attachOption(Icons.insert_drive_file, Colors.blue, "Document", _pickFile),
             if (widget.isGroup && widget.groupId != null)
               _attachOption(Icons.bar_chart_rounded, Colors.orange, "Poll", () {
-                  // ✅ FIX: Removed the extra Navigator.pop(context) that was causing dashboard kick-out
                   showModalBottomSheet(
                     context: context,
                     isScrollControlled: true, 
@@ -409,7 +419,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
   
   Widget _attachOption(IconData icon, Color color, String label, VoidCallback onTap) {
-    // This widget already pops the menu, so don't pop again inside the callback!
     return Padding(padding: const EdgeInsets.all(16.0), child: GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(children: [CircleAvatar(radius: 25, backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(fontSize: 12))])));
   }
 
@@ -598,7 +607,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               onTap: _openDetails,
               child: Row(
                 children: [
-                  // ✅ FIXED: Using CachedNetworkImage with error fallback
                   CachedNetworkImage(
                     imageUrl: widget.receiverProfilePic ?? "",
                     imageBuilder: (context, imageProvider) => CircleAvatar(
@@ -653,9 +661,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  await notifier.refreshMessages();
+                  if (widget.conversationId != null) {
+                    await notifier.refreshMessages();
+                  }
                 },
-                child: ListView.builder(
+                child: state.messages.isEmpty 
+                  ? SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Container(
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[300]),
+                            const SizedBox(height: 16),
+                            const Text("No messages yet", style: TextStyle(color: Colors.grey)),
+                            if (widget.conversationId == null)
+                              const Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: Text(
+                                  "Send a message to start the conversation.",
+                                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   itemCount: state.messages.length,

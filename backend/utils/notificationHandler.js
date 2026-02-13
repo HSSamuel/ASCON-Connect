@@ -129,15 +129,31 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
       return;
     }
 
+    // ✅ DYNAMIC CHANNEL & SOUND LOGIC
+    // If it's a call, use the dedicated channel and sound
+    const isCall =
+      data.type === "call_offer" ||
+      data.type === "video_call" ||
+      (data.type && data.type.includes("call"));
+    const channelId = isCall ? "ascon_call_channel" : "ascon_high_importance";
+    const sound = isCall ? "ringtone" : "default";
+
     const message = {
       notification: { title, body },
       android: {
         notification: {
-          channelId: "ascon_high_importance",
+          channelId: channelId,
           priority: "high",
+          sound: sound, // Explicitly request the ringtone file
+          visibility: "public",
         },
       },
-      data: { ...data, click_action: "FLUTTER_NOTIFICATION_CLICK" },
+      // Important: Add channel_id to data so Flutter knows which local channel to fallback to if needed
+      data: {
+        ...data,
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        channel_id: channelId,
+      },
       tokens: uniqueTokens,
     };
 
@@ -161,7 +177,7 @@ const sendPersonalNotification = async (userId, title, body, data = {}) => {
     }
 
     logger.info(
-      `👤 Personal Notification sent to ${userId}: ${response.successCount} success.`,
+      `👤 Personal Notification sent to ${userId} (Channel: ${channelId}): ${response.successCount} success.`,
     );
   } catch (error) {
     logger.error(`❌ Personal Notification Error: ${error.message}`);

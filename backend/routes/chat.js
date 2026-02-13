@@ -153,7 +153,7 @@ router.get("/", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 3. START OR GET CONVERSATION
+// 3. START OR GET CONVERSATION (LAZY CREATION FIX)
 // ---------------------------------------------------------
 router.post("/start", verify, async (req, res) => {
   const { receiverId, groupId } = req.body;
@@ -165,8 +165,10 @@ router.post("/start", verify, async (req, res) => {
   try {
     let chat;
     if (groupId) {
+      // Groups must theoretically exist or be created by admin
       chat = await Conversation.findOne({ groupId: groupId });
       if (!chat) {
+        // Fallback: If group exists in Group DB but not Conversation DB, create it.
         const group = await Group.findById(groupId);
         if (!group) return res.status(404).json({ message: "Group not found" });
 
@@ -181,6 +183,7 @@ router.post("/start", verify, async (req, res) => {
         });
         await chat.save();
       } else {
+        // Ensure user is participant
         if (!chat.participants.includes(req.user._id)) {
           const group = await Group.findById(groupId).select("members");
           if (
@@ -197,26 +200,19 @@ router.post("/start", verify, async (req, res) => {
         }
       }
     } else {
-      // 1-on-1 Chat
+      // 1-on-1 Chat Check
       chat = await Conversation.findOne({
         isGroup: false,
         participants: { $all: [req.user._id, receiverId], $size: 2 },
       });
 
+      // ✅ FIX: DO NOT CREATE HERE. Return null to indicate no history.
       if (!chat) {
-        chat = new Conversation({ participants: [req.user._id, receiverId] });
-        await chat.save();
+        return res.status(200).json({ success: true, data: null });
       }
     }
 
     const chatObj = chat.toObject ? chat.toObject() : chat;
-
-    if (!chatObj._id) {
-      return res
-        .status(500)
-        .json({ message: "Internal Error: Chat ID missing" });
-    }
-
     res.status(200).json({ success: true, data: chatObj });
   } catch (err) {
     console.error("Chat Start Error:", err);
@@ -225,7 +221,7 @@ router.post("/start", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 4. BULK DELETE MESSAGES (UPDATED: HARD DELETE)
+// 4. BULK DELETE MESSAGES
 // ---------------------------------------------------------
 router.post("/delete-multiple", verify, async (req, res) => {
   try {
@@ -246,14 +242,10 @@ router.post("/delete-multiple", verify, async (req, res) => {
 
     if (deleteForEveryone) {
       const query = { _id: { $in: messageIds } };
-      // Security: Only sender or Admin can delete for everyone
       if (!isAdmin) query.sender = req.user._id;
 
-      // ✅ 1. HARD DELETE: Remove from Database entirely
       await Message.deleteMany(query);
 
-      // ✅ 2. FIX CONVERSATION PREVIEW
-      // If we deleted the "lastMessage", we must find the new last message
       const latestMsg = await Message.findOne({
         conversationId: firstMsg.conversationId,
       }).sort({ createdAt: -1 });
@@ -286,7 +278,6 @@ router.post("/delete-multiple", verify, async (req, res) => {
         conversation,
       );
     } else {
-      // Delete for Me Only (Soft Delete via array)
       await Message.updateMany(
         { _id: { $in: messageIds } },
         { $addToSet: { deletedFor: req.user._id } },
@@ -321,7 +312,6 @@ async function _emitDeleteEvent(
     });
   } else {
     conversation.participants.forEach((userId) => {
-      // For hard delete, notify everyone. For soft, only notify the deleter (usually implicit).
       if (isHardDelete || userId.toString() === req.user._id) {
         req.io.to(userId.toString()).emit("messages_deleted_bulk", {
           conversationId,
@@ -406,15 +396,17 @@ router.get("/:conversationId", verify, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 6. SEND MESSAGE
+// 6. SEND MESSAGE (LAZY CREATION UPDATE)
 // ---------------------------------------------------------
+// ✅ We place this BEFORE the generic /:id route so it doesn't get confused
 router.post(
-  "/:conversationId",
+  "/message/send",
   verify,
   upload.single("file"),
   async (req, res) => {
     try {
-      const { text, type, replyToId, pollId } = req.body;
+      const { text, type, replyToId, pollId, conversationId, recipientId } =
+        req.body;
       let fileUrl = "",
         fileName = "";
       if (req.file) {
@@ -422,21 +414,57 @@ router.post(
         fileName = req.file.originalname;
       }
 
-      const conversation = await Conversation.findById(
-        req.params.conversationId,
-      );
-      if (!conversation)
-        return res.status(404).json({ message: "Conversation not found" });
+      let activeConvId = conversationId;
+      let conversation = null;
 
+      // ✅ LAZY CREATION LOGIC
+      // If we don't have a valid conversation ID yet...
+      if (
+        !activeConvId ||
+        activeConvId === "null" ||
+        activeConvId === "undefined"
+      ) {
+        if (!recipientId)
+          return res
+            .status(400)
+            .json({ message: "Recipient ID required to start new chat" });
+
+        // Double-check if one exists (race condition check)
+        conversation = await Conversation.findOne({
+          isGroup: false,
+          participants: { $all: [req.user._id, recipientId], $size: 2 },
+        });
+
+        if (!conversation) {
+          // 🆕 CREATE IT NOW (because user is actually sending a message)
+          conversation = new Conversation({
+            participants: [req.user._id, recipientId],
+            lastMessage:
+              text || (type === "image" ? "Sent an image" : "Sent a file"),
+            updatedAt: Date.now(),
+          });
+          await conversation.save();
+        }
+        activeConvId = conversation._id;
+      } else {
+        // Standard flow: Use existing ID
+        conversation = await Conversation.findById(activeConvId);
+        if (!conversation)
+          return res.status(404).json({ message: "Conversation not found" });
+      }
+
+      // ... (Standard Group Logic and Message Saving) ...
       if (conversation.isGroup && conversation.groupId) {
         const group = await Group.findById(conversation.groupId);
         if (
           group &&
           !group.members.some((m) => m.toString() === req.user._id)
         ) {
-          return res.status(403).json({
-            message: "You are no longer a participant of this group.",
-          });
+          return res
+            .status(403)
+            .json({
+              message: "You are no longer a participant of this group.",
+            });
         }
         if (
           group &&
@@ -448,7 +476,7 @@ router.post(
       }
 
       const newMessage = new Message({
-        conversationId: req.params.conversationId,
+        conversationId: activeConvId,
         sender: req.user._id,
         text: text || "",
         type: type || "text",
@@ -461,6 +489,7 @@ router.post(
 
       const savedMessage = await newMessage.save();
 
+      // Profile Enrichment
       const senderProfile = await UserProfile.findOne({ userId: req.user._id });
       const senderName = senderProfile
         ? senderProfile.fullName
@@ -480,12 +509,13 @@ router.post(
       if (type === "file") lastMessagePreview = "📎 Sent a document";
       if (type === "poll") lastMessagePreview = "📊 Created a poll";
 
-      await Conversation.findByIdAndUpdate(req.params.conversationId, {
+      await Conversation.findByIdAndUpdate(activeConvId, {
         lastMessage: lastMessagePreview,
         lastMessageSender: req.user._id,
         lastMessageAt: Date.now(),
       });
 
+      // Socket Emission
       if (conversation.isGroup && conversation.groupId) {
         req.io.to(conversation.groupId.toString()).emit("new_message", {
           message: messageObj,
@@ -497,7 +527,7 @@ router.post(
           try {
             await sendPersonalNotification(
               participantId.toString(),
-              conversation.groupName,
+              conversation.groupName || "Group Chat",
               `${senderName}: ${lastMessagePreview}`,
               {
                 type: "chat_message",
@@ -536,7 +566,8 @@ router.post(
         });
       }
 
-      res.status(200).json(messageObj);
+      // ✅ Return the NEW conversation ID so the frontend can update its state
+      res.status(200).json({ ...messageObj, newConversationId: activeConvId });
     } catch (err) {
       console.error("Send Message Error:", err);
       res.status(500).json({ message: err.message });
@@ -558,6 +589,8 @@ router.put("/read/:conversationId", verify, async (req, res) => {
       { $set: { isRead: true } },
     );
     const conversation = await Conversation.findById(req.params.conversationId);
+    if (!conversation) return res.status(200).json({ success: true });
+
     if (conversation.isGroup && conversation.groupId) {
       req.io.to(conversation.groupId.toString()).emit("messages_read", {
         conversationId: req.params.conversationId,
@@ -617,7 +650,6 @@ router.delete("/message/:id", verify, async (req, res) => {
     const msg = await Message.findById(req.params.id);
     if (!msg) return res.status(404).json({ message: "Not found" });
 
-    // HARD DELETE SINGLE MESSAGE
     await Message.findByIdAndDelete(req.params.id);
 
     const conversation = await Conversation.findById(msg.conversationId);

@@ -106,7 +106,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   Timer? _statusHeartbeat;
   Timer? _typingExpiryTimer; 
   StreamSubscription? _statusSubscription;
-  StreamSubscription? _messageStatusSubscription; // ✅ Listener for read receipts
+  StreamSubscription? _messageStatusSubscription; 
 
   ChatDetailNotifier({
     required this.receiverId, 
@@ -128,7 +128,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     _statusHeartbeat?.cancel();
     _typingExpiryTimer?.cancel();
     _statusSubscription?.cancel();
-    _messageStatusSubscription?.cancel(); // ✅ Clean up
+    _messageStatusSubscription?.cancel(); 
     sendStopTyping();
     
     if (isGroup && groupId != null) {
@@ -136,7 +136,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     }
     
     _socket.socket?.off('new_message');
-    _socket.socket?.off('messages_read'); // Keeping for legacy/other listeners
+    _socket.socket?.off('messages_read'); 
     _socket.socket?.off('messages_deleted_bulk');
     _socket.socket?.off('typing_start');
     _socket.socket?.off('typing_stop');
@@ -165,7 +165,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       try {
         await _findOrCreateConversation();
       } catch (e) {
-        debugPrint("Initial chat creation check failed: $e");
+        debugPrint("Initial chat check failed: $e");
+        if(mounted) state = state.copyWith(isLoading: false); // Ensure spinner stops
       }
     }
 
@@ -199,32 +200,36 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       
       if (!mounted) return null;
 
-      if (result['success'] == true && result['data'] != null) {
+      if (result['success'] == true) {
+        // ✅ NEW LOGIC: Handle NULL data (Means no chat exists yet)
+        if (result['data'] == null) {
+          if (mounted) state = state.copyWith(isLoading: false); // Stop loading
+          return null;
+        }
+
         final body = result['data'];
         final innerData = (body is Map && body.containsKey('data')) ? body['data'] : body;
         final newId = innerData['_id'] ?? innerData['id'];
         
-        if (newId == null) {
-          throw Exception("Server returned success but ID is missing.");
-        }
-
-        if (mounted) {
+        if (newId != null && mounted) {
           state = state.copyWith(conversationId: newId.toString());
           loadMessages(initial: true);
+          return newId.toString();
         }
-        return newId.toString();
-      } else {
-        throw Exception(result['message'] ?? "Unknown server error");
       }
+      // If we reach here, it might be an error or unexpected response
+      if (mounted) state = state.copyWith(isLoading: false);
+      return null;
     } catch (e) {
       debugPrint("❌ Chat Initialization Error: $e");
-      rethrow; 
+      if (mounted) state = state.copyWith(isLoading: false);
+      return null;
     }
   }
 
   Future<void> refreshMessages() async {
     if (state.conversationId != null) {
-      await loadMessages(initial: false); // Reloads without full loading spinner if desired
+      await loadMessages(initial: false); 
     }
   }
 
@@ -248,7 +253,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               isLoading: false,
               hasMoreMessages: newMessages.length >= 20
             );
-            if (initial) markUnreadAsRead(); // ✅ Mark read when opening
+            if (initial) markUnreadAsRead(); 
           }
         }
       } else if (result['statusCode'] == 403) {
@@ -305,10 +310,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
   Future<void> deleteMessages(List<String> ids, {required bool deleteForEveryone}) async {
     try {
-      // ✅ OPTIMISTIC UI UPDATE
       if (mounted) {
         if (deleteForEveryone) {
-          // Mark as deleted (Italicize)
           final updated = state.messages.map((m) {
             if (ids.contains(m.id)) {
               m.isDeleted = true;
@@ -318,7 +321,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           }).toList();
           state = state.copyWith(messages: updated);
         } else {
-          // "Delete for Me" OR "Clear Trace" -> Remove from list entirely
           final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
           state = state.copyWith(messages: updated);
         }
@@ -330,7 +332,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       });
     } catch (e) {
       debugPrint("Delete failed: $e");
-      refreshMessages(); // Revert on error
+      refreshMessages(); 
     }
   }
 
@@ -345,16 +347,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   }) async {
     if (!mounted) return "View disposed";
 
-    String? currentConvId = state.conversationId;
-    if (currentConvId == null) {
-      try {
-        currentConvId = await _findOrCreateConversation();
-      } catch (e) {
-        return "Init Failed";
-      }
-      if (!mounted) return "View disposed";
-      if (currentConvId == null) return "Start chat failed";
-    }
+    // ❌ REMOVED: Auto-create Logic from here
+    // String? currentConvId = state.conversationId; ...
 
     final token = await _auth.getToken();
     if (!mounted) return "View disposed";
@@ -374,7 +368,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       replyToSenderName: replyingToMessage != null ? (replyingToMessage.senderId == state.myUserId ? "You" : "User") : null,
       replyToType: replyingToMessage?.type,
       createdAt: DateTime.now(),
-      status: MessageStatus.sending, // ✅ Initially Sending
+      status: MessageStatus.sending, 
     );
 
     state = state.copyWith(messages: [...state.messages, tempMessage]);
@@ -384,13 +378,26 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
           : AppConfig.baseUrl;
 
-      final url = Uri.parse('$baseUrl/api/chat/$currentConvId');
+      // ✅ UPDATED: Use the new robust endpoint
+      final url = Uri.parse('$baseUrl/api/chat/message/send');
+      
       var request = http.MultipartRequest('POST', url);
       request.headers['auth-token'] = token; 
 
       request.fields['text'] = text ?? ""; 
       request.fields['type'] = type;
       if (replyToId != null) request.fields['replyToId'] = replyToId;
+
+      // ✅ CRITICAL: Pass Context (Conversation ID or Recipient)
+      if (state.conversationId != null) {
+        request.fields['conversationId'] = state.conversationId!;
+      }
+      if (receiverId.isNotEmpty) {
+        request.fields['recipientId'] = receiverId;
+      }
+      if (isGroup && groupId != null) {
+        request.fields['groupId'] = groupId!;
+      }
 
       if (fileBytes != null) {
         request.files.add(http.MultipartFile.fromBytes('file', fileBytes, filename: fileName ?? 'upload'));
@@ -409,11 +416,17 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         try {
           final data = jsonDecode(response.body);
           final realMessage = ChatMessage.fromJson(data);
-          // ✅ Update temp message with real ID and 'Sent' status
+          
+          // ✅ NEW: Capture the newly created Conversation ID!
+          if (data['newConversationId'] != null) {
+             state = state.copyWith(conversationId: data['newConversationId']);
+          }
+
           final updated = state.messages.map((m) => m.id == tempId ? realMessage : m).toList();
           state = state.copyWith(messages: updated);
           return null; 
         } catch (e) {
+          debugPrint("Send Parse Error: $e");
           return "Server error";
         }
       } else {
@@ -432,21 +445,16 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     state = state.copyWith(messages: updated);
   }
 
-  // ✅ NEW: Trigger marking unread messages as read
   void markUnreadAsRead() {
     if (state.conversationId == null) return;
     
-    // Identify messages sent by others that are not yet read
     final unreadIds = state.messages
       .where((msg) => msg.senderId != state.myUserId && (msg.status != MessageStatus.read && !msg.isRead))
       .map((msg) => msg.id)
       .toList();
 
     if (unreadIds.isNotEmpty) {
-      // 1. Emit to server
       _socket.markMessagesAsRead(state.conversationId!, unreadIds, state.myUserId);
-      
-      // 2. Optimistic Update Local
       final updated = state.messages.map((m) {
         if (unreadIds.contains(m.id)) {
           m.isRead = true;
@@ -476,7 +484,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             isPeerTyping: false 
           );
           
-          // ✅ Mark new incoming message as read since we are on the screen
           markUnreadAsRead();
         } catch (e) {
           debugPrint("Error parsing incoming message: $e");
@@ -484,7 +491,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     });
 
-    // ✅ Listen for Status Updates (Read/Delivered) from SocketService Stream
     _messageStatusSubscription = _socket.messageStatusStream.listen((event) {
       if (!mounted) return;
       
@@ -492,11 +498,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
          final data = event['data'];
          if (data['chatId'] == state.conversationId) {
             final List<String> readIds = List<String>.from(data['messageIds']);
-            
             final updated = state.messages.map((m) {
               if (readIds.contains(m.id)) {
                 m.isRead = true;
-                m.status = MessageStatus.read; // ✅ Update to Double Blue
+                m.status = MessageStatus.read; 
               }
               return m;
             }).toList();
@@ -508,7 +513,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             final msgId = data['messageId'];
             final updated = state.messages.map((m) {
               if (m.id == msgId && m.status != MessageStatus.read) {
-                 m.status = MessageStatus.delivered; // ✅ Update to Double Grey
+                 m.status = MessageStatus.delivered; 
               }
               return m;
             }).toList();
@@ -534,7 +539,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     });
 
-    // ✅ LISTEN FOR DELETED MESSAGES & AUTO-REFRESH
     socket.on('messages_deleted_bulk', (data) {
       if (mounted && data['conversationId'] == state.conversationId) {
         List<dynamic> ids = data['messageIds'];

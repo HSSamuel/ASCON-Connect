@@ -9,6 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart'; 
+import 'package:audioplayers/audioplayers.dart'; // ✅ Added for foreground ringing
 import '../config.dart';
 import '../main.dart'; 
 
@@ -18,6 +19,7 @@ import '../screens/facility_detail_screen.dart';
 import '../screens/mentorship_dashboard_screen.dart'; 
 import '../screens/chat_screen.dart'; 
 import '../screens/login_screen.dart'; 
+import '../screens/call_screen.dart'; // ✅ Added for call navigation
 import '../services/socket_service.dart';
 
 @pragma('vm:entry-point')
@@ -32,6 +34,7 @@ class NotificationService {
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+  final AudioPlayer _foregroundRingPlayer = AudioPlayer(); // ✅ Player for foreground calls
   
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
@@ -47,7 +50,7 @@ class NotificationService {
 
     if (!kIsWeb) {
       await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-        alert: false, 
+        alert: true, // ✅ Changed to true so heads-up displays show
         badge: true,
         sound: true,
       );
@@ -59,13 +62,15 @@ class NotificationService {
       await _localNotifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
+          _stopRingtone(); // ✅ Stop ringing if user taps notification
           if (response.payload != null) {
             handleNavigation(jsonDecode(response.payload!));
           }
         },
       );
 
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      // 1. Standard Channel (Beep)
+      const AndroidNotificationChannel standardChannel = AndroidNotificationChannel(
         AppConfig.notificationChannelId, 
         AppConfig.notificationChannelName,
         description: AppConfig.notificationChannelDesc,
@@ -75,9 +80,24 @@ class NotificationService {
         showBadge: true,
       );
 
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+      // 2. ✅ Call Channel (Ringtone)
+      // NOTE: 'ringtone' must exist in android/app/src/main/res/raw/ringtone.mp3
+      const AndroidNotificationChannel callChannel = AndroidNotificationChannel(
+        'ascon_call_channel', 
+        'Incoming Calls',
+        description: 'Ringtone for incoming calls',
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('ringtone'), // ✅ Uses custom sound
+        showBadge: true,
+      );
+
+      final plugin = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      if (plugin != null) {
+        await plugin.createNotificationChannel(standardChannel);
+        await plugin.createNotificationChannel(callChannel); // ✅ Register call channel
+      }
     }
 
     if (!kIsWeb) {
@@ -86,7 +106,7 @@ class NotificationService {
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("🔔 Foreground Message: ${message.notification?.title}");
-      if (message.notification != null) {
+      if (message.notification != null || message.data.isNotEmpty) {
         if (!kIsWeb) {
           _showLocalNotification(message);
         }
@@ -94,12 +114,14 @@ class NotificationService {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _stopRingtone(); // ✅ Stop ringing
       debugPrint("🚀 App Opened from Notification: ${message.data}");
       handleNavigation(message.data);
     });
 
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
+      _stopRingtone(); // ✅ Stop ringing
       WidgetsBinding.instance.addPostFrameCallback((_) {
         handleNavigation(initialMessage.data);
       });
@@ -113,22 +135,9 @@ class NotificationService {
     await syncToken(retry: true);
   }
 
-  Future<AuthorizationStatus> getAuthorizationStatus() async {
-    final settings = await _firebaseMessaging.getNotificationSettings();
-    return settings.authorizationStatus;
-  }
-
-  Future<void> requestPermission() async {
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
-      alert: true, badge: true, sound: true, provisional: false,
-    );
-
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('✅ User granted notifications');
-      await syncToken(retry: false); 
-    } else {
-      debugPrint('❌ User declined notifications');
-    }
+  // ✅ Helper to stop ringing (called on tap or answer)
+  void _stopRingtone() {
+    _foregroundRingPlayer.stop();
   }
 
   Future<void> handleNavigation(Map<String, dynamic> data) async {
@@ -136,7 +145,9 @@ class NotificationService {
     final type = data['type']; 
     final id = data['id'] ?? data['eventId']; 
 
-    if (route == null && type != 'chat_message') return; 
+    _stopRingtone(); // Ensure sound stops on navigation
+
+    if (route == null && type != 'chat_message' && type != 'call_offer') return; 
 
     String? token = await _storage.read(key: 'auth_token');
     if (token == null) {
@@ -145,7 +156,7 @@ class NotificationService {
     }
 
     if (token == null) {
-      debugPrint("🔒 User logged out. Redirecting to Login with pending navigation.");
+      debugPrint("🔒 User logged out. Redirecting to Login.");
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => LoginScreen(pendingNavigation: data), 
@@ -155,10 +166,17 @@ class NotificationService {
       return;
     }
 
-    debugPrint("🔔 Navigating to Route: $route, Type: $type, ID: $id");
-
     Future.delayed(const Duration(milliseconds: 500), () {
       if (navigatorKey.currentState == null) return;
+
+      // ✅ Handle Incoming Call Navigation
+      if (type == 'call_offer' || type == 'video_call') {
+        // Here we assume the socket will handle the actual connection, 
+        // but we navigate to CallScreen or show incoming call dialog
+        // For simplicity, we just bring the app to foreground. 
+        // Real connection is handled by CallService & SocketService.
+        return;
+      }
 
       if (type == 'chat_message') {
         final conversationId = data['conversationId'];
@@ -237,20 +255,47 @@ class NotificationService {
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
     
-    String formattedTitle = originalTitle;
+    // ✅ Check if this is a Call
+    final type = message.data['type'];
+    final isCall = type == 'call_offer' || type == 'video_call' || (type?.toString().contains('call') ?? false);
 
-    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500]);
+    // ✅ Select Channel based on type
+    final channelId = isCall ? 'ascon_call_channel' : AppConfig.notificationChannelId;
+    final channelName = isCall ? 'Incoming Calls' : AppConfig.notificationChannelName;
+    final sound = isCall 
+        ? const RawResourceAndroidNotificationSound('ringtone') 
+        : null; // Null means default
+
+    // ✅ Foreground Ringing Logic
+    // If the app is open, system notifications often just "peek" without long sound.
+    // We force loop the ringtone here for calls.
+    if (isCall) {
+      try {
+        await _foregroundRingPlayer.setSource(AssetSource('sounds/ringtone.mp3'));
+        await _foregroundRingPlayer.setReleaseMode(ReleaseMode.loop); // Loop it
+        await _foregroundRingPlayer.resume();
+        
+        // Auto-stop after 30 seconds if not answered
+        Future.delayed(const Duration(seconds: 30), () {
+          _stopRingtone();
+        });
+      } catch (e) {
+        debugPrint("Error playing foreground ringtone: $e");
+      }
+    }
+
+    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]); // Aggressive vibration for calls
 
     final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
       body,
       htmlFormatBigText: true,
-      contentTitle: formattedTitle,
+      contentTitle: originalTitle,
       htmlFormatContentTitle: true,
     );
 
     final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      AppConfig.notificationChannelId, 
-      AppConfig.notificationChannelName, 
+      channelId, 
+      channelName, 
       importance: Importance.max,
       priority: Priority.high,
       color: const Color(0xFF1B5E3A),
@@ -262,17 +307,39 @@ class NotificationService {
       ledOnMs: 1000,
       ledOffMs: 500,
       styleInformation: bigTextStyleInformation,
+      sound: sound, // ✅ Use custom sound
+      fullScreenIntent: isCall, // ✅ Try to wake screen for calls
+      category: isCall ? AndroidNotificationCategory.call : AndroidNotificationCategory.message,
     );
 
     final NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
 
     await _localNotifications.show(
       message.hashCode, 
-      formattedTitle,   
+      originalTitle,   
       body,             
       platformDetails,  
       payload: jsonEncode(message.data), 
     );
+  }
+
+  // ... (Permission & Token Sync code remains unchanged)
+  Future<AuthorizationStatus> getAuthorizationStatus() async {
+    final settings = await _firebaseMessaging.getNotificationSettings();
+    return settings.authorizationStatus;
+  }
+
+  Future<void> requestPermission() async {
+    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+      alert: true, badge: true, sound: true, provisional: false,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      debugPrint('✅ User granted notifications');
+      await syncToken(retry: false); 
+    } else {
+      debugPrint('❌ User declined notifications');
+    }
   }
 
   Future<void> syncToken({String? tokenOverride, bool retry = false}) async {
