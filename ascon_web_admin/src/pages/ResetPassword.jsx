@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "react-router-dom"; // ✅ Removed useNavigate (No redirect needed)
+import { useLocation } from "react-router-dom";
 import axios from "axios";
-import { FaEye, FaEyeSlash, FaCheckCircle } from "react-icons/fa"; // ✅ Added Check Icon
+import { FaEye, FaEyeSlash, FaCheckCircle } from "react-icons/fa";
 import logo from "../assets/logo.png";
 import { Link } from "react-router-dom";
 
@@ -18,7 +18,7 @@ export default function ResetPassword() {
   const [error, setError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✅ NEW: Track if reset is finished to show the final success view
+  // Track if reset is finished to show the final success view
   const [isSuccess, setIsSuccess] = useState(false);
 
   const useQuery = () => {
@@ -26,7 +26,6 @@ export default function ResetPassword() {
   };
 
   const query = useQuery();
-  // const navigate = useNavigate(); // ❌ Removed: We don't want to send them to Admin Login
 
   const BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
@@ -62,11 +61,11 @@ export default function ResetPassword() {
         newPassword: newPassword,
       });
 
-      // ✅ Clear any admin sessions just in case
+      // Clear any admin sessions just in case
       localStorage.clear();
       sessionStorage.clear();
 
-      // ✅ Show Success State instead of redirecting
+      // Show Success State instead of redirecting
       setIsSuccess(true);
     } catch (err) {
       setError(true);
@@ -76,7 +75,7 @@ export default function ResetPassword() {
     }
   };
 
-  // ✅ RENDER: SUCCESS VIEW
+  // ✅ RENDER: SUCCESS VIEW (UPDATED FOR MOBILE USERS)
   if (isSuccess) {
     return (
       <div className="reset-container">
@@ -101,12 +100,19 @@ export default function ResetPassword() {
             Your password has been reset successfully.
           </p>
 
-          <div style={{ marginTop: "25px" }}>
-            <Link to="/login" style={{ textDecoration: "none" }}>
-              <button className="reset-button" style={{ marginTop: "10px" }}>
-                You can Login!
-              </button>
-            </Link>
+          <div style={{ marginTop: "30px", padding: "15px", backgroundColor: "#f0fdf4", borderRadius: "8px", border: "1px solid #bbf7d0" }}>
+            <p style={{ fontWeight: 'bold', color: '#166534', margin: 0 }}>
+              📱 Mobile App Users:
+            </p>
+            <p style={{ fontSize: '0.95rem', color: '#166534', marginTop: '5px' }}>
+              Please return to the ASCON Alumni App to login with your new password.
+            </p>
+          </div>
+
+          <div style={{ marginTop: "25px", borderTop: "1px solid #eee", paddingTop: "20px" }}>
+            <p style={{ fontSize: '0.85rem', color: '#888' }}>
+              Are you an Admin? <Link to="/login" style={{ color: "#1B5E3A", fontWeight: "bold" }}>Login to Portal here</Link>
+            </p>
           </div>
         </div>
       </div>

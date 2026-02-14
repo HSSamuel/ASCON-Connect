@@ -70,18 +70,8 @@ exports.register = asyncHandler(async (req, res) => {
     throw new Error(error.details[0].message);
   }
 
-  const {
-    fullName,
-    email,
-    password,
-    phoneNumber,
-    // yearOfAttendance, // ❌ REMOVED: Deferred
-    // programmeTitle,   // ❌ REMOVED: Deferred
-    // customProgramme,  // ❌ REMOVED: Deferred
-    // city,             // ❌ REMOVED: Deferred
-    fcmToken,
-    dateOfBirth,
-  } = req.body;
+  const { fullName, email, password, phoneNumber, fcmToken, dateOfBirth } =
+    req.body;
 
   const emailExist = await UserAuth.findOne({ email });
   if (emailExist) {
@@ -95,7 +85,6 @@ exports.register = asyncHandler(async (req, res) => {
   try {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    // ❌ REMOVED: const newAlumniId = await generateAlumniId(yearOfAttendance);
 
     // STEP 1: Create Auth
     const newUserAuth = new UserAuth({
@@ -113,8 +102,6 @@ exports.register = asyncHandler(async (req, res) => {
       userId: savedAuth._id,
       fullName,
       phoneNumber,
-      // ✅ NOTE: yearOfAttendance, programmeTitle, & alumniId are intentionally undefined
-      // This forces the user to complete their profile later to get an ID.
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
     });
     await newUserProfile.save({ session });
@@ -129,8 +116,6 @@ exports.register = asyncHandler(async (req, res) => {
     });
     await newUserSettings.save({ session });
 
-    // ❌ REMOVED: Auto-Join Groups Logic (Moved to Profile Update)
-
     await session.commitTransaction();
     session.endSession();
 
@@ -143,8 +128,6 @@ exports.register = asyncHandler(async (req, res) => {
           lastSeen: new Date(),
         });
       }
-
-      // ❌ REMOVED: Welcome to Chapter Notification (Since they aren't in one yet)
     } catch (notifyErr) {
       console.error("Post-registration notification error:", notifyErr);
     }
@@ -169,7 +152,7 @@ exports.register = asyncHandler(async (req, res) => {
         id: savedAuth._id,
         fullName: newUserProfile.fullName,
         email: savedAuth.email,
-        alumniId: null, // ✅ Explicitly null
+        alumniId: null,
         hasSeenWelcome: false,
       },
     });
@@ -252,7 +235,6 @@ exports.login = asyncHandler(async (req, res) => {
       profilePicture: userProfile.profilePicture,
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
-      // ✅ Return year so frontend can guard against incomplete profiles
       yearOfAttendance: userProfile.yearOfAttendance,
     },
   });
@@ -289,11 +271,9 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   let userProfile, userSettings;
 
   if (!userAuth) {
-    // ❌ REMOVED: const currentYear = new Date().getFullYear();
     const randomPassword = crypto.randomBytes(16).toString("hex");
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(randomPassword, salt);
-    // ❌ REMOVED: const newAlumniId = await generateAlumniId(currentYear);
 
     userAuth = new UserAuth({
       email: email,
@@ -309,9 +289,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       userId: userAuth._id,
       fullName: name,
       profilePicture: picture,
-      // ✅ NOTE: Intentionally undefined to force profile completion
-      // yearOfAttendance: currentYear,
-      // alumniId: newAlumniId,
     });
     await userProfile.save();
 
@@ -320,8 +297,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       hasSeenWelcome: false,
     });
     await userSettings.save();
-
-    // ❌ REMOVED: Auto-Join Class Group for Google Users
 
     if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
   } else {
@@ -374,7 +349,6 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       profilePicture: userProfile.profilePicture,
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
-      // ✅ Return year to frontend check
       yearOfAttendance: userProfile.yearOfAttendance,
     },
   });
@@ -428,6 +402,9 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
 
   const userProfile = await UserProfile.findOne({ userId: userAuth._id });
 
+  // ✅ FIX: Fallback name if profile is missing to prevent crash
+  const userName = userProfile ? userProfile.fullName : "Alumni";
+
   const token = crypto.randomBytes(20).toString("hex");
   userAuth.resetPasswordToken = token;
   userAuth.resetPasswordExpires = Date.now() + 3600000;
@@ -440,11 +417,11 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
     "https://api.brevo.com/v3/smtp/email",
     {
       sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
-      to: [{ email: userAuth.email, name: userProfile.fullName }],
+      to: [{ email: userAuth.email, name: userName }],
       subject: "ASCON Alumni - Password Reset",
       htmlContent: `
         <h3>Password Reset Request</h3>
-        <p>Hello ${userProfile.fullName},</p>
+        <p>Hello ${userName},</p>
         <p>You requested a password reset. Click the link below:</p>
         <p><a href="${resetUrl}">Reset Password</a></p>
       `,
