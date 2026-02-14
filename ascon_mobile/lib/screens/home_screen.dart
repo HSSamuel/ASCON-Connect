@@ -44,15 +44,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasUnreadMessages = false;
-  // ❌ REMOVED: _unreadNotifications variable
   final ApiClient _api = ApiClient();
   
+  // ✅ ADDED: Cache current user ID to prevent self-notification
+  String? _currentUserId; 
   DateTime? _lastPressedAt;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadCurrentUser(); // ✅ Load ID first
     _refreshUnreadState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstTimeWelcome());
@@ -61,6 +63,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted) {
         NotificationService().requestPermission();
       }
+    });
+  }
+
+  // ✅ NEW: Get User ID for logic checks
+  Future<void> _loadCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _currentUserId = prefs.getString('userId'); 
     });
   }
 
@@ -110,7 +120,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _refreshUnreadState() {
     _checkUnreadStatus(); 
-    // ❌ REMOVED: _checkNotificationStatus();
     _listenForMessages(); 
   }
 
@@ -127,12 +136,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  // ❌ REMOVED: _checkNotificationStatus method
-
   void _listenForMessages() {
     final socket = SocketService().socket;
     if (socket == null) return;
     
+    // Clean up old listeners to prevent duplicates
     try {
       socket.off('new_message');
       socket.off('messages_read'); 
@@ -140,7 +148,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } catch (_) {}
 
     socket.on('new_message', (data) {
-      if (mounted) setState(() => _hasUnreadMessages = true);
+      if (!mounted) return;
+      
+      // ✅ FIX: Don't show red dot for my own messages
+      if (data != null && data['message'] != null) {
+        final senderId = data['message']['sender'] is Map 
+            ? data['message']['sender']['_id'] 
+            : data['message']['sender'];
+            
+        if (senderId == _currentUserId) return; 
+      }
+
+      setState(() => _hasUnreadMessages = true);
     });
 
     socket.on('messages_read', (data) {
@@ -237,8 +256,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               elevation: 0,
               automaticallyImplyLeading: false,
               actions: [
-                // ❌ REMOVED: The Notification Bell Stack completely
-                
                 Stack(
                   alignment: Alignment.topRight,
                   children: [
@@ -423,22 +440,23 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     }
   }
 
+  // ✅ OPTIMIZED IMAGE BUILDER
   Widget _buildSafeImage(String? imageUrl, {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
-      return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
+      return _buildPlaceholder(fallbackIcon);
     }
 
-    if (imageUrl.contains('profile/picture/1') || imageUrl.contains('googleusercontent.com/profile/picture')) {
-       return Container(color: Colors.grey[200], child: Center(child: Icon(fallbackIcon, color: Colors.grey[400], size: 40)));
+    // 1. Google/Profile Urls
+    if (imageUrl.contains('profile/picture/1') || imageUrl.contains('googleusercontent.com')) {
+       return _buildPlaceholder(fallbackIcon);
     }
 
+    // 2. Web Network Images
     if (kIsWeb && imageUrl.startsWith('http')) {
        return Image.network(
          imageUrl,
          fit: fit,
-         errorBuilder: (context, error, stackTrace) {
-           return Container(color: Colors.grey[200], child: Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey[400], size: 40)));
-         },
+         errorBuilder: (context, error, stackTrace) => _buildPlaceholder(Icons.broken_image_rounded),
          loadingBuilder: (context, child, loadingProgress) {
            if (loadingProgress == null) return child;
            return Container(color: Colors.grey[200]);
@@ -446,21 +464,44 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
        );
     }
 
+    // 3. Mobile Cached Images (Fastest)
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
-        imageUrl: imageUrl, fit: fit,
+        imageUrl: imageUrl, 
+        fit: fit,
+        // ✅ Add memCache for smoother scrolling of large lists
+        memCacheWidth: 300, 
         placeholder: (context, url) => Container(color: Colors.grey[200]),
-        errorWidget: (context, url, error) => Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)),
+        errorWidget: (context, url, error) => _buildPlaceholder(Icons.broken_image),
       );
     }
 
+    // 4. Base64 (The Performance Bottleneck)
     try {
-      String cleanBase64 = imageUrl;
-      if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
-      return Image.memory(base64Decode(cleanBase64), fit: fit, errorBuilder: (c, e, s) => Container(color: Colors.grey[200], child: Icon(Icons.broken_image, color: Colors.grey[400], size: 40)));
+      // ✅ Check if it's actually Base64 before trying to decode
+      if (imageUrl.length > 100 && !imageUrl.startsWith('http')) {
+        String cleanBase64 = imageUrl;
+        if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
+        
+        return Image.memory(
+          base64Decode(cleanBase64), 
+          fit: fit,
+          gaplessPlayback: true, // ✅ Prevents flickering when list updates
+          errorBuilder: (c, e, s) => _buildPlaceholder(Icons.broken_image),
+        );
+      }
     } catch (e) {
-      return Container(color: Colors.grey[200], child: Icon(fallbackIcon, color: Colors.grey[400], size: 40));
+      // Fallthrough
     }
+    
+    return _buildPlaceholder(fallbackIcon);
+  }
+
+  Widget _buildPlaceholder(IconData icon) {
+    return Container(
+      color: Colors.grey[200], 
+      child: Center(child: Icon(icon, color: Colors.grey[400], size: 40))
+    );
   }
 
   @override

@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ Import dotenv
 import '../services/socket_service.dart';
 
 enum CallState {
@@ -22,7 +25,7 @@ class CallService {
   String? _remoteId;
   bool _isCallActive = false;
   
-  // ✅ FIX: Buffering for ICE candidates
+  // Buffering for ICE candidates
   bool _isRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _candidateQueue = [];
   
@@ -48,6 +51,11 @@ class CallService {
   Future<void> startCall(String remoteUserId, {bool video = false}) async {
     if (_isCallActive) return;
     
+    // ✅ Check Permissions first
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      await _checkPermissions();
+    }
+
     _remoteId = remoteUserId;
     _isCallActive = true;
     _isRemoteDescriptionSet = false; // Reset
@@ -62,13 +70,7 @@ class CallService {
     if (_peerConnection == null) return;
 
     // Force audio routing to earpiece (default for calls)
-    if (!kIsWeb) {
-      try {
-        Helper.setSpeakerphoneOn(false);
-      } catch (e) {
-        debugPrint("Error setting initial audio route: $e");
-      }
-    }
+    await toggleSpeaker(false);
 
     RTCSessionDescription offer = await _peerConnection!.createOffer({
       'offerToReceiveAudio': true,
@@ -86,7 +88,12 @@ class CallService {
   }
 
   // --- 2. ANSWER CALL (Receiver) ---
-  Future<void> answerCall(Map<String, dynamic> offer, String callerId, {bool video = false}) async {
+  Future<void> answerCall(Map<String, dynamic> offer, String callerId, String? callLogId, {bool video = false}) async {
+    // ✅ Check Permissions first
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      await _checkPermissions();
+    }
+
     _remoteId = callerId;
     _isCallActive = true;
     _isRemoteDescriptionSet = false; // Reset
@@ -98,13 +105,7 @@ class CallService {
     if (_peerConnection == null) return;
 
     // Force audio routing to earpiece
-    if (!kIsWeb) {
-      try {
-        Helper.setSpeakerphoneOn(false);
-      } catch (e) {
-        debugPrint("Error setting initial audio route: $e");
-      }
-    }
+    await toggleSpeaker(false);
 
     await _peerConnection!.setRemoteDescription(
       RTCSessionDescription(offer['sdp'], offer['type']),
@@ -124,9 +125,11 @@ class CallService {
 
     await _peerConnection!.setLocalDescription(answer);
 
+    // ✅ FIX: Emit single 'make_answer' event with both answer AND callLogId
     SocketService().socket?.emit('make_answer', {
       'to': _remoteId,
       'answer': answer.toMap(),
+      'callLogId': callLogId, 
     });
   }
 
@@ -168,11 +171,47 @@ class CallService {
 
   // --- 5. UTILS & CONTROLS ---
 
+  Future<void> _checkPermissions() async {
+    if (Platform.isAndroid) {
+      // Android 12+ needs BluetoothConnect for headsets
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.microphone,
+        Permission.bluetoothConnect, 
+      ].request();
+      
+      if (statuses[Permission.microphone]!.isDenied) {
+        throw Exception('Microphone permission required');
+      }
+    }
+  }
+
   Future<void> _createPeerConnection() async {
+    // ✅ Load from .env
+    final String turnUrlString = dotenv.env['TURN_URL'] ?? "";
+    final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
+    final String turnPassword = dotenv.env['TURN_PASSWORD'] ?? "";
+
+    // ✅ Split the comma-separated URL string from Metered
+    // e.g. "turn:global.relay.metered.ca:80,turn:global..." -> ["turn:...", "turn:..."]
+    List<String> turnUrls = turnUrlString.isNotEmpty 
+        ? turnUrlString.split(',') 
+        : [];
+
     Map<String, dynamic> configuration = {
       "iceServers": [
+        // 1. Google STUN (Always keep as fallback/initial check)
         {"urls": "stun:stun.l.google.com:19302"},
-      ]
+        
+        // 2. Metered.ca TURN (Loaded dynamically from .env)
+        if (turnUrls.isNotEmpty)
+          {
+            "urls": turnUrls,
+            "username": turnUsername,
+            "credential": turnPassword
+          }
+      ],
+      "iceTransportPolicy": "all", 
+      "sdpSemantics": "unified-plan",
     };
 
     _peerConnection = await createPeerConnection(configuration);
@@ -216,18 +255,22 @@ class CallService {
       'video': video ? {'facingMode': 'user'} : false,
     };
 
-    _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
-    _localStreamController.add(_localStream);
-    
-    // Explicitly enable local audio tracks
-    _localStream!.getAudioTracks().forEach((track) {
-      track.enabled = true; 
-    });
-
-    if (_peerConnection != null) {
-      _localStream!.getTracks().forEach((track) {
-        _peerConnection!.addTrack(track, _localStream!);
+    try {
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _localStreamController.add(_localStream);
+      
+      // Explicitly enable local audio tracks
+      _localStream!.getAudioTracks().forEach((track) {
+        track.enabled = true; 
       });
+
+      if (_peerConnection != null) {
+        _localStream!.getTracks().forEach((track) {
+          _peerConnection!.addTrack(track, _localStream!);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error getting user media: $e");
     }
   }
   

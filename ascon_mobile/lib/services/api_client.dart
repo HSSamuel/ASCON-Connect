@@ -55,10 +55,14 @@ class ApiClient {
     // Tokens are now cleared directly in AuthService via secureStorage.delete()
   }
 
-  Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
-    // ✅ FIX: Move header generation INSIDE the closure so retries pick up new tokens
+  // ✅ FIX: Added {bool requiresAuth = true} to allow public requests
+  Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body, {bool requiresAuth = true}) async {
     final response = await _request(() async {
-      final headers = await _getSecureHeaders();
+      // ✅ LOGIC CHANGE: Only add secure headers if explicitly requested
+      final headers = requiresAuth 
+          ? await _getSecureHeaders() 
+          : {'Content-Type': 'application/json'}; // Public Header
+          
       return http.post(
         Uri.parse('${AppConfig.baseUrl}$endpoint'),
         headers: headers,
@@ -68,10 +72,12 @@ class ApiClient {
     return response as Map<String, dynamic>; 
   }
 
-  Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body) async {
-    // ✅ FIX: Move header generation INSIDE the closure
+  Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body, {bool requiresAuth = true}) async {
     final response = await _request(() async {
-      final headers = await _getSecureHeaders();
+      final headers = requiresAuth 
+          ? await _getSecureHeaders() 
+          : {'Content-Type': 'application/json'};
+          
       return http.put(
         Uri.parse('${AppConfig.baseUrl}$endpoint'),
         headers: headers,
@@ -81,10 +87,12 @@ class ApiClient {
     return response as Map<String, dynamic>;
   }
 
-  Future<dynamic> get(String endpoint) async {
-    // ✅ FIX: Move header generation INSIDE the closure
+  Future<dynamic> get(String endpoint, {bool requiresAuth = true}) async {
     return _request(() async {
-      final headers = await _getSecureHeaders();
+      final headers = requiresAuth 
+          ? await _getSecureHeaders() 
+          : {'Content-Type': 'application/json'};
+          
       return http.get(
         Uri.parse('${AppConfig.baseUrl}$endpoint'),
         headers: headers,
@@ -92,11 +100,12 @@ class ApiClient {
     });
   }
 
-  // ✅ DELETE METHOD
-  Future<dynamic> delete(String endpoint) async {
-    // ✅ FIX: Move header generation INSIDE the closure
+  Future<dynamic> delete(String endpoint, {bool requiresAuth = true}) async {
     return _request(() async {
-      final headers = await _getSecureHeaders();
+      final headers = requiresAuth 
+          ? await _getSecureHeaders() 
+          : {'Content-Type': 'application/json'};
+          
       return http.delete(
         Uri.parse('${AppConfig.baseUrl}$endpoint'),
         headers: headers,
@@ -115,19 +124,15 @@ class ApiClient {
         String? newToken;
 
         if (_isRefreshing) {
-          // If already refreshing, wait for the pending refresh to complete
           print("⏳ Waiting for pending refresh...");
           newToken = await _refreshCompleter?.future;
         } else {
-          // Start a new refresh process
           _isRefreshing = true;
           _refreshCompleter = Completer<String?>();
           print("🔄 Initiating Silent Refresh...");
 
           try {
             newToken = await onTokenRefresh!();
-            
-            // ✅ FIX: Check if already completed before completing to avoid "Bad state"
             if (!(_refreshCompleter?.isCompleted ?? true)) {
               _refreshCompleter?.complete(newToken);
             }
@@ -141,10 +146,9 @@ class ApiClient {
           }
         }
 
-        // If we got a valid token (either from our refresh or the waiting one), retry
         if (newToken != null) {
           print("✅ Token Refreshed. Retrying Request...");
-          // This call to req() will now re-execute _getSecureHeaders() and use the NEW token
+          // This call to req() will now re-execute and pick up the NEW token
           response = await req().timeout(_timeoutDuration); 
         }
       }
@@ -155,7 +159,7 @@ class ApiClient {
     } on SocketException {
       throw ApiException('No internet connection. Please try again later.', statusCode: 0);
     } on ApiException {
-      rethrow; // Pass through already typed exceptions
+      rethrow; 
     } catch (e) {
       throw ApiException('Connection error: $e');
     }
@@ -169,8 +173,6 @@ class ApiClient {
       body = {}; 
     }
     
-    // ✅ FIX: Only treat 200-299 as success. 
-    // If you need to handle 404 specifically for login, handle it in the Login ViewModel, not here.
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return {
         'success': true,
@@ -178,7 +180,6 @@ class ApiClient {
         'data': body
       };
     } else {
-      // ✅ Throw exception for 404 so the UI catches it instead of trying to parse bad data
       final errorMessage = (body is Map && body['message'] != null) 
           ? body['message'] 
           : 'Request failed with status ${response.statusCode}';

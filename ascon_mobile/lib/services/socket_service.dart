@@ -57,10 +57,33 @@ class SocketService with WidgetsBindingObserver {
         
         switch (event.event) {
           case Event.actionCallAccept:
-            // Handle native answer action
+             // ✅ FIX: Navigate to Call Screen when answered from Lock Screen
+            final data = event.body['extra'];
+            if (data != null) {
+               SchedulerBinding.instance.addPostFrameCallback((_) {
+                  if (rootNavigatorKey.currentState != null) {
+                    try {
+                      appRouter.push('/call', extra: {
+                        'remoteName': data['callerName'] ?? "Unknown Caller",
+                        'remoteId': data['callerId'] ?? "Unknown",
+                        'remoteAvatar': data['callerPic'],
+                        'isCaller': false,
+                        'offer': data['offer'],
+                        'callLogId': data['callLogId'], 
+                      });
+                    } catch (e) {
+                      debugPrint("❌ Navigation Failed (CallKit): $e");
+                    }
+                  }
+               });
+            }
             break;
+            
           case Event.actionCallDecline:
-             // Handle native decline action
+             // ✅ FIX: Emit end_call when declined from Native UI
+             if (event.body['extra'] != null && event.body['extra']['callLogId'] != null) {
+               socket?.emit('end_call', {'callLogId': event.body['extra']['callLogId']});
+             }
              break;
           default:
             break;

@@ -92,11 +92,12 @@ class AuthService {
     try {
       final String? fcmToken = await _getFcmToken();
 
+      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
         'fcmToken': fcmToken ?? "",
-      });
+      }, requiresAuth: false);
 
       if (result['success']) {
         final data = result['data'];
@@ -125,6 +126,7 @@ class AuthService {
     try {
       final String? fcmToken = await _getFcmToken();
 
+      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/register', {
         'fullName': fullName,
         'email': email,
@@ -135,7 +137,7 @@ class AuthService {
         'dateOfBirth': dateOfBirth,
         'googleToken': googleToken,
         'fcmToken': fcmToken ?? "",
-      });
+      }, requiresAuth: false);
 
       if (result['success'] && result['data']['token'] != null) {
         final data = result['data'];
@@ -173,10 +175,11 @@ class AuthService {
 
       final String? fcmToken = await _getFcmToken();
 
+      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/google', {
         'token': tokenToSend,
         'fcmToken': fcmToken ?? "",
-      });
+      }, requiresAuth: false);
 
       if (result['success']) {
         final data = result['data'];
@@ -194,7 +197,12 @@ class AuthService {
 
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     try {
-      return await _api.post('/api/auth/forgot-password', {'email': email});
+      // ✅ FIX: requiresAuth: false ensures no bad token is sent
+      return await _api.post(
+        '/api/auth/forgot-password', 
+        {'email': email},
+        requiresAuth: false 
+      );
     } catch (e) {
       return {'success': false, 'message': _cleanError(e)};
     }

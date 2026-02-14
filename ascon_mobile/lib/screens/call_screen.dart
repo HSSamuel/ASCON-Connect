@@ -7,6 +7,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart'; 
+import 'package:flutter_webrtc/flutter_webrtc.dart'; // Required for Helper
+import 'package:shimmer/shimmer.dart'; 
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
 
@@ -39,7 +41,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late AudioPlayer _audioPlayer;
   StreamSubscription? _callStateSubscription;
-  StreamSubscription? _socketSubscription; // ✅ Track listener to cancel it
+  StreamSubscription? _socketSubscription;
 
   String _status = "Initializing...";
   bool _isMuted = false;
@@ -56,6 +58,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _currentCallLogId = widget.callLogId; 
+    
+    // REMOVED: Helper.setWakelock(true); as it caused compilation errors
     
     _audioPlayer = AudioPlayer();
     
@@ -96,7 +100,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       switch (state) {
         case CallState.connected:
           _stopRinging();
-          // ✅ Short vibration to indicate connection
           _triggerVibration(pattern: [0, 100]); 
           
           _startCallTimer();
@@ -143,7 +146,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
            if (mounted && context.canPop()) context.pop();
          });
        } 
-       // ✅ Listen for remote hangup
        else if (event['type'] == 'call_ended_remote') {
          setState(() => _status = "Call Ended");
          _stopRinging();
@@ -175,7 +177,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       
       if (!mounted) return;
 
-      if (e.toString().contains("NotAllowedError") || e.toString().contains("Permission dismissed")) {
+      if (e.toString().contains("Microphone permission")) {
         setState(() {
           _status = "Microphone Permission Denied";
           _permissionDenied = true;
@@ -196,7 +198,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         Vibration.vibrate(pattern: [500, 1000, 500, 1000], repeat: 1);
       }
     } catch (e) {
-      debugPrint("⚠️ Audio Play Warning (Ignored): $e");
+      debugPrint("⚠️ Audio Play Warning: $e");
     }
   }
 
@@ -217,7 +219,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   void _onAnswer() async {
-    // ✅ CRITICAL: Stop ringtone and Wait before enabling WebRTC audio
     await _stopRinging();
     
     if (widget.offer != null) {
@@ -227,17 +228,16 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           _hasAnswered = true;
         });
         
-        _socketService.socket?.emit('make_answer', {
-          'to': widget.remoteId,
-          'callLogId': _currentCallLogId, 
-        });
-
-        await _callService.answerCall(widget.offer!, widget.remoteId);
+        await _callService.answerCall(
+            widget.offer!, 
+            widget.remoteId, 
+            _currentCallLogId
+        );
       } catch (e) {
         if (!mounted) return;
+        debugPrint("Answer Error: $e");
         setState(() {
-           _status = "Microphone Blocked";
-           _permissionDenied = true;
+           _status = "Connection Error";
            _hasAnswered = false; 
         });
       }
@@ -246,6 +246,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   void _onDecline() {
     _stopRinging();
+    if (_currentCallLogId != null) {
+       _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
+    }
     _callService.endCall(); 
   }
 
@@ -255,9 +258,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _stopRinging();
     _audioPlayer.dispose();
     _callStateSubscription?.cancel();
-    _socketSubscription?.cancel(); // ✅ Clean up
+    _socketSubscription?.cancel();
     _pulseController.dispose();
     _callService.endCall();
+    
+    // REMOVED: Helper.setWakelock(false); as it caused compilation errors
+    
     super.dispose();
   }
 
@@ -270,6 +276,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // Background Avatar (Blurred)
           if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
             CachedNetworkImage(
               imageUrl: widget.remoteAvatar!,
@@ -298,6 +305,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
+                
+                // Status Pill
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
@@ -316,6 +325,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
+                
                 if (_permissionDenied)
                   Padding(
                     padding: const EdgeInsets.only(top: 20.0),
@@ -327,8 +337,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 const Spacer(flex: 2),
+                
+                // Controls Area
                 Container(
-                  padding: const EdgeInsets.only(bottom: 50, top: 30),
+                  padding: const EdgeInsets.only(bottom: 50, top: 30, left: 20, right: 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
@@ -337,7 +349,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   child: showIncomingControls 
-                    ? _buildIncomingControls() 
+                    ? _buildIncomingControls() // ✅ Slide to Answer here
                     : _buildActiveCallControls(),
                 ),
               ],
@@ -381,14 +393,44 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     return image;
   }
 
+  // ✅ UPDATED: Slide to Answer Logic
   Widget _buildIncomingControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        _buildCircleButton(color: Colors.redAccent, icon: Icons.call_end, label: "Decline", onTap: _onDecline),
-        ScaleTransition(
-          scale: Tween(begin: 1.0, end: 1.1).animate(_pulseController),
-          child: _buildCircleButton(color: const Color(0xFF1B5E3A), icon: Icons.call, label: "Answer", onTap: _onAnswer, size: 80),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Decline Button (Left)
+            Column(
+              children: [
+                GestureDetector(
+                  onTap: _onDecline,
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.redAccent.withOpacity(0.2), 
+                      border: Border.all(color: Colors.redAccent, width: 1.5),
+                    ),
+                    child: const Icon(Icons.call_end, color: Colors.redAccent, size: 30),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text("Decline", style: TextStyle(color: Colors.white60, fontSize: 12)),
+              ],
+            ),
+            
+            // Slide to Answer Widget (Right/Center)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 30),
+                child: SlideToAnswer(
+                  onAnswer: _onAnswer,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -411,6 +453,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
           onPressed: () {
             _stopRinging();
             _callService.endCall();
+            if (_currentCallLogId != null) {
+               _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
+            }
             if (mounted && context.canPop()) context.pop();
           },
           backgroundColor: Colors.redAccent,
@@ -425,25 +470,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             _callService.toggleSpeaker(_isSpeakerOn);
           },
         ),
-      ],
-    );
-  }
-
-  Widget _buildCircleButton({required Color color, required IconData icon, required String label, required VoidCallback onTap, double size = 65}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 15)]),
-            child: Icon(icon, color: Colors.white, size: size * 0.5),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
       ],
     );
   }
@@ -467,6 +493,97 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         const SizedBox(height: 8),
         Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
       ],
+    );
+  }
+}
+
+// ==========================================
+// ✅ CUSTOM SLIDE TO ANSWER WIDGET
+// ==========================================
+class SlideToAnswer extends StatefulWidget {
+  final VoidCallback onAnswer;
+  const SlideToAnswer({super.key, required this.onAnswer});
+
+  @override
+  State<SlideToAnswer> createState() => _SlideToAnswerState();
+}
+
+class _SlideToAnswerState extends State<SlideToAnswer> {
+  double _dragValue = 0.0;
+  double _maxWidth = 0.0;
+  bool _submitted = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _maxWidth = constraints.maxWidth - 60; // 60 is knob width
+        return Container(
+          height: 60,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              // Shimmer Text
+              if (!_submitted)
+                Center(
+                  child: Shimmer.fromColors(
+                    baseColor: Colors.white60,
+                    highlightColor: Colors.white,
+                    child: const Text(
+                      "Slide to answer >>",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+
+              // Draggable Knob
+              Positioned(
+                left: _dragValue,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (details) {
+                    if (_submitted) return;
+                    setState(() {
+                      _dragValue += details.delta.dx;
+                      if (_dragValue < 0) _dragValue = 0;
+                      if (_dragValue > _maxWidth) _dragValue = _maxWidth;
+                    });
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (_submitted) return;
+                    if (_dragValue > _maxWidth * 0.8) {
+                      // Trigger Answer
+                      setState(() {
+                        _dragValue = _maxWidth;
+                        _submitted = true;
+                      });
+                      widget.onAnswer();
+                    } else {
+                      // Reset
+                      setState(() {
+                        _dragValue = 0;
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: const Icon(Icons.call, color: Colors.green, size: 30),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
