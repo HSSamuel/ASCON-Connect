@@ -9,10 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:go_router/go_router.dart'; // ✅ Required for context-based navigation
+import 'package:go_router/go_router.dart'; 
 
 import '../config.dart';
-import '../router.dart'; // ✅ Import router keys (rootNavigatorKey)
+import '../router.dart'; 
 
 import '../screens/event_detail_screen.dart';
 import '../screens/programme_detail_screen.dart';
@@ -131,7 +131,8 @@ class NotificationService {
       syncToken(tokenOverride: newToken, retry: true);
     });
 
-    await syncToken(retry: true);
+    // ✅ FIX: Do NOT await this. It causes the app to hang on splash screen if network is slow.
+    syncToken(retry: true);
   }
 
   void _stopRingtone() {
@@ -335,7 +336,8 @@ class NotificationService {
       alert: true, badge: true, sound: true, provisional: false,
     );
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      await syncToken(retry: false);
+      // ✅ FIX: Don't await this! Fire and forget so UI doesn't lag.
+      syncToken(retry: false);
     }
   }
 
@@ -354,11 +356,12 @@ class NotificationService {
       }
 
       if (authToken != null) {
+        // ✅ FIX: Added timeout so it doesn't hang indefinitely on bad network
         await http.post(
           Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token'),
           headers: {'Content-Type': 'application/json', 'auth-token': authToken},
           body: jsonEncode({"fcmToken": fcmToken}),
-        );
+        ).timeout(const Duration(seconds: 10));
       }
     } catch (e) {
       debugPrint("Sync Error: $e");

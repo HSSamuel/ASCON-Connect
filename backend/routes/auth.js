@@ -1,25 +1,34 @@
 const router = require("express").Router();
-const authController = require("../controllers/authController");
+const {
+  register,
+  login,
+  googleLogin,
+  refreshToken,
+  forgotPassword,
+  resetPassword,
+  logout,
+} = require("../controllers/authController");
 
-// 1. Register
-router.post("/register", authController.register);
+// ✅ Import Middleware (but only use it where needed)
+const verifyToken = require("./verifyToken");
 
-// 2. Login
-router.post("/login", authController.login);
+// ==========================================
+// 🔓 PUBLIC ROUTES (No Token Required)
+// ==========================================
+router.post("/register", register);
+router.post("/login", login);
+router.post("/google", googleLogin);
+router.post("/refresh", refreshToken);
 
-// 3. Google Login
-router.post("/google", authController.googleLogin);
+// ✅ FIX: "Forgot Password" must be PUBLIC.
+// Users cannot have a valid token if they forgot their password.
+router.post("/forgot-password", forgotPassword);
 
-// 4. Logout
-router.post("/logout", authController.logout);
+router.post("/reset-password", resetPassword);
 
-// 5. Refresh Token
-router.post("/refresh", authController.refreshToken);
-
-// 6. Forgot Password
-router.post("/forgot-password", authController.forgotPassword);
-
-// 7. Reset Password
-router.post("/reset-password", authController.resetPassword);
+// ==========================================
+// 🔒 PROTECTED ROUTES (Token Required)
+// ==========================================
+router.post("/logout", verifyToken, logout);
 
 module.exports = router;

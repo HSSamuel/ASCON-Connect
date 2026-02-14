@@ -39,9 +39,13 @@ class SocketService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (socket == null || !socket!.connected) {
-        initSocket();
-      }
+      // ✅ FIX: Check token existence BEFORE calling init to prevent log spam
+      // If we are logged out, we don't need a socket connection on resume.
+      _storage.read(key: "auth_token").then((token) {
+        if (token != null && (socket == null || !socket!.connected)) {
+          initSocket();
+        }
+      });
     }
   }
 
@@ -103,7 +107,8 @@ class SocketService with WidgetsBindingObserver {
     }
 
     if (token == null || _currentUserId == null) {
-      debugPrint("⚠️ Socket Init Skipped: Missing Token or UserId");
+      // ✅ FIX: Silenced log to reduce console noise during permission flows
+      // debugPrint("⚠️ Socket Init Skipped: Missing Token or UserId");
       return;
     }
 
