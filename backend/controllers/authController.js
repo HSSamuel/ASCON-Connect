@@ -10,7 +10,6 @@ const crypto = require("crypto");
 const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
-// ✅ REMOVED: generateAlumniId is deferred to profile update
 const asyncHandler = require("../utils/asyncHandler");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
@@ -386,7 +385,7 @@ exports.refreshToken = asyncHandler(async (req, res) => {
 });
 
 // --------------------------------------------------------------------------
-// 5. FORGOT PASSWORD
+// 5. FORGOT PASSWORD (BREVO)
 // --------------------------------------------------------------------------
 exports.forgotPassword = asyncHandler(async (req, res) => {
   if (!req.body.email) {
@@ -401,40 +400,58 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   }
 
   const userProfile = await UserProfile.findOne({ userId: userAuth._id });
-
-  // ✅ FIX: Fallback name if profile is missing to prevent crash
   const userName = userProfile ? userProfile.fullName : "Alumni";
 
+  // Generate Token
   const token = crypto.randomBytes(20).toString("hex");
   userAuth.resetPasswordToken = token;
-  userAuth.resetPasswordExpires = Date.now() + 3600000;
+  userAuth.resetPasswordExpires = Date.now() + 3600000; // 1 hour
   await userAuth.save();
 
   const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
   const resetUrl = `${clientUrl}/reset-password?token=${token}`;
 
-  await axios.post(
-    "https://api.brevo.com/v3/smtp/email",
-    {
-      sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
-      to: [{ email: userAuth.email, name: userName }],
-      subject: "ASCON Alumni - Password Reset",
-      htmlContent: `
-        <h3>Password Reset Request</h3>
-        <p>Hello ${userName},</p>
-        <p>You requested a password reset. Click the link below:</p>
-        <p><a href="${resetUrl}">Reset Password</a></p>
-      `,
-    },
-    {
-      headers: {
-        "api-key": process.env.EMAIL_PASS,
-        "Content-Type": "application/json",
-      },
-    },
-  );
+  console.log("Using API Key:", process.env.EMAIL_PASS ? "Key Exists" : "Key Missing");
 
-  res.json({ message: "Reset link sent to your email!" });
+  // ✅ ERROR HANDLING ADDED HERE
+  try {
+    await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
+        to: [{ email: userAuth.email, name: userName }],
+        subject: "ASCON Alumni - Password Reset",
+        htmlContent: `
+          <h3>Password Reset Request</h3>
+          <p>Hello ${userName},</p>
+          <p>You requested a password reset. Click the link below:</p>
+          <p><a href="${resetUrl}">Reset Password</a></p>
+        `,
+      },
+      {
+        headers: {
+          "api-key": process.env.EMAIL_PASS,
+          "Content-Type": "application/json",
+          "accept": "application/json", // Good practice to add this
+        },
+      }
+    );
+
+    console.log(`✅ Email sent successfully to: ${userAuth.email}`);
+    res.json({ message: "Reset link sent to your email!" });
+
+  } catch (error) {
+    // This will print the EXACT message from Brevo (e.g., "Account suspended", "Invalid Key")
+    console.error("❌ Brevo Error:", error.response ? error.response.data : error.message);
+
+    // Rollback: Remove the token since email failed
+    userAuth.resetPasswordToken = undefined;
+    userAuth.resetPasswordExpires = undefined;
+    await userAuth.save();
+
+    res.status(500);
+    throw new Error("Email could not be sent. Please try again later.");
+  }
 });
 
 // --------------------------------------------------------------------------
