@@ -11,6 +11,8 @@ const { OAuth2Client } = require("google-auth-library");
 const Joi = require("joi");
 const axios = require("axios");
 const asyncHandler = require("../utils/asyncHandler");
+
+// ✅ IMPORT NOTIFICATION HANDLER
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -117,6 +119,20 @@ exports.register = asyncHandler(async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    // ==========================================
+    // 🔔 SEND WELCOME NOTIFICATION (After Registration)
+    // ==========================================
+    try {
+      await sendPersonalNotification(
+        savedAuth._id,
+        "Welcome to ASCON! 🚀",
+        `Hello ${fullName}, we are thrilled to have you here! Complete your profile to get the best experience.`,
+        { type: "welcome", route: "profile" },
+      );
+    } catch (notifyErr) {
+      console.error("Welcome notification failed:", notifyErr);
+    }
 
     try {
       if (req.io) {
@@ -298,6 +314,20 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     await userSettings.save();
 
     if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
+
+    // ==========================================
+    // 🔔 SEND WELCOME NOTIFICATION (After Google Signup)
+    // ==========================================
+    try {
+      await sendPersonalNotification(
+        userAuth._id,
+        "Welcome to ASCON! 🚀",
+        `Hello ${name}, welcome aboard! We are happy to have you join the alumni network.`,
+        { type: "welcome", route: "profile" },
+      );
+    } catch (notifyErr) {
+      console.error("Welcome notification failed:", notifyErr);
+    }
   } else {
     userProfile = await UserProfile.findOne({ userId: userAuth._id });
     userSettings = await UserSettings.findOne({ userId: userAuth._id });
@@ -411,9 +441,11 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
   const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
   const resetUrl = `${clientUrl}/reset-password?token=${token}`;
 
-  console.log("Using API Key:", process.env.EMAIL_PASS ? "Key Exists" : "Key Missing");
+  console.log(
+    "Using API Key:",
+    process.env.EMAIL_PASS ? "Key Exists" : "Key Missing",
+  );
 
-  // ✅ ERROR HANDLING ADDED HERE
   try {
     await axios.post(
       "https://api.brevo.com/v3/smtp/email",
@@ -432,17 +464,19 @@ exports.forgotPassword = asyncHandler(async (req, res) => {
         headers: {
           "api-key": process.env.EMAIL_PASS,
           "Content-Type": "application/json",
-          "accept": "application/json", // Good practice to add this
+          accept: "application/json", // Good practice to add this
         },
-      }
+      },
     );
 
     console.log(`✅ Email sent successfully to: ${userAuth.email}`);
     res.json({ message: "Reset link sent to your email!" });
-
   } catch (error) {
     // This will print the EXACT message from Brevo (e.g., "Account suspended", "Invalid Key")
-    console.error("❌ Brevo Error:", error.response ? error.response.data : error.message);
+    console.error(
+      "❌ Brevo Error:",
+      error.response ? error.response.data : error.message,
+    );
 
     // Rollback: Remove the token since email failed
     userAuth.resetPasswordToken = undefined;

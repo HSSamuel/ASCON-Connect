@@ -2238,3 +2238,139 @@
 {"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 00:00:58"}
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 00:01:00"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 00:01:00"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 01:23:30"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 01:23:30"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 01:23:30"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 01:23:32"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 01:23:34"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 01:23:36"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 01:23:36"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:04:36"}
+{"level":"warn","message":"⚠️  WARNING: Redis is enabled (USE_REDIS=true) but REDIS_URL is missing. Defaulting to localhost.","timestamp":"2026-02-15 02:04:36"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:04:36"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:04:36"}
+{"level":"info","message":"🔌 Redis Enabled. Attempting to connect...","timestamp":"2026-02-15 02:04:36"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:04:37"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:37"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:37"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:38"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:39"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:39"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:40"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:40"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:04:40"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:42"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:42"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:04:42"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:04:42"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:44"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:44"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:46"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:46"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:48"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:48"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:50"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:50"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:52"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:52"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:54"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:54"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:56"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:56"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:04:58"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:04:59"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:00"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:01"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:02"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:03"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:04"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:05"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:06"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:07"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:09"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:09"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:11"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:11"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:13"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:13"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:15"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:15"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:17"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:17"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:19"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:20"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:21"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:22"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:23"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:24"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:25"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:26"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:28"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:28"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:30"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:30"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:32"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:32"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:34"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:34"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:36"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:36"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:38"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:39"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:40"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:41"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:43"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:43"}
+{"level":"warn","message":"Redis Pub Error: ","timestamp":"2026-02-15 02:05:45"}
+{"level":"warn","message":"Redis Sub Error: ","timestamp":"2026-02-15 02:05:45"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:05:56"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:05:57"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:05:57"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:05:57"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:06:01"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:06:03"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:06:04"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:24:33"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:24:33"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:24:33"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:24:34"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:24:36"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:24:38"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:24:38"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:44:49"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:44:50"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:44:50"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:44:54"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:44:58"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:45:00"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:45:00"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:49:25"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:49:25"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:49:25"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:49:26"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:49:28"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:49:30"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:49:30"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:50:21"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:50:21"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:50:21"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:50:22"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 02:52:08"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 02:52:08"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 02:52:08"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 02:52:09"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 02:52:11"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 02:52:13"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 02:52:13"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-15 03:09:31"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-15 03:09:31"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-15 03:09:31"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-15 03:09:33"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-15 03:09:35"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-15 03:09:37"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-15 03:09:37"}

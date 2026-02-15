@@ -180,7 +180,6 @@ class CallLogDetailScreen extends StatelessWidget {
     );
   }
 
-  // ✅ FIXED: Replaced CircleAvatar(backgroundImage) with CachedNetworkImage + ErrorWidget
   Widget _buildAvatar(BuildContext context, String? url, String? name, double radius) {
     Widget avatarWidget;
     

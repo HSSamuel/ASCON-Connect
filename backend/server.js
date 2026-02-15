@@ -169,7 +169,7 @@ mongoose
       res.status(200).send("ASCON Server is Awake! 🚀");
     });
 
-    server.listen(PORT, "0.0.0.0", () => {
+    server.listen(PORT, () => {
       logger.info(`🚀 Server is running on port ${PORT}`);
     });
   })

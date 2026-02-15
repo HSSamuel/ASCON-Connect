@@ -49,7 +49,7 @@ class _CallLogsTabState extends State<CallLogsTab> {
       if (res['success'] == true) {
         final serverResponse = res['data']; 
 
-        // ✅ FIX: Handle nested list structure { success: true, data: [...] }
+        // Handle nested list structure { success: true, data: [...] }
         if (serverResponse is Map && serverResponse['data'] is List) {
           if (mounted) {
             setState(() {
@@ -80,17 +80,58 @@ class _CallLogsTabState extends State<CallLogsTab> {
 
   Future<void> _deleteLog(String id) async {
     try {
+      // Optimistic update
       setState(() {
         _logs.removeWhere((l) => l['_id'] == id);
       });
       await _api.delete('/api/calls/$id');
     } catch (e) {
       debugPrint("Delete error: $e");
-      _fetchLogs(); 
+      _fetchLogs(); // Revert on error
     }
   }
 
+  // 🔹 NEW: Grouping Logic for Consecutive Calls
+  List<Map<String, dynamic>> _groupConsecutiveLogs(List<dynamic> logs) {
+    if (logs.isEmpty) return [];
+
+    List<Map<String, dynamic>> grouped = [];
+    List<dynamic> currentGroup = [logs[0]];
+
+    for (int i = 1; i < logs.length; i++) {
+      final current = logs[i];
+      final previous = logs[i - 1];
+
+      // Check if same remoteId
+      final currentRemote = current['remoteId'];
+      final previousRemote = previous['remoteId'];
+
+      if (currentRemote != null && currentRemote == previousRemote) {
+        currentGroup.add(current);
+      } else {
+        // Finalize previous group
+        grouped.add({
+          'primary': currentGroup.first, // The most recent log is the primary
+          'count': currentGroup.length,
+          'logs': List.from(currentGroup),
+        });
+        // Start new group
+        currentGroup = [current];
+      }
+    }
+    
+    // Add the final group
+    grouped.add({
+      'primary': currentGroup.first,
+      'count': currentGroup.length,
+      'logs': List.from(currentGroup),
+    });
+
+    return grouped;
+  }
+
   void _openLogDetails(Map<String, dynamic> log) {
+    // We filter _logs to pass ALL history for this user to the detail screen
     final userLogs = _logs.where((l) => l['remoteId'] == log['remoteId']).toList();
     final strictLogs = userLogs.map((e) => Map<String, dynamic>.from(e)).toList();
 
@@ -123,17 +164,22 @@ class _CallLogsTabState extends State<CallLogsTab> {
       );
     }
 
+    // ✅ Apply Grouping
+    final groupedLogs = _groupConsecutiveLogs(_logs);
+
     return RefreshIndicator(
       onRefresh: _fetchLogs,
       child: ListView.separated(
-        itemCount: _logs.length,
+        itemCount: groupedLogs.length,
         separatorBuilder: (c, i) => Divider(height: 1, indent: 70, color: Colors.grey.withOpacity(0.1)),
         itemBuilder: (context, index) {
-          final log = _logs[index];
+          final group = groupedLogs[index];
+          final log = group['primary']; // Use the primary log for display
+          final int count = group['count'];
           final String type = log['type'] ?? 'dialed'; 
           
           return Dismissible(
-            key: Key(log['_id']),
+            key: Key(log['_id']), // Deleting the primary item
             direction: DismissDirection.endToStart,
             background: Container(
               color: Colors.red,
@@ -146,13 +192,36 @@ class _CallLogsTabState extends State<CallLogsTab> {
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               onTap: () => _openLogDetails(log),
               leading: _buildAvatar(log['remotePic'], log['remoteName']),
-              title: Text(
-                log['remoteName'] ?? "Unknown",
-                style: GoogleFonts.lato(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: type == 'missed' ? Colors.red : Theme.of(context).textTheme.bodyLarge?.color
-                ),
+              title: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      log['remoteName'] ?? "Unknown",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.lato(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: type == 'missed' ? Colors.red : Theme.of(context).textTheme.bodyLarge?.color
+                      ),
+                    ),
+                  ),
+                  // ✅ COUNTER BADGE
+                  if (count > 1) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        "($count)",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               subtitle: Row(
                 children: [
@@ -189,7 +258,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
     );
   }
 
-  // ✅ FIXED: Replaced CircleAvatar(backgroundImage) with CachedNetworkImage + ErrorWidget
   Widget _buildAvatar(String? url, String? name) {
     if (url != null && url.isNotEmpty) {
       return CachedNetworkImage(

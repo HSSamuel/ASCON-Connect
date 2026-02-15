@@ -131,7 +131,7 @@ class NotificationService {
       syncToken(tokenOverride: newToken, retry: true);
     });
 
-    // ✅ FIX: Do NOT await this. It causes the app to hang on splash screen if network is slow.
+    // Fire and forget sync to prevent UI blocking
     syncToken(retry: true);
   }
 
@@ -225,13 +225,22 @@ class NotificationService {
     // 📢 CASE 3: POSTS / UPDATES
     // ======================================================
     if (type == 'new_update' || route == 'updates') {
-      // Switch to "Updates" Tab (Index 2 in Shell)
+      // Switch to "Updates" Tab
       context.go('/updates'); 
       return;
     }
 
     // ======================================================
-    // 🎓 CASE 4: PROGRAMME & EVENT DETAILS
+    // 🚀 CASE 4: WELCOME / PROFILE (New User)
+    // ======================================================
+    if (type == 'welcome' || route == 'profile') {
+      // Switch to "Profile" Tab
+      context.go('/profile'); 
+      return;
+    }
+
+    // ======================================================
+    // 🎓 CASE 5: PROGRAMME & EVENT DETAILS
     // ======================================================
     if (route == 'mentorship_requests') {
       Navigator.of(context).push(
