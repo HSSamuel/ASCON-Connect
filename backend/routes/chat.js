@@ -76,10 +76,9 @@ router.get("/", verify, async (req, res) => {
   try {
     const chats = await Conversation.find({
       participants: { $in: [req.user._id] },
-      $or: [
-        { lastMessage: { $exists: true, $ne: null, $ne: "" } },
-        { isGroup: true },
-      ],
+      // ✅ FIX: Only return chats that have a last message.
+      // Removed { isGroup: true } to prevent empty groups from auto-appearing.
+      lastMessage: { $exists: true, $ne: null, $ne: "" },
     })
       .populate("groupId", "name icon")
       .sort({ updatedAt: -1 })
@@ -460,11 +459,9 @@ router.post(
           group &&
           !group.members.some((m) => m.toString() === req.user._id)
         ) {
-          return res
-            .status(403)
-            .json({
-              message: "You are no longer a participant of this group.",
-            });
+          return res.status(403).json({
+            message: "You are no longer a participant of this group.",
+          });
         }
         if (
           group &&

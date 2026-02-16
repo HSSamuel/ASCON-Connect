@@ -12,7 +12,7 @@ const Joi = require("joi");
 const axios = require("axios");
 const asyncHandler = require("../utils/asyncHandler");
 
-// ✅ IMPORT NOTIFICATION HANDLER
+// ✅ IMPORT NOTIFICATION HANDLER (Kept in case needed for other future notifications)
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -59,6 +59,60 @@ const manageFcmToken = async (userId, token) => {
       },
     },
   });
+};
+
+// --------------------------------------------------------------------------
+// ✅ HELPER: SEND WELCOME EMAIL
+// --------------------------------------------------------------------------
+const sendWelcomeEmail = async (email, fullName) => {
+  if (!process.env.EMAIL_PASS) {
+    console.warn("⚠️ Skipped Welcome Email: No API Key (EMAIL_PASS) found.");
+    return;
+  }
+
+  try {
+    await axios.post(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        sender: { name: "ASCON Alumni", email: process.env.EMAIL_USER },
+        to: [{ email: email, name: fullName }],
+        subject: "Welcome to ASCON Alumni Connect! 🚀",
+        htmlContent: `
+          <div style="font-family: Arial, sans-serif; color: #333;">
+            <div style="background-color: #0F3621; padding: 20px; text-align: center;">
+              <h2 style="color: #fff; margin: 0;">Welcome to ASCON Connect</h2>
+            </div>
+            <div style="padding: 20px; border: 1px solid #ddd; border-top: none;">
+              <h3>Hello ${fullName},</h3>
+              <p>We are thrilled to have you join the ASCON Alumni Network!</p>
+              <p>With this platform, you can:</p>
+              <ul>
+                <li>Reconnect with your class set.</li>
+                <li>Find mentors and professional opportunities.</li>
+                <li>Stay updated with ASCON events and news.</li>
+              </ul>
+              <p>To get the best experience, please take a moment to <strong>complete your profile</strong>.</p>
+              <br/>
+              <p>Warm Regards,<br/><strong>The ASCON Alumni Team</strong></p>
+            </div>
+          </div>
+        `,
+      },
+      {
+        headers: {
+          "api-key": process.env.EMAIL_PASS,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+      },
+    );
+    console.log(`✅ Welcome Email sent to: ${email}`);
+  } catch (error) {
+    console.error(
+      "❌ Brevo Welcome Email Error:",
+      error.response ? error.response.data : error.message,
+    );
+  }
 };
 
 // --------------------------------------------------------------------------
@@ -121,18 +175,9 @@ exports.register = asyncHandler(async (req, res) => {
     session.endSession();
 
     // ==========================================
-    // 🔔 SEND WELCOME NOTIFICATION (After Registration)
+    // 🔔 SEND WELCOME EMAIL (Replaces Push Notification)
     // ==========================================
-    try {
-      await sendPersonalNotification(
-        savedAuth._id,
-        "Welcome to ASCON! 🚀",
-        `Hello ${fullName}, we are thrilled to have you here! Complete your profile to get the best experience.`,
-        { type: "welcome", route: "profile" },
-      );
-    } catch (notifyErr) {
-      console.error("Welcome notification failed:", notifyErr);
-    }
+    sendWelcomeEmail(email, fullName);
 
     try {
       if (req.io) {
@@ -169,6 +214,11 @@ exports.register = asyncHandler(async (req, res) => {
         email: savedAuth.email,
         alumniId: null,
         hasSeenWelcome: false,
+        // ✅ FIX ISSUE 1: Return these fields so the mobile app caches them immediately
+        phoneNumber: newUserProfile.phoneNumber,
+        dateOfBirth: newUserProfile.dateOfBirth
+          ? newUserProfile.dateOfBirth.toISOString()
+          : null,
       },
     });
   } catch (err) {
@@ -251,6 +301,11 @@ exports.login = asyncHandler(async (req, res) => {
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
       yearOfAttendance: userProfile.yearOfAttendance,
+      // ✅ FIX ISSUE 1: Include phone/dob here too for consistency
+      phoneNumber: userProfile.phoneNumber,
+      dateOfBirth: userProfile.dateOfBirth
+        ? userProfile.dateOfBirth.toISOString()
+        : null,
     },
   });
 });
@@ -316,18 +371,9 @@ exports.googleLogin = asyncHandler(async (req, res) => {
     if (req.io) req.io.emit("admin_stats_update", { type: "NEW_USER" });
 
     // ==========================================
-    // 🔔 SEND WELCOME NOTIFICATION (After Google Signup)
+    // 🔔 SEND WELCOME EMAIL (Replaces Push Notification)
     // ==========================================
-    try {
-      await sendPersonalNotification(
-        userAuth._id,
-        "Welcome to ASCON! 🚀",
-        `Hello ${name}, welcome aboard! We are happy to have you join the alumni network.`,
-        { type: "welcome", route: "profile" },
-      );
-    } catch (notifyErr) {
-      console.error("Welcome notification failed:", notifyErr);
-    }
+    sendWelcomeEmail(email, name);
   } else {
     userProfile = await UserProfile.findOne({ userId: userAuth._id });
     userSettings = await UserSettings.findOne({ userId: userAuth._id });
@@ -379,6 +425,11 @@ exports.googleLogin = asyncHandler(async (req, res) => {
       hasSeenWelcome: userSettings.hasSeenWelcome || false,
       alumniId: userProfile.alumniId,
       yearOfAttendance: userProfile.yearOfAttendance,
+      // ✅ FIX ISSUE 1: Include phone/dob here too
+      phoneNumber: userProfile.phoneNumber,
+      dateOfBirth: userProfile.dateOfBirth
+        ? userProfile.dateOfBirth.toISOString()
+        : null,
     },
   });
 });
