@@ -67,7 +67,7 @@ const swaggerOptions = {
       {
         url:
           process.env.NODE_ENV === "production"
-            ? "https://ascon-st50.onrender.com"
+            ? "https://ascon.onrender.com"
             : `http://localhost:${process.env.PORT || 5000}`,
       },
     ],

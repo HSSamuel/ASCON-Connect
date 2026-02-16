@@ -26,7 +26,7 @@ function ProgrammesManager({ canEdit }) {
   });
 
   const BASE_URL =
-    process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+    process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
 
   const programmes = usePaginatedFetch(
     `${BASE_URL}/api/admin/programmes`,

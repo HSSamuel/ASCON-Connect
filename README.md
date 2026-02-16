@@ -57,7 +57,7 @@ _Located in `/ascon_web_admin`_
 3.  **Configuration:** Ensure `.env` points to your backend:
     ```env
     REACT_APP_API_URL=http://localhost:5000
-    # For Production: REACT_APP_API_URL=[https://ascon-st50.onrender.com](https://ascon-st50.onrender.com)
+    # For Production: REACT_APP_API_URL=[https://ascon.onrender.com](https://ascon.onrender.com)
     ```
 4.  Start the dashboard: `npm start`
 5.  _Access at: `http://localhost:3000`_
@@ -74,7 +74,7 @@ _Located in `/ascon_mobile`_
     ```env
     # API Connection (Use your computer's IP address for local testing on Physical devices)
     API_URL=[http://192.168.1.xxx:5000](http://192.168.1.xxx:5000)
-    # For Production: API_URL=[https://ascon-st50.onrender.com](https://ascon-st50.onrender.com)
+    # For Production: API_URL=[https://ascon.onrender.com](https://ascon.onrender.com)
 
     # Firebase Cloud Messaging (Web Push Key)
     FIREBASE_VAPID_KEY=your_firebase_vapid_key

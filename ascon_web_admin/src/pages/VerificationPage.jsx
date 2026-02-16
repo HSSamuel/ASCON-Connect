@@ -16,7 +16,7 @@ export default function VerificationPage() {
 
   // 3. Environment Config (Falls back to Render if .env is missing)
   const BASE_URL =
-    process.env.REACT_APP_API_URL || "https://ascon-st50.onrender.com";
+    process.env.REACT_APP_API_URL || "https://ascon.onrender.com";
 
   // 4. Fetch Logic
   useEffect(() => {

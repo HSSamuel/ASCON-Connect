@@ -93,7 +93,7 @@ npm start
 The API includes built-in **Swagger Documentation** for easy testing and exploration of endpoints.
 
 * **Local:** [http://localhost:5000/api-docs](http://localhost:5000/api-docs)
-* **Live:** [https://ascon-st50.onrender.com/api-docs](https://ascon-st50.onrender.com/api-docs)
+* **Live:** [https://ascon.onrender.com/api-docs](https://ascon.onrender.com/api-docs)
 
 ---
 

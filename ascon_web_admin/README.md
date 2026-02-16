@@ -51,7 +51,7 @@ Create a `.env` file in the root of the **ascon_web_admin** folder to connect th
 REACT_APP_API_URL=http://localhost:5000
 
 # Option B: Live Production (Render)
-# REACT_APP_API_URL=https://ascon-st50.onrender.com
+# REACT_APP_API_URL=https://ascon.onrender.com
 ```
 
 > **Note:** React requires all environment variables to start with `REACT_APP_`.
