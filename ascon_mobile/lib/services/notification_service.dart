@@ -106,6 +106,12 @@ class NotificationService {
     }
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      // ✅ FIX: If it's a CALL and the app is open, ignore this notification.
+      // The SocketService 'call_made' event will handle the navigation instantly.
+      if (message.data['type'] == 'call_offer') {
+        return; 
+      }
+
       if (message.notification != null || message.data.isNotEmpty) {
         if (!kIsWeb) {
           _showLocalNotification(message);

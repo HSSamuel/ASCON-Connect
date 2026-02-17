@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert'; // ✅ ADDED: Required for Base64 decoding
 import 'dart:ui'; 
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
@@ -7,8 +8,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart'; 
-import 'package:flutter_webrtc/flutter_webrtc.dart'; // Required for Helper
+import 'package:flutter_webrtc/flutter_webrtc.dart'; 
 import 'package:shimmer/shimmer.dart'; 
+import 'package:wakelock_plus/wakelock_plus.dart'; 
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
 
@@ -59,7 +61,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     super.initState();
     _currentCallLogId = widget.callLogId; 
     
-    // REMOVED: Helper.setWakelock(true); as it caused compilation errors
+    if (!kIsWeb) {
+      WakelockPlus.enable(); 
+    }
     
     _audioPlayer = AudioPlayer();
     
@@ -262,9 +266,24 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _pulseController.dispose();
     _callService.endCall();
     
-    // REMOVED: Helper.setWakelock(false); as it caused compilation errors
+    if (!kIsWeb) {
+      WakelockPlus.disable();
+    }
     
     super.dispose();
+  }
+
+  // ✅ HELPER: PROVIDES CORRECT IMAGE PROVIDER (URL vs BASE64)
+  ImageProvider? _getImageProvider(String? source) {
+    if (source == null || source.isEmpty) return null;
+    if (source.startsWith('http')) {
+      return CachedNetworkImageProvider(source);
+    }
+    try {
+      return MemoryImage(base64Decode(source));
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -276,11 +295,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Background Avatar (Blurred)
+          // ✅ FIX 1: BACKGROUND IMAGE HANDLES BASE64
           if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: widget.remoteAvatar!,
+            Image(
+              image: _getImageProvider(widget.remoteAvatar)!,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF0F3621)),
             )
           else
             Container(color: const Color(0xFF0F3621)), 
@@ -349,7 +369,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                   child: showIncomingControls 
-                    ? _buildIncomingControls() // ✅ Slide to Answer here
+                    ? _buildIncomingControls()
                     : _buildActiveCallControls(),
                 ),
               ],
@@ -363,17 +383,20 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   // --- WIDGETS ---
 
   Widget _buildAvatar(String? url, double size, bool pulse) {
+    // ✅ FIX 2: AVATAR HANDLES BASE64
+    final imageProvider = _getImageProvider(url);
+
     Widget image = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white24, width: 4),
-        image: (url != null && url.isNotEmpty) 
-          ? DecorationImage(image: CachedNetworkImageProvider(url), fit: BoxFit.cover)
+        image: (imageProvider != null) 
+          ? DecorationImage(image: imageProvider, fit: BoxFit.cover)
           : null,
       ),
-      child: (url == null || url.isEmpty)
+      child: (imageProvider == null)
           ? Icon(Icons.person, size: size * 0.4, color: Colors.white54)
           : null,
     );
@@ -393,7 +416,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     return image;
   }
 
-  // ✅ UPDATED: Slide to Answer Logic
   Widget _buildIncomingControls() {
     return Column(
       mainAxisSize: MainAxisSize.min,

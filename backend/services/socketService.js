@@ -22,7 +22,6 @@ const activeCallTimers = new Map(); // callLogId -> TimeoutID
 const addSocketToUser = async (userId, socketId) => {
   if (redisClient && redisClient.isOpen) {
     await redisClient.sAdd(`online_users:${userId}`, socketId);
-    // Set a TTL (e.g., 24h) to prevent stale keys if server crashes hard
     await redisClient.expire(`online_users:${userId}`, 86400);
     return await redisClient.sCard(`online_users:${userId}`);
   } else {
@@ -90,7 +89,7 @@ const initializeSocket = async (server) => {
       await Promise.all([pubClient.connect(), subClient.connect()]);
 
       io.adapter(createAdapter(pubClient, subClient));
-      redisClient = pubClient; // ✅ Assign for Presence Logic
+      redisClient = pubClient;
 
       logger.info("✅ Redis Connected & Adapter Configured");
     } catch (err) {
@@ -145,6 +144,30 @@ const initializeSocket = async (server) => {
     socket.on("join_room", (room) => socket.join(room));
     socket.on("leave_room", (room) => socket.leave(room));
 
+    // ✅ NEW: CHECK USER STATUS ON DEMAND (Fixes Presence Issue)
+    socket.on("check_user_status", async ({ userId: targetId }) => {
+      try {
+        const count = await getSocketCount(targetId);
+        const isOnline = count > 0;
+
+        let lastSeen = new Date();
+        if (!isOnline) {
+          const userAuth = await UserAuth.findById(targetId).select("lastSeen");
+          if (userAuth) lastSeen = userAuth.lastSeen;
+        }
+
+        // Send result ONLY to the requester
+        socket.emit("user_status_update", {
+          // Use same event name as broadcast to reuse logic
+          userId: targetId,
+          isOnline: isOnline,
+          lastSeen: lastSeen,
+        });
+      } catch (e) {
+        logger.error(`Check Status Error: ${e.message}`);
+      }
+    });
+
     // ==========================================
     // C. MESSAGE STATUS HANDLERS
     // ==========================================
@@ -195,7 +218,6 @@ const initializeSocket = async (server) => {
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
       try {
-        // 1. Check if user is busy (Optional: Check DB for 'ongoing' calls involving receiver)
         const busyCheck = await CallLog.findOne({
           $or: [{ caller: receiverId }, { receiver: receiverId }],
           status: { $in: ["ongoing", "ringing"] },
@@ -214,7 +236,6 @@ const initializeSocket = async (server) => {
           : "Unknown Caller";
         const callerPic = callerProfile ? callerProfile.profilePicture : null;
 
-        // 2. Create Call Log
         const newLog = await CallLog.create({
           caller: socket.userId,
           receiver: receiverId,
@@ -223,7 +244,6 @@ const initializeSocket = async (server) => {
           callerPic: callerPic,
         });
 
-        // 3. Send ID to Caller
         socket.emit("call_log_generated", { callLogId: newLog._id });
 
         const payload = {
@@ -235,10 +255,8 @@ const initializeSocket = async (server) => {
           callLogId: newLog._id,
         };
 
-        // 4. Emit via Socket (Immediate if online)
         io.to(receiverId).emit("call_made", payload);
 
-        // 5. Send Push Notification (For Background/Killed State)
         await sendPersonalNotification(
           receiverId,
           "Incoming Call 📞",
@@ -249,19 +267,17 @@ const initializeSocket = async (server) => {
             callerName,
             callerPic: callerPic || "",
             callLogId: newLog._id.toString(),
-            uuid: newLog._id.toString(), // For CallKit ID
+            uuid: newLog._id.toString(),
           },
         );
 
-        // 6. Set Timeout for "Missed Call" (Store ID to clear it later)
         const timerId = setTimeout(async () => {
           const checkLog = await CallLog.findById(newLog._id);
           if (checkLog && checkLog.status === "ringing") {
             await CallLog.findByIdAndUpdate(newLog._id, { status: "missed" });
             io.to(socket.userId).emit("call_failed", { reason: "No answer" });
-            io.to(receiverId).emit("call_missed", { callLogId: newLog._id }); // Notify receiver to close UI
+            io.to(receiverId).emit("call_missed", { callLogId: newLog._id });
 
-            // Send Missed Call Push
             await sendPersonalNotification(
               receiverId,
               "Missed Call 📞",
@@ -284,21 +300,18 @@ const initializeSocket = async (server) => {
       logger.info(`📞 Call answered by ${socket.userId}`);
 
       if (data.callLogId) {
-        // Clear the "Missed Call" Timer immediately
         const timerId = activeCallTimers.get(data.callLogId);
         if (timerId) {
           clearTimeout(timerId);
           activeCallTimers.delete(data.callLogId);
         }
 
-        // Update DB
         await CallLog.findByIdAndUpdate(data.callLogId, {
           status: "ongoing",
           startTime: new Date(),
         });
       }
 
-      // Relay to Caller
       io.to(data.to).emit("answer_made", {
         socket: socket.id,
         answer: data.answer,
@@ -310,7 +323,6 @@ const initializeSocket = async (server) => {
       if (!data.callLogId) return;
 
       try {
-        // Clear missed call timer if it exists (e.g., declined immediately)
         const timerId = activeCallTimers.get(data.callLogId);
         if (timerId) {
           clearTimeout(timerId);
@@ -346,7 +358,6 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // 4. ICE Candidates
     socket.on("ice_candidate", (data) => {
       io.to(data.to).emit("ice_candidate_received", {
         candidate: data.candidate,
@@ -366,16 +377,13 @@ const initializeSocket = async (server) => {
 // 4. CONNECTION LOGIC (Redis Adapted)
 // ==========================================
 const handleConnection = async (socket, userId) => {
-  // Clear any pending disconnect timers
   if (disconnectTimers.has(userId)) {
     clearTimeout(disconnectTimers.get(userId));
     disconnectTimers.delete(userId);
   }
 
-  // ✅ Add to Redis Set
   const count = await addSocketToUser(userId, socket.id);
 
-  // If this is the FIRST socket for this user across all servers (count === 1)
   if (count === 1) {
     await UserAuth.findByIdAndUpdate(userId, { isOnline: true }).catch((e) =>
       logger.error(e),
@@ -385,10 +393,8 @@ const handleConnection = async (socket, userId) => {
 };
 
 const handleDisconnect = async (socket, userId) => {
-  // ✅ Remove from Redis Set
   await removeSocketFromUser(userId, socket.id);
 
-  // ✅ AUTO-CLEANUP: If user disconnects during a call
   try {
     const activeCall = await CallLog.findOne({
       $or: [{ caller: userId }, { receiver: userId }],
@@ -396,13 +402,11 @@ const handleDisconnect = async (socket, userId) => {
     });
 
     if (activeCall) {
-      // Mark ended
       await CallLog.findByIdAndUpdate(activeCall._id, {
         status: activeCall.status === "ringing" ? "missed" : "ended",
         endTime: new Date(),
       });
 
-      // Notify other party
       const isCaller = activeCall.caller.toString() === userId;
       const otherParty = isCaller ? activeCall.receiver : activeCall.caller;
 
@@ -410,7 +414,6 @@ const handleDisconnect = async (socket, userId) => {
         reason: "User disconnected",
       });
 
-      // Clear any timer associated with this call
       if (activeCallTimers.has(activeCall._id.toString())) {
         clearTimeout(activeCallTimers.get(activeCall._id.toString()));
         activeCallTimers.delete(activeCall._id.toString());
@@ -420,8 +423,6 @@ const handleDisconnect = async (socket, userId) => {
     logger.error(`Call Cleanup Error: ${err.message}`);
   }
 
-  // ✅ Graceful Offline Check
-  // Wait 5 seconds. If user hasn't reconnected (count remains 0), mark offline.
   const timer = setTimeout(async () => {
     const count = await getSocketCount(userId);
 

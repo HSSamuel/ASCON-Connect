@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // ✅ Import for kIsWeb
+import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb & defaultTargetPlatform
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart'; 
 import 'package:socket_io_client/socket_io_client.dart' as IO;
@@ -30,8 +30,9 @@ class SocketService with WidgetsBindingObserver {
   SocketService._internal() {
     WidgetsBinding.instance.addObserver(this);
     
-    // ✅ CRITICAL FIX: Only setup CallKit listener on Mobile (Android/iOS)
-    if (!kIsWeb) {
+    // ✅ FIXED: Check Platform safely for Web compatibility
+    bool isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+    if (!kIsWeb && isMobile) {
       _setupCallKitListener();
     }
   }
@@ -39,7 +40,6 @@ class SocketService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // ✅ FIX: Check token existence BEFORE calling init to prevent log spam
       _storage.read(key: "auth_token").then((token) {
         if (token != null && (socket == null || !socket!.connected)) {
           initSocket();
@@ -59,7 +59,6 @@ class SocketService with WidgetsBindingObserver {
         
         switch (event.event) {
           case Event.actionCallAccept:
-             // ✅ FIX: Navigate to Call Screen when answered from Lock Screen
             final data = event.body['extra'];
             if (data != null) {
                SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -82,7 +81,6 @@ class SocketService with WidgetsBindingObserver {
             break;
             
           case Event.actionCallDecline:
-             // ✅ FIX: Emit end_call when declined from Native UI
              if (event.body['extra'] != null && event.body['extra']['callLogId'] != null) {
                socket?.emit('end_call', {'callLogId': event.body['extra']['callLogId']});
              }
@@ -123,9 +121,9 @@ class SocketService with WidgetsBindingObserver {
       socket = IO.io(socketUrl, <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
-        'timeout': AppConfig.socketTimeoutMs, // ✅ Use AppConfig
+        'timeout': AppConfig.socketTimeoutMs,
         'reconnection': true,
-        'reconnectionDelay': AppConfig.socketReconnectionDelayMs, // ✅ Use AppConfig
+        'reconnectionDelay': AppConfig.socketReconnectionDelayMs,
         'auth': {'token': token},
         'query': {'userId': _currentUserId},
       });
@@ -184,53 +182,20 @@ class SocketService with WidgetsBindingObserver {
        _messageStatusController.add({'type': 'status_update', 'data': data});
     });
 
-    // ============================================
-    // 📞 CALL SIGNALING EVENTS
-    // ============================================
-
     socket!.on('call_made', (data) async {
-      debugPrint("📞 INCOMING CALL RECEIVED! Payload: $data");
+      debugPrint("📞 INCOMING CALL EVENT (Socket): $data");
       
-      final appState = WidgetsBinding.instance.lifecycleState;
+      bool isBackground = WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed;
       
-      // ✅ CRITICAL FIX: Only attempt native CallKit UI if NOT on Web AND App is in background
-      if (!kIsWeb && (appState == AppLifecycleState.paused || appState == AppLifecycleState.detached || appState == AppLifecycleState.inactive)) {
-         
-         CallKitParams params = CallKitParams(
-            id: data['callLogId'],
-            nameCaller: data['callerName'] ?? 'Unknown',
-            appName: 'ASCON Connect',
-            avatar: data['callerPic'],
-            handle: data['callerId'],
-            type: 0, // Audio
-            duration: 30000,
-            textAccept: 'Answer',
-            textDecline: 'Decline',
-            extra: data, 
-            android: const AndroidParams(
-              isCustomNotification: true,
-              isShowLogo: false,
-              backgroundColor: '#0F3621',
-              ringtonePath: 'system_ringtone_default',
-              actionColor: '#4CAF50',
-              incomingCallNotificationChannelName: "Incoming Call",
-            ),
-            ios: const IOSParams(
-              iconName: 'CallKitIcon',
-              handleType: 'generic',
-              supportsVideo: false,
-              maximumCallGroups: 1,
-              maximumCallsPerCallGroup: 1,
-            ),
-         );
-         await FlutterCallkitIncoming.showCallkitIncoming(params);
-      } else {
-        // App is Foreground (or Web): Show In-App UI
+      // ✅ FIXED: Using defaultTargetPlatform for Desktop check
+      bool isDesktop = !kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux || defaultTargetPlatform == TargetPlatform.macOS);
+
+      if (!isBackground || isDesktop) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (rootNavigatorKey.currentState != null) {
             try {
               appRouter.push('/call', extra: {
-                'remoteName': data['callerName'] ?? "Unknown Caller",
+                'remoteName': data['callerName'] ?? "Unknown",
                 'remoteId': data['callerId'] ?? "Unknown",
                 'remoteAvatar': data['callerPic'],
                 'isCaller': false,
@@ -242,6 +207,8 @@ class SocketService with WidgetsBindingObserver {
             }
           }
         });
+      } else {
+        debugPrint("💤 App in background (Mobile). Waiting for FCM.");
       }
     });
 

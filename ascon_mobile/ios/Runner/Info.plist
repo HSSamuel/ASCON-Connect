@@ -55,7 +55,7 @@
     <key>NSCameraUsageDescription</key>
     <string>We need access to your camera to let you take photos for chat attachments and profile pictures.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>We need access to your microphone for video recording features.</string>
+    <string>We need access to your microphone to enable voice calls with other alumni.</string>
 
     <key>NSAppTransportSecurity</key>
     <dict>

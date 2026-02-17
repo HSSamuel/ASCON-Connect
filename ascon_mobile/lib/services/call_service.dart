@@ -169,15 +169,23 @@ class CallService {
 
   // --- 5. UTILS & CONTROLS ---
 
-  Future<void> _checkPermissions() async {
-    if (Platform.isAndroid) {
-      Map<Permission, PermissionStatus> statuses = await [
-        Permission.microphone,
-        Permission.bluetoothConnect, 
-      ].request();
-      
-      if (statuses[Permission.microphone]!.isDenied) {
+Future<void> _checkPermissions() async {
+    if (kIsWeb) return;
+
+    // ✅ WINDOWS FIX: Windows usually manages permissions at the OS level 
+    // or via the runner. Explicit requests often fail or aren't needed the same way.
+    if (Platform.isAndroid || Platform.isIOS) { 
+      var status = await Permission.microphone.status;
+      if (status.isDenied || status.isPermanentlyDenied) {
+        status = await Permission.microphone.request();
+      }
+
+      if (status.isDenied) {
         throw Exception('Microphone permission required');
+      }
+      
+      if (Platform.isAndroid) {
+        await Permission.bluetoothConnect.request();
       }
     }
   }
@@ -273,10 +281,14 @@ class CallService {
     }
   }
   
-  Future<void> toggleSpeaker(bool enable) async {
+ Future<void> toggleSpeaker(bool enable) async {
     if (kIsWeb) return; 
+    
+    // ✅ WINDOWS FIX: Skip this logic on Desktop. 
+    // PCs handle audio routing automatically (Headphones/Speakers).
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
+
     try {
-      // ✅ FIX: Helper function from flutter_webrtc handles the native audio routing
       await Helper.setSpeakerphoneOn(enable);
     } catch (e) {
       debugPrint("Error toggling speaker: $e");

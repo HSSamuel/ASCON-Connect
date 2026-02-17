@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert'; // ✅ ADDED: Required for base64Decode
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart'; 
@@ -30,6 +31,9 @@ import '../widgets/chat/poll_creation_sheet.dart';
 import '../widgets/active_poll_card.dart';
 import '../widgets/chat/message_bubble.dart'; 
 import '../widgets/chat/chat_input_area.dart'; 
+
+import '../services/socket_service.dart';
+import '../services/data_service.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String? conversationId;
@@ -62,6 +66,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _picker = ImagePicker();
   final FocusNode _focusNode = FocusNode(); 
+  final DataService _dataService = DataService(); 
 
   late AudioRecorder _audioRecorder;
   bool _isRecording = false;
@@ -82,6 +87,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   String? _downloadingFileId;
 
+  late bool _realtimeIsOnline;
+  String? _realtimeLastSeen;
+  String _groupParticipants = "Tap for info"; 
+  String _displayReceiverName = "";
+
+  StreamSubscription? _statusSubscription; 
+
   AutoDisposeStateNotifierProvider<ChatDetailNotifier, ChatDetailState> get _provider => chatDetailProvider(
     ChatProviderArgs(
       receiverId: widget.receiverId,
@@ -95,14 +107,73 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _audioRecorder = AudioRecorder();
+    
+    _displayReceiverName = (widget.receiverName == "?" || widget.receiverName.isEmpty) 
+        ? (widget.isGroup ? "Group Chat" : "Alumni Member") 
+        : widget.receiverName;
+        
+    _realtimeIsOnline = widget.isOnline;
+    _realtimeLastSeen = widget.lastSeen;
+
     _setupAudioPlayerListeners();
     _setupScrollListener();
+    _setupLivePresence(); 
+    
+    if (widget.isGroup) {
+      _fetchGroupParticipants(); 
+    }
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
        if (widget.conversationId != null) {
          ref.read(_provider.notifier).markUnreadAsRead();
        }
     });
+  }
+
+  void _setupLivePresence() {
+    if (widget.isGroup) return;
+
+    final socket = SocketService().socket;
+    if (socket == null) return;
+
+    SocketService().checkUserStatus(widget.receiverId);
+
+    _statusSubscription = SocketService().userStatusStream.listen((data) {
+      if (!mounted) return;
+      if (data['userId'] == widget.receiverId) {
+        setState(() {
+          _realtimeIsOnline = data['isOnline'];
+          if (!_realtimeIsOnline) _realtimeLastSeen = data['lastSeen'];
+        });
+      }
+    });
+  }
+
+  Future<void> _fetchGroupParticipants() async {
+    if (widget.groupId == null) return;
+
+    try {
+      final groupData = await _dataService.fetchGroupDetails(widget.groupId!);
+      if (groupData != null && mounted) {
+        if (_displayReceiverName == "Group Chat" || _displayReceiverName == "?") {
+           setState(() => _displayReceiverName = groupData['name'] ?? "Group Chat");
+        }
+
+        final members = groupData['members'] as List<dynamic>? ?? [];
+        if (members.isNotEmpty) {
+          final List<String> names = members.take(4).map<String>((m) {
+             if (m is Map) return m['fullName']?.split(" ")[0] ?? "Member";
+             return "Member";
+          }).toList();
+          
+          setState(() {
+            _groupParticipants = "${names.join(", ")}${members.length > 4 ? "..." : ""}";
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching group participants: $e");
+    }
   }
 
   void _setupScrollListener() {
@@ -130,6 +201,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _statusSubscription?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     _focusNode.dispose(); 
@@ -142,15 +214,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _openDetails() {
     if (widget.isGroup && widget.groupId != null) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => GroupInfoScreen(groupId: widget.groupId!, groupName: widget.receiverName)));
+      Navigator.push(context, MaterialPageRoute(builder: (_) => GroupInfoScreen(groupId: widget.groupId!, groupName: _displayReceiverName)));
     } else {
       final Map<String, dynamic> alumniData = {
         'userId': widget.receiverId,
         '_id': widget.receiverId,
-        'fullName': widget.receiverName,
+        'fullName': _displayReceiverName,
         'profilePicture': widget.receiverProfilePic,
-        'isOnline': widget.isOnline, 
-        'lastSeen': widget.lastSeen,
+        'isOnline': _realtimeIsOnline, 
+        'lastSeen': _realtimeLastSeen,
       };
       Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumniData)));
     }
@@ -168,19 +240,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (_editingMessage != null && type == 'text') {
         final success = await ref.read(_provider.notifier).editMessage(_editingMessage!.id, text ?? "");
-        
         if (!mounted) return;
-        
         if (success) {
           setState(() {
             _editingMessage = null;
             _textController.clear();
           });
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Failed to edit message"),
-            backgroundColor: Colors.red,
-          ));
         }
         return;
       }
@@ -203,12 +268,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _textController.clear();
         });
         _scrollToBottom();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(error),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ));
       }
     } catch (e) {
       debugPrint("Prevented Chat Crash: $e");
@@ -217,7 +276,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _handleTyping(String val) {
     if (widget.conversationId == null) return;
-
     final notifier = ref.read(_provider.notifier);
 
     if (val.isNotEmpty) {
@@ -225,7 +283,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         notifier.sendTyping();
         _isTypingEmit = true;
       }
-
       _typingDebounce?.cancel();
       _typingDebounce = Timer(const Duration(seconds: 2), () {
          notifier.sendStopTyping();
@@ -306,44 +363,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final file = File(savePath);
 
       if (await file.exists()) {
-        final result = await OpenFile.open(savePath);
-        if (result.type != ResultType.done && mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-             content: Text("Could not open file: ${result.message}"),
-             backgroundColor: Colors.red,
-           ));
-        }
+        await OpenFile.open(savePath);
         return; 
       }
 
       setState(() => _downloadingFileId = messageId);
-
       final response = await http.get(Uri.parse(url));
       
       if (!mounted) return;
 
       if (response.statusCode == 200) {
         await file.writeAsBytes(response.bodyBytes);
-        final result = await OpenFile.open(savePath);
-        
-        if (result.type != ResultType.done && mounted) {
-           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-             content: Text("Could not open file: ${result.message}"),
-             backgroundColor: Colors.red,
-           ));
-        }
-      } else {
-        throw Exception("Download failed with status: ${response.statusCode}");
-      }
+        await OpenFile.open(savePath);
+      } 
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Failed to download file."),
-          backgroundColor: Colors.red,
-        ));
-      }
-      if (await canLaunchUrl(Uri.parse(url))) {
-        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to download file."), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) setState(() => _downloadingFileId = null);
@@ -423,13 +458,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _deleteSelectedMessages() async {
     final idsToDelete = _selectedMessageIds.toList();
-    
     final state = ref.read(_provider);
+    
     final bool canDeleteForEveryone = idsToDelete.every((id) {
-      final msg = state.messages.firstWhere(
-        (m) => m.id == id, 
-        orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now())
-      );
+      final msg = state.messages.firstWhere((m) => m.id == id, orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now()));
       return msg.senderId == state.myUserId;
     });
 
@@ -438,10 +470,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
+        decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -466,11 +495,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 },
               ),
               const Divider(),
-              ListTile(
-                leading: const Icon(Icons.close, color: Colors.grey),
-                title: const Text("Cancel"),
-                onTap: () => Navigator.pop(ctx),
-              ),
+              ListTile(leading: const Icon(Icons.close, color: Colors.grey), title: const Text("Cancel"), onTap: () => Navigator.pop(ctx)),
             ],
           ),
         ),
@@ -492,11 +517,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   String _getStatusText(bool isTyping, bool isOnline, String? lastSeen) {
-    if (widget.isGroup) return "Group";
+    if (widget.isGroup) {
+      return _groupParticipants; 
+    }
     if (isTyping) return "Typing...";
     if (isOnline) return "Active Now";
     if (lastSeen == null) return "Offline";
     return "Last seen ${PresenceFormatter.format(lastSeen)}";
+  }
+
+  ImageProvider? _getImageProvider(String? source) {
+    if (source == null || source.isEmpty) return null;
+    if (source.startsWith('http')) return CachedNetworkImageProvider(source);
+    try {
+      return MemoryImage(base64Decode(source));
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -519,15 +556,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             builder: (c) => AlertDialog(
               title: const Text("Access Revoked"),
               content: const Text("You have been removed from this group by an admin."),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(c);
-                    Navigator.pop(context);
-                  },
-                  child: const Text("OK"),
-                )
-              ],
+              actions: [TextButton(onPressed: () { Navigator.pop(c); Navigator.pop(context); }, child: const Text("OK"))],
             ),
           );
         }
@@ -557,11 +586,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (_selectedMessageIds.length == 1)
                   Builder(builder: (context) {
                     final selectedId = _selectedMessageIds.first;
-                    final msg = state.messages.firstWhere(
-                      (m) => m.id == selectedId,
-                      orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now()), 
-                    );
-                    
+                    final msg = state.messages.firstWhere((m) => m.id == selectedId, orElse: () => ChatMessage(id: '', senderId: '', text: '', createdAt: DateTime.now()));
                     if (msg.id.isNotEmpty && msg.senderId == state.myUserId && msg.type == 'text') {
                       return IconButton(
                         icon: const Icon(Icons.edit, color: Colors.blue),
@@ -579,7 +604,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     }
                     return const SizedBox.shrink();
                   }),
-
                 IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: _deleteSelectedMessages),
               ],
             )
@@ -594,63 +618,58 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               onTap: _openDetails,
               child: Row(
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.receiverProfilePic ?? "",
-                    imageBuilder: (context, imageProvider) => CircleAvatar(
-                      radius: 20,
-                      backgroundImage: imageProvider,
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      image: _getImageProvider(widget.receiverProfilePic) != null
+                          ? DecorationImage(image: _getImageProvider(widget.receiverProfilePic)!, fit: BoxFit.cover)
+                          : null,
+                      color: Colors.grey[300],
                     ),
-                    placeholder: (context, url) => CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.grey[300],
-                      child: Text(
-                        widget.receiverName.isNotEmpty ? widget.receiverName.substring(0, 1).toUpperCase() : "?",
-                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    errorWidget: (context, url, error) => CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.grey[300],
-                      child: Text(
-                        widget.receiverName.isNotEmpty ? widget.receiverName.substring(0, 1).toUpperCase() : "?",
-                        style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                    child: _getImageProvider(widget.receiverProfilePic) == null
+                        ? Center(child: Text(
+                            _displayReceiverName.isNotEmpty ? _displayReceiverName.substring(0, 1).toUpperCase() : "?",
+                            style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+                          ))
+                        : null,
                   ),
                   const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.receiverName, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold)),
-                      if (!widget.isGroup)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_displayReceiverName, overflow: TextOverflow.ellipsis, style: GoogleFonts.lato(fontSize: 16, fontWeight: FontWeight.bold)),
                         Text(
-                          _getStatusText(state.isPeerTyping, state.isPeerOnline, state.peerLastSeen), 
-                          style: TextStyle(fontSize: 11, color: state.isPeerOnline ? Colors.green : Colors.grey)
+                          _getStatusText(state.isPeerTyping, _realtimeIsOnline, _realtimeLastSeen), 
+                          style: TextStyle(
+                            fontSize: 11, 
+                            color: (widget.isGroup) 
+                                ? Colors.grey 
+                                : (_realtimeIsOnline ? Colors.green : Colors.grey),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          maxLines: 1,
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
             actions: [
               if (widget.isGroup && widget.groupId != null)
-                IconButton(
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: _openDetails,
-                ),
+                IconButton(icon: const Icon(Icons.info_outline), onPressed: _openDetails),
             ],
           ),
         body: Column(
           children: [
-            if (widget.isGroup && widget.groupId != null)
-               ActivePollCard(groupId: widget.groupId),
+            if (widget.isGroup && widget.groupId != null) ActivePollCard(groupId: widget.groupId),
 
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  if (widget.conversationId != null) {
-                    await notifier.refreshMessages();
-                  }
+                  if (widget.conversationId != null) await notifier.refreshMessages();
                 },
                 child: state.messages.isEmpty 
                   ? SingleChildScrollView(
@@ -664,14 +683,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey[300]),
                             const SizedBox(height: 16),
                             const Text("No messages yet", style: TextStyle(color: Colors.grey)),
-                            if (widget.conversationId == null)
-                              const Padding(
-                                padding: EdgeInsets.all(8.0),
-                                child: Text(
-                                  "Send a message to start the conversation.",
-                                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                                ),
-                              ),
                           ],
                         ),
                       ),
@@ -718,9 +729,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           totalDuration: _totalDuration,
                           downloadingFileId: _downloadingFileId,
                           isAdmin: widget.isGroup && state.groupAdminIds.contains(msg.senderId),
-                          
                           showSenderName: widget.isGroup && msg.senderId != state.myUserId,
-                          
                           onSwipeReply: (id) {
                             setState(() { _replyingTo = msg; _editingMessage = null; });
                             _focusNode.requestFocus();

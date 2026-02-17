@@ -37,7 +37,6 @@ class DataService {
   }
 
   dynamic _handleResponse(http.Response response) {
-    // ✅ CASE 1: Session Expired (Token Invalid)
     if (response.statusCode == 401 || response.statusCode == 403) {
       _forceLogout(message: "Your session has expired. Please login again."); 
       throw Exception('Session expired'); 
@@ -51,7 +50,6 @@ class DataService {
     }
   }
 
-  // ✅ IMPROVED LOGOUT: Shows a Dialog so the user knows WHY
   Future<void> _forceLogout({String message = "Session expired."}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear(); 
@@ -61,15 +59,14 @@ class DataService {
     if (context != null && context.mounted) {
       showDialog(
         context: context,
-        barrierDismissible: false, // User MUST click OK
+        barrierDismissible: false, 
         builder: (ctx) => AlertDialog(
           title: const Text("Access Denied"),
           content: Text(message),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(ctx); // Close dialog
-                // Navigate to Login and clear history
+                Navigator.pop(ctx); 
                 navigatorKey.currentState?.pushAndRemoveUntil(
                   MaterialPageRoute(builder: (_) => const LoginScreen()),
                   (route) => false,
@@ -81,7 +78,6 @@ class DataService {
         ),
       );
     } else {
-      // Fallback if context is missing (rare)
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
@@ -98,7 +94,6 @@ class DataService {
       final url = Uri.parse('${AppConfig.baseUrl}/api/profile/me');
       final response = await http.get(url, headers: headers);
 
-      // ✅ CASE 2: Account Deleted / Not Found (404)
       if (response.statusCode == 404) {
         _forceLogout(message: "We could not find your account details. You may need to register again.");
         return null;
@@ -351,7 +346,6 @@ class DataService {
     }
   }
 
-  // ✅ Fetch My Groups
   Future<List<dynamic>> fetchMyGroups() async {
     try {
       final headers = await _getHeaders();
@@ -369,7 +363,12 @@ class DataService {
     }
   }
 
-  // ✅ Fetch Group Info (Members & Admins)
+  // ✅ Renamed from fetchGroupInfo to match ChatScreen usage (or aliased)
+  // This ensures the header data loading works
+  Future<Map<String, dynamic>?> fetchGroupDetails(String groupId) async {
+    return await fetchGroupInfo(groupId);
+  }
+
   Future<Map<String, dynamic>?> fetchGroupInfo(String groupId) async {
     try {
       final headers = await _getHeaders();
@@ -381,7 +380,6 @@ class DataService {
     }
   }
 
-  // ✅ Update Group Icon (Missing Method Fixed)
   Future<bool> updateGroupIcon(String groupId, XFile imageFile) async {
     try {
       final token = await AuthService().getToken();
@@ -415,7 +413,6 @@ class DataService {
     }
   }
 
-  // ✅ Toggle Group Admin
   Future<void> toggleGroupAdmin(String groupId, String targetUserId) async {
     try {
       final headers = await _getHeaders();
@@ -427,7 +424,6 @@ class DataService {
     } catch (_) {}
   }
 
-  // ✅ Remove Member
   Future<void> removeGroupMember(String groupId, String targetUserId) async {
     try {
       final headers = await _getHeaders();
@@ -735,7 +731,6 @@ class DataService {
     }
   }
 
-  // ✅ REMOVE GROUP ICON
   Future<bool> removeGroupIcon(String groupId) async {
     try {
       final headers = await _getHeaders();
@@ -747,7 +742,6 @@ class DataService {
     }
   }
 
-  // ✅ DELETE NOTICE
   Future<bool> deleteGroupNotice(String groupId, String noticeId) async {
     try {
       final headers = await _getHeaders();
@@ -759,7 +753,6 @@ class DataService {
     }
   }
 
-  // ✅ EDIT NOTICE
   Future<bool> editGroupNotice(String groupId, String noticeId, String title, String content) async {
     try {
       final headers = await _getHeaders();
@@ -775,7 +768,6 @@ class DataService {
     }
   }
 
-  // ✅ NEW: Fetch Polls for a specific Group
   Future<List<dynamic>> fetchGroupPolls(String groupId) async {
     try {
       final headers = await _getHeaders();
@@ -788,7 +780,6 @@ class DataService {
     }
   }
 
-  // ✅ DELETE POLL
   Future<bool> deletePoll(String pollId) async {
     try {
       final headers = await _getHeaders();
@@ -802,7 +793,6 @@ class DataService {
     }
   }
 
-  // ✅ EDIT POLL QUESTION
   Future<bool> updatePollQuestion(String pollId, String newQuestion) async {
     try {
       final headers = await _getHeaders();
@@ -817,7 +807,6 @@ class DataService {
     }
   }
 
-  // ✅ NEW: DELETE GROUP DOCUMENT
   Future<bool> deleteGroupDocument(String groupId, String docId) async {
     try {
       final headers = await _getHeaders();

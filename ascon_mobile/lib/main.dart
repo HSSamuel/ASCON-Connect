@@ -1,11 +1,13 @@
 import 'dart:async'; 
+import 'dart:convert'; 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; 
+import 'package:flutter/foundation.dart'; // ✅ Required for defaultTargetPlatform
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart'; 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'; 
 import 'package:flutter_riverpod/flutter_riverpod.dart'; 
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
 
 import 'services/notification_service.dart';
 import 'services/socket_service.dart'; 
@@ -17,17 +19,66 @@ import 'utils/error_handler.dart';
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
 
+// ==========================================
+// 🌙 BACKGROUND CALL HANDLER
+// ==========================================
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("🌙 Background Message Received: ${message.messageId}");
+
+  if (message.data['type'] == 'call_offer') {
+    final data = message.data;
+    
+    CallKitParams params = CallKitParams(
+      id: data['callLogId'],
+      nameCaller: data['callerName'] ?? 'Unknown Member',
+      appName: 'ASCON Connect',
+      avatar: data['callerPic'],
+      handle: data['callerId'],
+      type: 0, // Audio Call
+      duration: 30000,
+      textAccept: 'Answer',
+      textDecline: 'Decline',
+      missedCallNotification: const NotificationParams(
+        showNotification: true,
+        isShowCallback: false,
+        subtitle: 'Missed call',
+      ),
+      extra: <String, dynamic>{
+        ...data,
+      },
+      android: const AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: false,
+        backgroundColor: '#0F3621',
+        ringtonePath: 'system_ringtone_default',
+        actionColor: '#4CAF50',
+        incomingCallNotificationChannelName: "Incoming Call",
+        isShowFullLockedScreen: true,
+      ),
+      ios: const IOSParams(
+        iconName: 'CallKitIcon',
+        handleType: 'generic',
+        supportsVideo: false,
+        maximumCallGroups: 1,
+        maximumCallsPerCallGroup: 1,
+        audioSessionMode: 'videoChat',
+        audioSessionActive: true,
+        audioSessionPreferredSampleRate: 44100.0,
+        audioSessionPreferredIOBufferDuration: 0.005,
+        supportsDTMF: true,
+        ringtonePath: 'system_ringtone_default',
+      ),
+    );
+
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
+  }
 }
 
 void main() async {
-  // ✅ 1. Initialize Global Error Handling
   ErrorHandler.init();
 
-  // ✅ 2. SILENCE GSI LOGS
   var defaultDebugPrint = debugPrint;
   debugPrint = (String? message, {int? wrapWidth}) {
     if (message != null) {
@@ -37,7 +88,6 @@ void main() async {
     defaultDebugPrint(message, wrapWidth: wrapWidth);
   };
 
-  // ✅ 3. SILENCE 429 IMAGE ERRORS
   FlutterError.onError = (FlutterErrorDetails details) {
     if (details.exception.toString().contains("statusCode: 429")) return;
     FlutterError.presentError(details);
@@ -50,24 +100,35 @@ void main() async {
     
     SocketService().initSocket();
 
-    if (kIsWeb) {
-      await Firebase.initializeApp(
-        options: FirebaseOptions(
-          apiKey: AppConfig.firebaseWebApiKey, 
-          authDomain: AppConfig.firebaseWebAuthDomain,
-          projectId: AppConfig.firebaseWebProjectId,
-          storageBucket: AppConfig.firebaseWebStorageBucket,
-          messagingSenderId: AppConfig.firebaseWebMessagingSenderId,
-          appId: AppConfig.firebaseWebAppId,
-          measurementId: AppConfig.firebaseWebMeasurementId,
-        ),
-      );
-    } else {
-      await Firebase.initializeApp();
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    // ✅ FIXED: Use defaultTargetPlatform for Web/Mobile/Desktop checks
+    bool isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+    bool isDesktop = defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux;
+
+    if (kIsWeb || isMobile || isDesktop) {
+      if (kIsWeb) {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: AppConfig.firebaseWebApiKey, 
+            authDomain: AppConfig.firebaseWebAuthDomain,
+            projectId: AppConfig.firebaseWebProjectId,
+            storageBucket: AppConfig.firebaseWebStorageBucket,
+            messagingSenderId: AppConfig.firebaseWebMessagingSenderId,
+            appId: AppConfig.firebaseWebAppId,
+            measurementId: AppConfig.firebaseWebMeasurementId,
+          ),
+        );
+      } else {
+        await Firebase.initializeApp();
+        
+        // ✅ FIXED: Only set background handler on Android/iOS
+        if (isMobile) {
+           FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+        }
+      }
     }
 
-    if (!kIsWeb) {
+    // ✅ FIXED: Notification Service is Mobile-only for now
+    if (!kIsWeb && isMobile) {
        await NotificationService().init();
     }
 
@@ -75,12 +136,7 @@ void main() async {
   }, (error, stack) {
     String errorText = error.toString();
     if (errorText.contains("Future already completed")) return;
-    if (errorText.contains("FirebaseException") && errorText.contains("JavaScriptObject")) return;
-    if (errorText.contains("AssetManifest.bin.json")) return;
-    if (errorText.contains("deactivated widget")) return;
-    // Also catch exception here for good measure
     if (errorText.contains("statusCode: 429")) return;
-
     debugPrint("🔴 Uncaught Zone Error: $error");
   });
 }
