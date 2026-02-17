@@ -30,9 +30,9 @@ class SocketService with WidgetsBindingObserver {
   SocketService._internal() {
     WidgetsBinding.instance.addObserver(this);
     
-    // ✅ FIXED: Check Platform safely for Web compatibility
-    bool isMobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
-    if (!kIsWeb && isMobile) {
+    // ✅ Check Platform safely for Web compatibility
+    bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+    if (isMobile) {
       _setupCallKitListener();
     }
   }
@@ -59,26 +59,27 @@ class SocketService with WidgetsBindingObserver {
         
         switch (event.event) {
           case Event.actionCallAccept:
-            final data = event.body['extra'];
-            if (data != null) {
-               SchedulerBinding.instance.addPostFrameCallback((_) {
-                  if (rootNavigatorKey.currentState != null) {
-                    try {
-                      appRouter.push('/call', extra: {
-                        'remoteName': data['callerName'] ?? "Unknown Caller",
-                        'remoteId': data['callerId'] ?? "Unknown",
-                        'remoteAvatar': data['callerPic'],
-                        'isCaller': false,
-                        'offer': data['offer'],
-                        'callLogId': data['callLogId'], 
-                      });
-                    } catch (e) {
-                      debugPrint("❌ Navigation Failed (CallKit): $e");
-                    }
-                  }
-               });
-            }
-            break;
+  final data = event.body['extra'];
+  if (data != null) {
+     SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (rootNavigatorKey.currentState != null) {
+          try {
+            appRouter.push('/call', extra: {
+              'remoteName': data['callerName'] ?? "Unknown Caller",
+              'remoteId': data['callerId'] ?? "Unknown",
+              'remoteAvatar': data['callerPic'],
+              'isCaller': false,
+              'offer': data['offer'],
+              'callLogId': data['callLogId'],
+              'hasAccepted': true, // ✅ IMPORTANT: Add this!
+            });
+          } catch (e) {
+            debugPrint("❌ Navigation Failed (CallKit): $e");
+          }
+        }
+     });
+  }
+  break;
             
           case Event.actionCallDecline:
              if (event.body['extra'] != null && event.body['extra']['callLogId'] != null) {
@@ -182,15 +183,60 @@ class SocketService with WidgetsBindingObserver {
        _messageStatusController.add({'type': 'status_update', 'data': data});
     });
 
+    // 📞 MODIFIED: Unified Call Handling
     socket!.on('call_made', (data) async {
       debugPrint("📞 INCOMING CALL EVENT (Socket): $data");
       
-      bool isBackground = WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed;
+      bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
       
-      // ✅ FIXED: Using defaultTargetPlatform for Desktop check
-      bool isDesktop = !kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux || defaultTargetPlatform == TargetPlatform.macOS);
-
-      if (!isBackground || isDesktop) {
+      if (isMobile) {
+        // ✅ FIX: Use CallKit for Mobile foreground calls too.
+        // This prevents double ringing (One from Socket, one from FCM).
+        // CallKit automatically dedupes if ID matches.
+        CallKitParams params = CallKitParams(
+          id: data['callLogId'],
+          nameCaller: data['callerName'] ?? 'Unknown Member',
+          appName: 'ASCON Connect',
+          avatar: data['callerPic'],
+          handle: data['callerId'],
+          type: 0, // Audio Call
+          duration: 30000,
+          textAccept: 'Answer',
+          textDecline: 'Decline',
+          missedCallNotification: const NotificationParams(
+            showNotification: true,
+            isShowCallback: false,
+            subtitle: 'Missed call',
+          ),
+          extra: <String, dynamic>{
+            ...data,
+          },
+          android: const AndroidParams(
+            isCustomNotification: true,
+            isShowLogo: false,
+            backgroundColor: '#0F3621',
+            ringtonePath: 'system_ringtone_default',
+            actionColor: '#4CAF50',
+            incomingCallNotificationChannelName: "Incoming Call",
+            isShowFullLockedScreen: true,
+          ),
+          ios: const IOSParams(
+            iconName: 'CallKitIcon',
+            handleType: 'generic',
+            supportsVideo: false,
+            maximumCallGroups: 1,
+            maximumCallsPerCallGroup: 1,
+            audioSessionMode: 'videoChat',
+            audioSessionActive: true,
+            audioSessionPreferredSampleRate: 44100.0,
+            audioSessionPreferredIOBufferDuration: 0.005,
+            supportsDTMF: true,
+            ringtonePath: 'system_ringtone_default',
+          ),
+        );
+        await FlutterCallkitIncoming.showCallkitIncoming(params);
+      } else {
+        // ✅ WEB/DESKTOP: Keep existing behavior (Direct Push)
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (rootNavigatorKey.currentState != null) {
             try {
@@ -207,8 +253,6 @@ class SocketService with WidgetsBindingObserver {
             }
           }
         });
-      } else {
-        debugPrint("💤 App in background (Mobile). Waiting for FCM.");
       }
     });
 
@@ -217,7 +261,15 @@ class SocketService with WidgetsBindingObserver {
       _callEventsController.add({'type': 'answer_made', 'data': data});
     });
     
-    socket!.on('call_ended_remote', (data) {
+    socket!.on('call_ended_remote', (data) async {
+      // ✅ FIX: Clean up CallKit if caller hangs up
+      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+         if (data != null && data['callLogId'] != null) {
+            await FlutterCallkitIncoming.endCall(data['callLogId']);
+         } else {
+            await FlutterCallkitIncoming.endAllCalls();
+         }
+      }
       _callEventsController.add({'type': 'call_ended_remote', 'data': data});
     });
 
@@ -225,7 +277,11 @@ class SocketService with WidgetsBindingObserver {
       _callEventsController.add({'type': 'ice_candidate', 'data': data});
     });
     
-    socket!.on('call_failed', (data) {
+    socket!.on('call_failed', (data) async {
+      // ✅ FIX: Clean up CallKit on failure
+      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+         await FlutterCallkitIncoming.endAllCalls();
+      }
       _callEventsController.add({'type': 'call_failed', 'data': data});
     });
 

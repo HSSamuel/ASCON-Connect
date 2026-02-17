@@ -62,7 +62,9 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:showWhenLocked="true"
-            android:turnScreenOn="true"> <meta-data
+            android:turnScreenOn="true"> 
+            
+            <meta-data
               android:name="flutterEmbedding"
               android:value="2" />
 
@@ -89,13 +91,18 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/brand_color" />
 
-        <service android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
-            android:exported="true"
-            android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
-            android:foregroundServiceType="microphone">
+        <receiver android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_INCOMING"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_START"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_ACCEPT"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_DECLINE"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_ENDED"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_TIMEOUT"/>
+                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_CALLBACK"/>
             </intent-filter>
-        </service>
+        </receiver>
+
     </application>
 </manifest>

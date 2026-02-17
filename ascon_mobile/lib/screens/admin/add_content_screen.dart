@@ -141,7 +141,20 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
                     Expanded(
                       child: InkWell(
                         onTap: () async {
-                          final date = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2030));
+                          // ✅ FIX 1: Normalize "Now" to Midnight (00:00:00)
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          
+                          // ✅ FIX 2: Dynamic Future Date (e.g., 5 years from now)
+                          final fiveYearsFromNow = DateTime(now.year + 5, now.month, now.day);
+
+                          final date = await showDatePicker(
+                            context: context, 
+                            initialDate: _selectedDate ?? today, // Defaults to today if null
+                            firstDate: today, // User can pick today or future
+                            lastDate: fiveYearsFromNow // Dynamically updates forever
+                          );
+                          
                           if (date != null) setState(() => _selectedDate = date);
                         },
                         child: InputDecorator(

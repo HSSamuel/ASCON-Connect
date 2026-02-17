@@ -384,7 +384,7 @@ router.get("/celebrations", verifyToken, async (req, res) => {
     const birthdays = await UserProfile.aggregate([
       {
         $match: {
-          dateOfBirth: { $exists: true, $ne: null }, // ✅ Safety check for valid dates
+          dateOfBirth: { $exists: true, $ne: null },
         },
       },
       {
@@ -395,7 +395,13 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           as: "settings",
         },
       },
-      { $unwind: "$settings" }, // ✅ Unwind settings array
+      // ✅ FIX: Keep users even if they don't have a settings doc yet
+      {
+        $unwind: {
+          path: "$settings",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
       {
         $project: {
           fullName: 1,
@@ -403,7 +409,8 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           jobTitle: 1,
           dobDay: { $dayOfMonth: "$dateOfBirth" },
           dobMonth: { $month: "$dateOfBirth" },
-          isVisible: "$settings.isBirthdayVisible", // ✅ Now accessible
+          // ✅ FIX: Default to TRUE if settings is missing
+          isVisible: { $ifNull: ["$settings.isBirthdayVisible", true] },
         },
       },
       {

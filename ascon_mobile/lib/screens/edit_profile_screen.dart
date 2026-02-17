@@ -142,11 +142,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _pickDate() async {
     final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate ?? DateTime(1990),
-      firstDate: DateTime(1940),
-      lastDate: now,
+      firstDate: DateTime(1900), // ✅ Expanded range
+      lastDate: today,           // ✅ Strictly today
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

@@ -29,8 +29,6 @@ class CallService {
   bool _isRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _candidateQueue = [];
   
-  // ✅ FIX: Broadcast streams must remain open for the life of the Singleton.
-  // We do NOT close these in dispose() anymore.
   final _callStateController = StreamController<CallState>.broadcast();
   Stream<CallState> get callStateStream => _callStateController.stream;
 
@@ -40,10 +38,23 @@ class CallService {
   final _localStreamController = StreamController<MediaStream?>.broadcast();
   Stream<MediaStream?> get localStreamStream => _localStreamController.stream;
 
-  // ✅ SAFE DISPOSE: Only closes the connection, not the service itself.
   void dispose() {
     _closePeerConnection();
-    // Do NOT close controllers here, or the 2nd call will crash the app.
+  }
+
+  // ✅ ADDED: Explicit Audio Setup to ensure Communication Mode
+  // This is critical for Android to prioritize the mic correctly.
+  Future<void> _configureAudioSession() async {
+    if (kIsWeb) return;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
+    
+    try {
+      // 1. Force Speaker OFF by default (Earpiece)
+      // 2. This helper method in flutter_webrtc triggers AudioManager.setMode(MODE_IN_COMMUNICATION) on Android
+      await Helper.setSpeakerphoneOn(false);
+    } catch (e) {
+      debugPrint("⚠️ Audio Config Error: $e");
+    }
   }
 
   // --- 1. START CALL (Caller) ---
@@ -51,6 +62,9 @@ class CallService {
     if (_isCallActive) return;
     
     await _checkPermissions();
+
+    // ✅ Configure Audio Session BEFORE creating connections
+    await _configureAudioSession();
 
     _remoteId = remoteUserId;
     _isCallActive = true;
@@ -65,7 +79,7 @@ class CallService {
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
 
-    // ✅ AUDIO FIX: Default to Speaker for Video, Earpiece for Audio
+    // Apply video-specific audio routing (Speaker for video, Earpiece for audio)
     await toggleSpeaker(video); 
 
     RTCSessionDescription offer = await _peerConnection!.createOffer({
@@ -87,6 +101,9 @@ class CallService {
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, String? callLogId, {bool video = false}) async {
     await _checkPermissions();
 
+    // ✅ Configure Audio Session BEFORE creating connections
+    await _configureAudioSession();
+
     _remoteId = callerId;
     _isCallActive = true;
     _isRemoteDescriptionSet = false;
@@ -106,7 +123,7 @@ class CallService {
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
 
-    // ✅ AUDIO FIX: Default to Speaker for Video, Earpiece for Audio
+    // Apply video-specific audio routing
     await toggleSpeaker(video);
 
     RTCSessionDescription answer = await _peerConnection!.createAnswer({
@@ -162,7 +179,6 @@ class CallService {
 
   // --- 5. SETUP PEER CONNECTION (ROBUST) ---
   Future<void> _createPeerConnection() async {
-    // ✅ CONNECTION FIX: Trim spaces from .env to prevent 20s drop
     final String rawTurnUrl = dotenv.env['TURN_URL'] ?? "";
     final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
     final String turnPassword = dotenv.env['TURN_PASSWORD'] ?? "";
@@ -213,11 +229,9 @@ class CallService {
         });
         _remoteStreamController.add(_remoteStream);
         
-        // Ensure audio routes to Earpiece/Speaker correctly on connect
-        if (!kIsWeb) {
-           // 'false' here usually defaults to Earpiece on phones
-           Helper.setSpeakerphoneOn(false); 
-        }
+        // ✅ REMOVED: Auto-switching speaker here is dangerous (Race Condition)
+        // We now handle initial audio routing in _configureAudioSession()
+        // and toggleSpeaker() inside startCall/answerCall.
       }
     };
     
@@ -242,7 +256,6 @@ class CallService {
   Future<void> _checkPermissions() async {
     if (kIsWeb) return;
 
-    // Ignore desktop permissions (handled by OS usually)
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
 
     var micStatus = await Permission.microphone.status;
@@ -252,6 +265,7 @@ class CallService {
     if (micStatus.isDenied) throw Exception('Microphone permission required');
     
     if (Platform.isAndroid) {
+      // ✅ Fix: Request Bluetooth Connect to allow headsets
       await Permission.bluetoothConnect.request();
     }
   }

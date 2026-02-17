@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../viewmodels/profile_view_model.dart';
 import '../utils/presence_formatter.dart'; 
 import '../widgets/shimmer_utils.dart'; 
+import '../widgets/full_screen_image.dart'; // ✅ ADDED THIS IMPORT
 
 import 'edit_profile_screen.dart';
 import 'document_request_screen.dart'; 
@@ -22,10 +23,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   
-  // ✅ FIX: Removed initState load logic. 
-  // The ProfileNotifier constructor (autoDispose) automatically loads data when this widget builds.
-  // This fixes the "modify provider during build" error.
-
   Future<void> _logout() async {
     final dialogBg = Theme.of(context).cardColor;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -70,7 +67,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ WATCH STATE: This automatically initializes the provider and loads data
     final profileState = ref.watch(profileProvider);
     final userProfile = profileState.userProfile;
 
@@ -95,6 +91,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final String phone = _formatPhoneNumber(userProfile?['phoneNumber']);
     final String bio = userProfile?['bio'] ?? '';
     final String statusText = profileState.isOnline ? "Active Now" : _formatLastSeen(profileState.lastSeen);
+    
+    // ✅ Extract image string for easier use
+    final String? profilePicString = userProfile?['profilePicture'];
 
     return Scaffold(
       backgroundColor: scaffoldBg,
@@ -111,7 +110,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
       body: RefreshIndicator(
-        // ✅ Manual Refresh
         onRefresh: () async => ref.read(profileProvider.notifier).loadProfile(), 
         color: primaryColor,
         child: SingleChildScrollView(
@@ -153,18 +151,38 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             color: Colors.amber, 
                           ),
                         ),
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: cardColor, width: 4),
-                          ),
-                          child: CircleAvatar(
-                            radius: 45,
-                            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                            backgroundImage: getProfileImage(userProfile?['profilePicture']),
-                            child: getProfileImage(userProfile?['profilePicture']) == null
-                                ? Icon(Icons.person, size: 60, color: Colors.grey[400])
-                                : null,
+                        
+                        // ✅ FIX: WRAP AVATAR WITH GESTURE DETECTOR & HERO
+                        GestureDetector(
+                          onTap: () {
+                            if (profilePicString != null && profilePicString.isNotEmpty) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => FullScreenImage(
+                                    imageUrl: profilePicString,
+                                    heroTag: 'my_profile_pic', // Unique tag for animation
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          child: Hero(
+                            tag: 'my_profile_pic',
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: cardColor, width: 4),
+                              ),
+                              child: CircleAvatar(
+                                radius: 45,
+                                backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                                backgroundImage: getProfileImage(profilePicString),
+                                child: getProfileImage(profilePicString) == null
+                                    ? Icon(Icons.person, size: 60, color: Colors.grey[400])
+                                    : null,
+                              ),
+                            ),
                           ),
                         ),
                       ],

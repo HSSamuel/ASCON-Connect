@@ -158,19 +158,21 @@ final GoRouter appRouter = GoRouter(
 
     // ✅ CALL ROUTE
     GoRoute(
-      path: '/call',
-      parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) {
-        final args = state.extra as Map<String, dynamic>;
-        return CallScreen(
-          remoteName: args['remoteName'],
-          remoteId: args['remoteId'],
-          remoteAvatar: args['remoteAvatar'],
-          isCaller: args['isCaller'],
-          offer: args['offer'],
-          callLogId: args['callLogId'], 
-        );
-      },
-    ),
+  path: '/call',
+  parentNavigatorKey: rootNavigatorKey,
+  builder: (context, state) {
+    final args = state.extra as Map<String, dynamic>;
+    return CallScreen(
+      remoteName: args['remoteName'],
+      remoteId: args['remoteId'],
+      remoteAvatar: args['remoteAvatar'],
+      isCaller: args['isCaller'],
+      offer: args['offer'],
+      callLogId: args['callLogId'], 
+      // ✅ Pass this argument
+      hasAccepted: args['hasAccepted'] ?? false, 
+    );
+  },
+),
   ],
 );

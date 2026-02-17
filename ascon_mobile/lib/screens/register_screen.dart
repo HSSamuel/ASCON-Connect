@@ -56,13 +56,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   // ✅ Date Picker Logic
-  Future<void> _pickDate() async {
+ Future<void> _pickDate() async {
     final DateTime now = DateTime.now();
+    // Normalize to Midnight to avoid time conflicts
+    final DateTime today = DateTime(now.year, now.month, now.day);
+
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(1990),
-      firstDate: DateTime(1940),
-      lastDate: now,
+      initialDate: DateTime(1990), // Default starting point
+      firstDate: DateTime(1900),   // ✅ Expanded range for older alumni
+      lastDate: today,             // ✅ Strictly today (no future birthdays)
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

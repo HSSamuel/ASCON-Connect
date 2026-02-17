@@ -1,24 +1,20 @@
+import 'dart:convert'; // ✅ Required for Base64
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../viewmodels/dashboard_view_model.dart';
 
-// Changed from StatefulWidget to ConsumerWidget
 class CelebrationWidget extends ConsumerWidget {
   const CelebrationWidget({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // ✅ WATCH THE PROVIDER
     final dashboardState = ref.watch(dashboardProvider);
     final birthdays = dashboardState.birthdays;
     final isLoading = dashboardState.isLoading;
 
-    // If not loading and no birthdays, hide completely
     if (!isLoading && birthdays.isEmpty) return const SizedBox.shrink();
-
-    // If loading effectively (initial load), show nothing or skeleton
     if (isLoading && birthdays.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -58,8 +54,6 @@ class CelebrationWidget extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
-          
-          // ✅ Pass the list directly
           _buildBirthdayList(birthdays),
         ],
       ),
@@ -87,7 +81,8 @@ class CelebrationWidget extends ConsumerWidget {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
-                    child: _buildAvatar(img, name),
+                    // ✅ Use the robust image builder
+                    child: _buildSafeAvatar(img),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -110,38 +105,54 @@ class CelebrationWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvatar(String? url, String name) {
-    if (url != null && url.isNotEmpty) {
+  // ✅ CRITICAL FIX: Robust Image Handling (Base64 + URL support)
+  Widget _buildSafeAvatar(String? imageUrl) {
+    const double radius = 24;
+
+    // 1. Handle HTTP URLs
+    if (imageUrl != null && imageUrl.startsWith('http')) {
       return CachedNetworkImage(
-        imageUrl: url,
+        imageUrl: imageUrl,
         imageBuilder: (context, imageProvider) => CircleAvatar(
-          radius: 24,
+          radius: radius,
           backgroundImage: imageProvider,
           backgroundColor: Colors.white,
         ),
         placeholder: (context, url) => const CircleAvatar(
-          radius: 24,
+          radius: radius,
           backgroundColor: Colors.white,
-          child: Icon(Icons.person, color: Colors.grey),
+          child: Icon(Icons.person, color: Colors.grey, size: 20),
         ),
-        errorWidget: (context, url, error) => CircleAvatar(
-          radius: 24,
-          backgroundColor: Colors.white,
-          child: Text(
-            name.isNotEmpty ? name.substring(0, 1).toUpperCase() : "?",
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
-          ),
-        ),
+        errorWidget: (context, url, error) => _buildFallbackAvatar(),
       );
     }
-    
-    return CircleAvatar(
+
+    // 2. Handle Base64 Data
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      try {
+        String cleanBase64 = imageUrl;
+        if (cleanBase64.contains(',')) {
+          cleanBase64 = cleanBase64.split(',').last;
+        }
+        return CircleAvatar(
+          radius: radius,
+          backgroundImage: MemoryImage(base64Decode(cleanBase64)),
+          backgroundColor: Colors.white,
+        );
+      } catch (e) {
+        return _buildFallbackAvatar();
+      }
+    }
+
+    // 3. Fallback
+    return _buildFallbackAvatar();
+  }
+
+  Widget _buildFallbackAvatar() {
+    return const CircleAvatar(
       radius: 24,
       backgroundColor: Colors.white,
-      child: Text(
-        name.isNotEmpty ? name.substring(0, 1).toUpperCase() : "?",
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange),
-      ),
+      child: Icon(Icons.person, color: Colors.orangeAccent),
     );
   }
 }
