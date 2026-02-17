@@ -14,7 +14,7 @@ enum CallState {
 }
 
 class CallService {
-  // Singleton
+  // Singleton Pattern
   static final CallService _instance = CallService._internal();
   factory CallService() => _instance;
   CallService._internal();
@@ -29,7 +29,8 @@ class CallService {
   bool _isRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _candidateQueue = [];
   
-  // Call State Streams
+  // ✅ FIX: Broadcast streams must remain open for the life of the Singleton.
+  // We do NOT close these in dispose() anymore.
   final _callStateController = StreamController<CallState>.broadcast();
   Stream<CallState> get callStateStream => _callStateController.stream;
 
@@ -39,21 +40,17 @@ class CallService {
   final _localStreamController = StreamController<MediaStream?>.broadcast();
   Stream<MediaStream?> get localStreamStream => _localStreamController.stream;
 
+  // ✅ SAFE DISPOSE: Only closes the connection, not the service itself.
   void dispose() {
     _closePeerConnection();
-    _callStateController.close();
-    _remoteStreamController.close();
-    _localStreamController.close();
+    // Do NOT close controllers here, or the 2nd call will crash the app.
   }
 
   // --- 1. START CALL (Caller) ---
-
   Future<void> startCall(String remoteUserId, {bool video = false}) async {
     if (_isCallActive) return;
     
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await _checkPermissions();
-    }
+    await _checkPermissions();
 
     _remoteId = remoteUserId;
     _isCallActive = true;
@@ -68,9 +65,8 @@ class CallService {
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
 
-    // ✅ FIX: Allow stream to initialize before forcing earpiece
-    await Future.delayed(const Duration(milliseconds: 500));
-    await toggleSpeaker(false); // Default to Earpiece
+    // ✅ AUDIO FIX: Default to Speaker for Video, Earpiece for Audio
+    await toggleSpeaker(video); 
 
     RTCSessionDescription offer = await _peerConnection!.createOffer({
       'offerToReceiveAudio': true,
@@ -89,9 +85,7 @@ class CallService {
 
   // --- 2. ANSWER CALL (Receiver) ---
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, String? callLogId, {bool video = false}) async {
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-      await _checkPermissions();
-    }
+    await _checkPermissions();
 
     _remoteId = callerId;
     _isCallActive = true;
@@ -112,9 +106,8 @@ class CallService {
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
 
-    // ✅ FIX: Force audio routing AFTER getting media
-    await Future.delayed(const Duration(milliseconds: 500));
-    await toggleSpeaker(false);
+    // ✅ AUDIO FIX: Default to Speaker for Video, Earpiece for Audio
+    await toggleSpeaker(video);
 
     RTCSessionDescription answer = await _peerConnection!.createAnswer({
       'offerToReceiveAudio': true,
@@ -167,37 +160,20 @@ class CallService {
     _candidateQueue.clear();
   }
 
-  // --- 5. UTILS & CONTROLS ---
-
-Future<void> _checkPermissions() async {
-    if (kIsWeb) return;
-
-    // ✅ WINDOWS FIX: Windows usually manages permissions at the OS level 
-    // or via the runner. Explicit requests often fail or aren't needed the same way.
-    if (Platform.isAndroid || Platform.isIOS) { 
-      var status = await Permission.microphone.status;
-      if (status.isDenied || status.isPermanentlyDenied) {
-        status = await Permission.microphone.request();
-      }
-
-      if (status.isDenied) {
-        throw Exception('Microphone permission required');
-      }
-      
-      if (Platform.isAndroid) {
-        await Permission.bluetoothConnect.request();
-      }
-    }
-  }
-
+  // --- 5. SETUP PEER CONNECTION (ROBUST) ---
   Future<void> _createPeerConnection() async {
-    final String turnUrlString = dotenv.env['TURN_URL'] ?? "";
+    // ✅ CONNECTION FIX: Trim spaces from .env to prevent 20s drop
+    final String rawTurnUrl = dotenv.env['TURN_URL'] ?? "";
     final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
     final String turnPassword = dotenv.env['TURN_PASSWORD'] ?? "";
 
-    List<String> turnUrls = turnUrlString.isNotEmpty 
-        ? turnUrlString.split(',') 
-        : [];
+    List<String> turnUrls = [];
+    if (rawTurnUrl.isNotEmpty) {
+      turnUrls = rawTurnUrl.split(',')
+          .map((e) => e.trim()) 
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
 
     Map<String, dynamic> configuration = {
       "iceServers": [
@@ -209,8 +185,9 @@ Future<void> _checkPermissions() async {
             "credential": turnPassword
           }
       ],
-      "iceTransportPolicy": "all", 
+      "iceTransportPolicy": "all",
       "sdpSemantics": "unified-plan",
+      "iceCandidatePoolSize": 10,
     };
 
     _peerConnection = await createPeerConnection(configuration);
@@ -236,24 +213,50 @@ Future<void> _checkPermissions() async {
         });
         _remoteStreamController.add(_remoteStream);
         
-        // ✅ FIX: Ensure audio output is routed to speaker/earpiece immediately upon connection
+        // Ensure audio routes to Earpiece/Speaker correctly on connect
         if (!kIsWeb) {
-          Helper.setSpeakerphoneOn(false); 
+           // 'false' here usually defaults to Earpiece on phones
+           Helper.setSpeakerphoneOn(false); 
         }
       }
     };
     
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
-          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+      debugPrint("WebRTC Connection State: $state");
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         endCall();
       }
     };
+    
+    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
+      debugPrint("ICE Connection State: $state");
+      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+         endCall();
+      }
+    };
+  }
+
+  // --- UTILS ---
+
+  Future<void> _checkPermissions() async {
+    if (kIsWeb) return;
+
+    // Ignore desktop permissions (handled by OS usually)
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
+
+    var micStatus = await Permission.microphone.status;
+    if (micStatus.isDenied || micStatus.isPermanentlyDenied) {
+      micStatus = await Permission.microphone.request();
+    }
+    if (micStatus.isDenied) throw Exception('Microphone permission required');
+    
+    if (Platform.isAndroid) {
+      await Permission.bluetoothConnect.request();
+    }
   }
 
   Future<void> _getUserMedia({bool video = false}) async {
-    // ✅ FIX: Enhanced Audio Constraints for better call quality
     final Map<String, dynamic> mediaConstraints = {
       'audio': {
         'echoCancellation': true,
@@ -267,9 +270,7 @@ Future<void> _checkPermissions() async {
       _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
       _localStreamController.add(_localStream);
       
-      _localStream!.getAudioTracks().forEach((track) {
-        track.enabled = true; 
-      });
+      _localStream!.getAudioTracks().forEach((track) => track.enabled = true);
 
       if (_peerConnection != null) {
         _localStream!.getTracks().forEach((track) {
@@ -281,11 +282,8 @@ Future<void> _checkPermissions() async {
     }
   }
   
- Future<void> toggleSpeaker(bool enable) async {
+  Future<void> toggleSpeaker(bool enable) async {
     if (kIsWeb) return; 
-    
-    // ✅ WINDOWS FIX: Skip this logic on Desktop. 
-    // PCs handle audio routing automatically (Headphones/Speakers).
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
 
     try {
@@ -297,9 +295,7 @@ Future<void> _checkPermissions() async {
 
   Future<void> toggleMute(bool mute) async {
     if (_localStream != null) {
-      _localStream!.getAudioTracks().forEach((track) {
-        track.enabled = !mute;
-      });
+      _localStream!.getAudioTracks().forEach((track) => track.enabled = !mute);
     }
   }
 

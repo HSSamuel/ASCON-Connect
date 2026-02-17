@@ -122,6 +122,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
           }
 
+          // ✅ FIX: This is the ONLY place that should pop the screen
           if (mounted && context.canPop()) context.pop();
           break;
           
@@ -474,11 +475,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         FloatingActionButton.large(
           onPressed: () {
             _stopRinging();
-            _callService.endCall();
+            _callService.endCall(); // This emits 'CallState.idle'
             if (_currentCallLogId != null) {
                _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
             }
-            if (mounted && context.canPop()) context.pop();
           },
           backgroundColor: Colors.redAccent,
           child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 36),

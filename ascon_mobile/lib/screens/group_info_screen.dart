@@ -15,7 +15,8 @@ import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
 import '../services/socket_service.dart'; 
 import 'alumni_detail_screen.dart';
-import 'call_screen.dart'; 
+// ❌ REMOVED: import 'call_screen.dart'; 
+import 'polls_screen.dart'; // ✅ ADDED: Polls feature
 import '../widgets/full_screen_image.dart'; 
 
 class GroupInfoScreen extends StatefulWidget {
@@ -177,28 +178,17 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   // ==========================================
-  // 📞 VOICE CALL LOGIC
+  // 📊 POLLS LOGIC (Replaces Voice Call)
   // ==========================================
-  void _startVoiceCall() {
-    if (_allMembers.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No one else to call!")));
-      return;
-    }
-
-    final target = _allMembers.firstWhere((m) => m['_id'] != _myUserId, orElse: () => null);
-    
-    if (target != null) {
-      Navigator.push(
-        context, 
-        MaterialPageRoute(
-          builder: (_) => CallScreen(
-            remoteName: target['fullName'],
-            remoteId: target['_id'],
-            isCaller: true,
-          )
-        )
-      );
-    }
+  void _openPolls() {
+    Navigator.push(
+      context, 
+      MaterialPageRoute(
+        // Assuming PollsScreen can handle a filter or just opens the general polls
+        // You might need to update PollsScreen to accept a 'groupId' if you want group-specific polls
+        builder: (_) => const PollsScreen() 
+      )
+    );
   }
 
   // ==========================================
@@ -604,7 +594,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     final String? iconUrl = _groupData?['icon'];
     final theme = Theme.of(context);
     final primaryColor = theme.primaryColor;
-    final String heroTag = "group_icon_${widget.groupId}"; // ✅ Hero Tag
+    final String heroTag = "group_icon_${widget.groupId}"; 
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -644,7 +634,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                           else
                             Container(color: Colors.teal.shade100, child: const Icon(Icons.groups, size: 80, color: Colors.teal)),
                           
-                          // 2. GRADIENT LAYER (Middle) - ✅ Wrapped with IgnorePointer
+                          // 2. GRADIENT LAYER (Middle)
                           IgnorePointer(
                             child: Container(
                               decoration: BoxDecoration(
@@ -688,7 +678,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildActionBtn(Icons.call, "Voice", _startVoiceCall, Colors.green),
+                          // ✅ REPLACED Voice with Polls
+                          _buildActionBtn(Icons.poll, "Polls", _openPolls, Colors.purple),
                           _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange),
                           _buildActionBtn(Icons.description, "Docs", _openDocsSheet, Colors.blue),
                         ],

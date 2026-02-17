@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math'; // Added for random ID generation fallback
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +9,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:go_router/go_router.dart'; 
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart'; // ✅ ADDED
+import 'package:flutter_callkit_incoming/entities/entities.dart'; // ✅ ADDED
 
 import '../config.dart';
 import '../router.dart'; 
@@ -21,9 +23,18 @@ import '../screens/mentorship_dashboard_screen.dart';
 import '../screens/login_screen.dart';
 import '../services/socket_service.dart';
 
+// ✅ GLOBAL BACKGROUND HANDLER
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("🌙 Background Message: ${message.messageId}");
+  
+  // ✅ FIX: Handle Call Events in Background
+  if (message.data['type'] == 'call_offer') {
+    await NotificationService.showIncomingCall(message.data);
+  } 
+  else if (message.data['type'] == 'end_call') {
+    await FlutterCallkitIncoming.endAllCalls();
+  }
 }
 
 class NotificationService {
@@ -33,7 +44,8 @@ class NotificationService {
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  final AudioPlayer _foregroundRingPlayer = AudioPlayer();
+  
+  // ❌ REMOVED: AudioPlayer _foregroundRingPlayer (CallKit handles ringing now)
 
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
@@ -59,7 +71,6 @@ class NotificationService {
       await _localNotifications.initialize(
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          _stopRingtone();
           if (response.payload != null) {
             try {
               final data = jsonDecode(response.payload!);
@@ -71,7 +82,7 @@ class NotificationService {
         },
       );
 
-      // 1. Standard Channel (Using AppConfig)
+      // 1. Standard Channel
       const AndroidNotificationChannel standardChannel = AndroidNotificationChannel(
         AppConfig.notificationChannelId,
         AppConfig.notificationChannelName,
@@ -82,7 +93,7 @@ class NotificationService {
         showBadge: true,
       );
 
-      // 2. Call Channel (Using AppConfig)
+      // 2. Call Channel (Backup for missed calls beep)
       const AndroidNotificationChannel callChannel = AndroidNotificationChannel(
         AppConfig.callChannelId,
         AppConfig.callChannelName,
@@ -90,7 +101,8 @@ class NotificationService {
         importance: Importance.max,
         enableVibration: true,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound('ringtone'),
+        // ✅ FIX: Use default notification sound for missed calls (Beep), not ringtone loop
+        sound: null, 
         showBadge: true,
       );
 
@@ -105,11 +117,18 @@ class NotificationService {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
 
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      // ✅ FIX: If it's a CALL and the app is open, ignore this notification.
-      // The SocketService 'call_made' event will handle the navigation instantly.
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      debugPrint("🔔 Foreground Message: ${message.data}");
+
+      // ✅ FIX: Intercept Call Events
       if (message.data['type'] == 'call_offer') {
+        await showIncomingCall(message.data);
         return; 
+      }
+      
+      if (message.data['type'] == 'end_call') {
+        await FlutterCallkitIncoming.endAllCalls();
+        return;
       }
 
       if (message.notification != null || message.data.isNotEmpty) {
@@ -120,14 +139,11 @@ class NotificationService {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _stopRingtone();
       handleNavigation(message.data);
     });
 
     RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
     if (initialMessage != null) {
-      _stopRingtone();
-      // Allow router to mount before navigating
       Future.delayed(const Duration(milliseconds: 800), () {
         handleNavigation(initialMessage.data);
       });
@@ -137,20 +153,62 @@ class NotificationService {
       syncToken(tokenOverride: newToken, retry: true);
     });
 
-    // Fire and forget sync to prevent UI blocking
     syncToken(retry: true);
   }
 
-  void _stopRingtone() {
-    try {
-      _foregroundRingPlayer.stop();
-    } catch (_) {}
+  // ==========================================
+  // 📞 CALL HANDLING (Native CallKit)
+  // ==========================================
+  static Future<void> showIncomingCall(Map<String, dynamic> data) async {
+    final uuid = data['uuid'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+    
+    final params = CallKitParams(
+      id: uuid,
+      nameCaller: data['callerName'] ?? 'Unknown Alumni',
+      appName: 'ASCON Connect',
+      avatar: data['callerPic'],
+      handle: data['callerId'] ?? '000000',
+      type: 0, 
+      duration: 30000, 
+      textAccept: 'Answer',
+      textDecline: 'Decline',
+      missedCallNotification: const NotificationParams(
+        showNotification: false, 
+        isShowCallback: false,
+      ),
+      extra: data,
+      headers: {'apiKey': 'Abc@123!', 'platform': 'flutter'},
+      android: const AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: false,
+        ringtonePath: 'system_ringtone_default', // Uses default phone ringtone
+        backgroundColor: '#0F3621',
+        actionColor: '#4CAF50',
+        incomingCallNotificationChannelName: "Incoming Call",
+      ),
+      ios: const IOSParams(
+        iconName: 'CallKitIcon',
+        handleType: 'generic',
+        supportsVideo: true,
+        maximumCallGroups: 1,
+        maximumCallsPerCallGroup: 1,
+        audioSessionMode: 'default',
+        audioSessionActive: true,
+        audioSessionPreferredSampleRate: 44100.0,
+        audioSessionPreferredIOBufferDuration: 0.005,
+        supportsDTMF: true,
+        supportsHolding: true,
+        supportsGrouping: false,
+        supportsUngrouping: false,
+        ringtonePath: 'system_ringtone_default',
+      ),
+    );
+
+    await FlutterCallkitIncoming.showCallkitIncoming(params);
   }
 
   /// 🚀 **Improved Navigation Handler**
   Future<void> handleNavigation(Map<String, dynamic> data) async {
-    _stopRingtone();
-
     final String? route = data['route'];
     final String? type = data['type'];
     final String? id = data['id'] ?? data['eventId'] ?? data['_id'];
@@ -162,12 +220,12 @@ class NotificationService {
       token = prefs.getString('auth_token');
     }
 
-    // Get reliable context from Root Navigator
+    // Get reliable context
     final BuildContext? context = rootNavigatorKey.currentContext;
 
     if (token == null) {
       if (context != null) {
-        GoRouter.of(context).go('/login', extra: data); // Pass payload to handle after login
+        GoRouter.of(context).go('/login', extra: data); 
       }
       return;
     }
@@ -181,15 +239,13 @@ class NotificationService {
     // 📞 CASE 1: INCOMING CALL
     // ======================================================
     if (type == 'call_offer' || type == 'video_call') {
-      debugPrint("📞 Navigating to Answer Call Screen...");
-      
-      SocketService().initSocket(); // Ensure socket is ready
+      SocketService().initSocket(); 
 
       context.push('/call', extra: {
         'remoteName': data['callerName'] ?? "Unknown Caller",
         'remoteId': data['callerId'],
-        'remoteAvatar': data['callerAvatar'],
-        'isCaller': false, // We are answering
+        'remoteAvatar': data['callerPic'], // Changed from callerAvatar to match backend
+        'isCaller': false, 
         'offer': data['offer'] is String ? jsonDecode(data['offer']) : data['offer'],
         'callLogId': data['callLogId'],
       });
@@ -197,7 +253,7 @@ class NotificationService {
     }
 
     // ======================================================
-    // 💬 CASE 2: CHAT MESSAGE (Group or 1-on-1)
+    // 💬 CASE 2: CHAT MESSAGE
     // ======================================================
     if (type == 'chat_message') {
       final conversationId = data['conversationId'];
@@ -221,7 +277,7 @@ class NotificationService {
           'receiverProfilePic': senderProfilePic,
           'isGroup': isGroup,
           'groupId': groupId,
-          'isOnline': false, // Assume offline until socket updates
+          'isOnline': false, 
         });
       }
       return;
@@ -231,22 +287,20 @@ class NotificationService {
     // 📢 CASE 3: POSTS / UPDATES
     // ======================================================
     if (type == 'new_update' || route == 'updates') {
-      // Switch to "Updates" Tab
       context.go('/updates'); 
       return;
     }
 
     // ======================================================
-    // 🚀 CASE 4: WELCOME / PROFILE (New User)
+    // 🚀 CASE 4: WELCOME / PROFILE
     // ======================================================
     if (type == 'welcome' || route == 'profile') {
-      // Switch to "Profile" Tab
       context.go('/profile'); 
       return;
     }
 
     // ======================================================
-    // 🎓 CASE 5: PROGRAMME & EVENT DETAILS
+    // 🎓 CASE 5: DETAILS
     // ======================================================
     if (route == 'mentorship_requests') {
       Navigator.of(context).push(
@@ -284,32 +338,18 @@ class NotificationService {
     }
   }
 
+  // ==========================================
+  // 🔔 STANDARD NOTIFICATIONS (Chat, Missed Call Beep)
+  // ==========================================
   Future<void> _showLocalNotification(RemoteMessage message) async {
     String originalTitle = message.notification?.title ?? 'New Message';
     String body = message.notification?.body ?? '';
     
-    final type = message.data['type'];
-    final isCall = type == 'call_offer' || type == 'video_call';
+    // ✅ FIX: Standard channel for everything non-call related
+    const channelId = AppConfig.notificationChannelId;
+    const channelName = AppConfig.notificationChannelName;
 
-    final channelId = isCall ? AppConfig.callChannelId : AppConfig.notificationChannelId;
-    final channelName = isCall ? AppConfig.callChannelName : AppConfig.notificationChannelName;
-    
-    // Explicitly set sound only for calls to ensure ringtone plays
-    final sound = isCall ? const RawResourceAndroidNotificationSound('ringtone') : null;
-
-    // ✅ Ring in foreground for calls
-    if (isCall) {
-      try {
-        await _foregroundRingPlayer.setSource(AssetSource('sounds/ringtone.mp3'));
-        await _foregroundRingPlayer.setReleaseMode(ReleaseMode.loop);
-        await _foregroundRingPlayer.resume();
-        Future.delayed(const Duration(seconds: 30), () => _stopRingtone());
-      } catch (e) {
-        debugPrint("Error playing ringtone: $e");
-      }
-    }
-
-    final Int64List vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]);
+    final Int64List vibrationPattern = Int64List.fromList([0, 500]);
 
     final BigTextStyleInformation bigTextStyleInformation = BigTextStyleInformation(
       body,
@@ -328,9 +368,7 @@ class NotificationService {
       enableVibration: true,
       vibrationPattern: vibrationPattern,
       styleInformation: bigTextStyleInformation,
-      sound: sound,
-      fullScreenIntent: isCall, // Wakes up screen for calls
-      category: isCall ? AndroidNotificationCategory.call : AndroidNotificationCategory.message,
+      playSound: true, // ✅ This ensures the standard "Beep" for missed calls/chats
     );
 
     await _localNotifications.show(
@@ -351,7 +389,6 @@ class NotificationService {
       alert: true, badge: true, sound: true, provisional: false,
     );
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      // ✅ FIX: Don't await this! Fire and forget so UI doesn't lag.
       syncToken(retry: false);
     }
   }
@@ -371,7 +408,6 @@ class NotificationService {
       }
 
       if (authToken != null) {
-        // ✅ FIX: Added timeout so it doesn't hang indefinitely on bad network
         await http.post(
           Uri.parse('${AppConfig.baseUrl}/api/notifications/save-token'),
           headers: {'Content-Type': 'application/json', 'auth-token': authToken},

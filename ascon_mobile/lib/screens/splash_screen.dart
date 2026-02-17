@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/socket_service.dart';
-import 'edit_profile_screen.dart'; // ✅ Added Import
+import 'edit_profile_screen.dart'; 
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -50,77 +50,75 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     // 2. Check Session Validity
     final bool isValid = await _authService.isSessionValid();
     
-    // 3. Determine Next Destination
-    final String nextPath = isValid ? '/home' : '/login';
+    // 3. Determine Next Destination (Default)
+    String nextPath = isValid ? '/home' : '/login';
 
+    // ✅ FIX 1: Notification Permission Check (Runs for EVERYONE now)
+    final prefs = await SharedPreferences.getInstance();
+    bool hasSeenPrompt = prefs.getBool('has_seen_notification_prompt') ?? false;
+    
+    // Check actual system permission (only on Mobile)
+    bool isAuthorized = false;
+    if (!kIsWeb) {
+       final status = await NotificationService().getAuthorizationStatus();
+       isAuthorized = status == AuthorizationStatus.authorized;
+    }
+
+    // If never seen prompt AND not authorized -> Go to Permission Screen FIRST
+    // We pass 'nextPath' so it knows where to go AFTER permission is handled.
+    if (!hasSeenPrompt && !isAuthorized) {
+      if (mounted) {
+        context.go('/notification_permission', extra: nextPath);
+      }
+      return; // 🛑 STOP HERE
+    }
+
+    // 4. Session & Profile Checks (Only if Logged In)
     if (isValid) {
       try {
         SocketService().initSocket();
-        // Initialize notifications if possible
         NotificationService().init();
       } catch (e) {
         debugPrint("⚠️ Init error: $e");
       }
 
-      // ✅ 3b. SPLASH GUARD: CHECK PROFILE COMPLETENESS
-      // If the user has no Year of Attendance, force them to complete profile now.
+      // 4b. Splash Guard: Check Profile Completeness
       final user = await _authService.getCachedUser();
       var year = user?['yearOfAttendance'];
       
-      // Check for null, 0, string "null", or empty string
       bool isProfileIncomplete = year == null || 
                                  year == 0 || 
                                  year == "null" || 
                                  year.toString().trim().isEmpty;
 
       if (isProfileIncomplete) {
-        debugPrint("⚠️ Splash Guard: Incomplete Profile Detected. Redirecting to Edit Profile.");
-        if (!mounted) return;
-        
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => EditProfileScreen(
-              userData: user ?? {},
-              isFirstTime: true, // Forces "Onboarding Mode" (No back button)
+        debugPrint("⚠️ Splash Guard: Incomplete Profile. Redirecting.");
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditProfileScreen(
+                userData: user ?? {},
+                isFirstTime: true,
+              ),
             ),
-          ),
-        );
-        return; // 🛑 STOP EXECUTION HERE
+          );
+        }
+        return; 
       }
-    }
-
-    if (!mounted) return;
-
-    // ✅ 4. CHECK NOTIFICATION PERMISSION STATE
-    final prefs = await SharedPreferences.getInstance();
-    
-    // ⚠️ FOR TESTING ONLY: Uncomment the line below to reset the "seen" status
-    // await prefs.remove('has_seen_notification_prompt'); 
-
-    bool hasSeenPrompt = prefs.getBool('has_seen_notification_prompt') ?? false;
-    
-    // Check system permission status
-    final status = await NotificationService().getAuthorizationStatus();
-    bool isAuthorized = status == AuthorizationStatus.authorized;
-
-    // If never seen prompt AND not already authorized -> Go to Permission Screen
-    // (Removed !kIsWeb check so you can test on Chrome)
-    if (!hasSeenPrompt && !isAuthorized) {
-      context.go('/notification_permission', extra: nextPath);
-      return;
-    }
-
-    // 5. Normal Navigation (Deep Link or Next Path)
-    if (isValid) {
+      
+      // 4c. Check for Deep Links (Chat/Notifications)
       RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
       if (initialMessage != null && _isChatMessage(initialMessage)) {
-        context.go('/home');
-      } else {
-        context.go('/home');
+        // The router/notification service will handle the specific path
+        // We just ensure we go to home first to initialize the shell
+        nextPath = '/home'; 
       }
-    } else {
-      context.go('/login');
+    }
+
+    // 5. Final Navigation
+    if (mounted) {
+      context.go(nextPath);
     }
   }
 
@@ -175,7 +173,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   "... the natural place for human capacity building.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 16, 
+                    fontSize: 14, 
                     fontStyle: FontStyle.italic,
                     fontWeight: FontWeight.bold,
                     color: isDark ? Colors.white.withOpacity(0.9) : asconGreen,

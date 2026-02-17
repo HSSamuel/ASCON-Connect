@@ -2,6 +2,7 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose"); // ✅ Added for ObjectId validation
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
@@ -144,6 +145,13 @@ const initializeSocket = async (server) => {
     socket.on("join_room", (room) => socket.join(room));
     socket.on("leave_room", (room) => socket.leave(room));
 
+    // ✅ FIX: LISTEN FOR EXPLICIT RECONNECTS (Mobile App sends this)
+    socket.on("user_connected", async (uid) => {
+      if (uid === userId) {
+        await handleConnection(socket, userId);
+      }
+    });
+
     // ✅ NEW: CHECK USER STATUS ON DEMAND (Fixes Presence Issue)
     socket.on("check_user_status", async ({ userId: targetId }) => {
       try {
@@ -218,6 +226,22 @@ const initializeSocket = async (server) => {
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
       try {
+        // ✅ SAFETY CHECK: Validate ObjectID
+        if (!mongoose.isValidObjectId(receiverId)) {
+          socket.emit("call_failed", { reason: "Invalid Receiver ID" });
+          return;
+        }
+
+        // ✅ SAFETY CHECK: Prevent Group Calls (Current Architecture Limitation)
+        // If receiverId belongs to a Group, we must reject it to prevent DB errors.
+        const isGroup = await Group.exists({ _id: receiverId });
+        if (isGroup) {
+          socket.emit("call_failed", {
+            reason: "Group calling not supported yet",
+          });
+          return;
+        }
+
         const busyCheck = await CallLog.findOne({
           $or: [{ caller: receiverId }, { receiver: receiverId }],
           status: { $in: ["ongoing", "ringing"] },
