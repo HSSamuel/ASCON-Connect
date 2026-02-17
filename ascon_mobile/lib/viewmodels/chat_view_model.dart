@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/socket_service.dart';
@@ -59,8 +61,6 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   Future<void> loadConversations() async {
     try {
-      // ✅ FIX: Changed endpoint from '/api/chat/conversations' to '/api/chat'
-      // This matches `router.get("/", ...)` in the backend.
       final res = await _api.get('/api/chat');
       
       if (res['success'] == true) {
@@ -140,6 +140,28 @@ class ChatNotifier extends StateNotifier<ChatState> {
       state = state.copyWith(conversations: newConvs, filteredConversations: newConvs);
       await _api.delete('/api/chat/conversation/$id');
     } catch (_) {}
+  }
+
+  // ✅ New Logic: Check if file exists locally
+  Future<bool> isFileDownloaded(String? fileName) async {
+    if (fileName == null) return false;
+    try {
+      final dir = await getTemporaryDirectory();
+      // Sanitize filename to prevent path traversal issues
+      final safeFileName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_');
+      final file = File("${dir.path}/$safeFileName");
+      return await file.exists();
+    } catch (e) {
+      debugPrint("File check error: $e");
+      return false;
+    }
+  }
+
+  // ✅ New Logic: Handle Download triggering
+  Future<void> downloadFile(String url, String fileName) async {
+    // This could call a more complex DownloadService if needed
+    // For now, it logs the action or triggers external open/download
+    debugPrint("📥 Downloading $fileName from $url");
   }
 
   void _setupSocket() {

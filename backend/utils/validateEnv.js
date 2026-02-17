@@ -7,12 +7,14 @@ const validateEnv = () => {
     "JWT_SECRET",
     "REFRESH_SECRET",
     "EMAIL_USER",
-    "EMAIL_PASS", 
     "GOOGLE_CLIENT_ID",
     "NODE_ENV",
     "FIREBASE_SERVICE_ACCOUNT",
     "CLIENT_URL",
     "FIREBASE_VAPID_KEY",
+    "MAILER_CLIENT_ID",
+    "MAILER_CLIENT_SECRET",
+    "MAILER_REFRESH_TOKEN",
   ];
 
   const missing = requiredEnv.filter((env) => !process.env[env]);

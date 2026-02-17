@@ -40,7 +40,6 @@ class SocketService with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // ✅ FIX: Check token existence BEFORE calling init to prevent log spam
-      // If we are logged out, we don't need a socket connection on resume.
       _storage.read(key: "auth_token").then((token) {
         if (token != null && (socket == null || !socket!.connected)) {
           initSocket();
@@ -54,7 +53,6 @@ class SocketService with WidgetsBindingObserver {
   }
 
   void _setupCallKitListener() {
-    // This will only run on mobile now
     try {
       FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
         if (event == null) return;
@@ -107,8 +105,6 @@ class SocketService with WidgetsBindingObserver {
     }
 
     if (token == null || _currentUserId == null) {
-      // ✅ FIX: Silenced log to reduce console noise during permission flows
-      // debugPrint("⚠️ Socket Init Skipped: Missing Token or UserId");
       return;
     }
 
@@ -127,9 +123,9 @@ class SocketService with WidgetsBindingObserver {
       socket = IO.io(socketUrl, <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
-        'timeout': 20000,
+        'timeout': AppConfig.socketTimeoutMs, // ✅ Use AppConfig
         'reconnection': true,
-        'reconnectionDelay': 1000,
+        'reconnectionDelay': AppConfig.socketReconnectionDelayMs, // ✅ Use AppConfig
         'auth': {'token': token},
         'query': {'userId': _currentUserId},
       });

@@ -3,13 +3,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'dart:typed_data';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/chat_objects.dart';
+import '../../viewmodels/chat_view_model.dart'; // ✅ Import ViewModel
 import '../full_screen_image.dart'; 
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends ConsumerWidget { // ✅ Changed to ConsumerWidget
   final ChatMessage msg;
   final String myUserId;
   final bool isMe;
@@ -41,18 +41,6 @@ class MessageBubble extends StatelessWidget {
     required this.onSwipeReply, required this.onToggleSelection, required this.onReply, required this.onEdit, required this.onDelete,
     required this.onPlayAudio, required this.onPauseAudio, required this.onSeekAudio, required this.onDownloadFile
   });
-
-  Future<bool> _isFileDownloaded(String? fileName) async {
-    if (fileName == null) return false;
-    try {
-      final dir = await getTemporaryDirectory();
-      final safeFileName = fileName.replaceAll(RegExp(r'[^\w\s\.-]'), '_');
-      final file = File("${dir.path}/$safeFileName");
-      return await file.exists();
-    } catch (e) {
-      return false;
-    }
-  }
 
   void _showOptions(BuildContext context) {
     final bool isDeletedContent = msg.isDeleted || msg.text.contains("This message was deleted");
@@ -118,29 +106,28 @@ class MessageBubble extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) { // ✅ Added WidgetRef ref
     final time = DateFormat('h:mm a').format(msg.createdAt);
     final bool isDeletedMessage = msg.isDeleted || msg.text.contains("This message was deleted");
 
     IconData statusIcon;
     Color statusColor;
 
-    // ✅ NEW STATUS ICONS LOGIC
     switch (msg.status) {
       case MessageStatus.sending:
         statusIcon = Icons.access_time;
         statusColor = Colors.grey;
         break;
       case MessageStatus.sent:
-        statusIcon = Icons.check; // Single Grey Tick
+        statusIcon = Icons.check;
         statusColor = Colors.grey;
         break;
       case MessageStatus.delivered:
-        statusIcon = Icons.done_all; // Double Grey Tick
+        statusIcon = Icons.done_all;
         statusColor = Colors.grey;
         break;
       case MessageStatus.read:
-        statusIcon = Icons.done_all; // Double Blue Tick
+        statusIcon = Icons.done_all;
         statusColor = Colors.blue;
         break;
       case MessageStatus.error:
@@ -155,14 +142,11 @@ class MessageBubble extends StatelessWidget {
       confirmDismiss: (d) async { onSwipeReply(msg.id); return false; },
       background: Container(alignment: Alignment.centerLeft, padding: const EdgeInsets.only(left: 20), color: Colors.transparent, child: Icon(Icons.reply, color: primaryColor)),
       child: GestureDetector(
-        // ✅ START SELECTION ON LONG PRESS
         onLongPress: () => onToggleSelection(msg.id),
-        // ✅ TOGGLE SELECTION ON TAP IF MODE ACTIVE
         onTap: () { 
           if (isSelectionMode) onToggleSelection(msg.id); 
         },
         child: Container(
-          // ✅ HIGHLIGHT SELECTED MESSAGE
           color: isSelected ? primaryColor.withOpacity(0.3) : Colors.transparent,
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Align(
@@ -208,7 +192,7 @@ class MessageBubble extends StatelessWidget {
                           ),
                         
                         if ((msg.fileUrl != null || msg.localBytes != null) && !isDeletedMessage)
-                           _buildMediaContent(context),
+                           _buildMediaContent(context, ref), // ✅ Pass ref
 
                         if (msg.text.isNotEmpty)
                           Padding(
@@ -233,7 +217,7 @@ class MessageBubble extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(time, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-                        if (isMe) ...[const SizedBox(width: 4), Icon(statusIcon, size: 16, color: statusColor)], // ✅ Updated Icon Size
+                        if (isMe) ...[const SizedBox(width: 4), Icon(statusIcon, size: 16, color: statusColor)],
                       ],
                     ),
                   ),
@@ -246,11 +230,10 @@ class MessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildMediaContent(BuildContext context) {
+  Widget _buildMediaContent(BuildContext context, WidgetRef ref) { // ✅ Added WidgetRef ref
     if (msg.type == 'image') {
       return GestureDetector(
         onTap: () {
-           // Disable media tap if selecting
            if (isSelectionMode) {
              onToggleSelection(msg.id);
              return;
@@ -321,6 +304,8 @@ class MessageBubble extends StatelessWidget {
     } 
     else if (msg.type == 'file') {
       final isDownloading = downloadingFileId == msg.id;
+      final chatNotifier = ref.read(chatProvider.notifier); // ✅ Access ViewModel
+
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {
@@ -348,7 +333,8 @@ class MessageBubble extends StatelessWidget {
               ),
               if (msg.fileUrl != null)
                 FutureBuilder<bool>(
-                  future: _isFileDownloaded(msg.fileName),
+                  // ✅ CALL VIEWMODEL METHOD
+                  future: chatNotifier.isFileDownloaded(msg.fileName),
                   builder: (context, snapshot) {
                     final bool isDownloaded = snapshot.data ?? false;
                     return GestureDetector(
@@ -357,6 +343,7 @@ class MessageBubble extends StatelessWidget {
                           onToggleSelection(msg.id);
                           return;
                         }
+                        // ✅ DELEGATE DOWNLOAD ACTION
                         onDownloadFile(msg.fileUrl!, msg.fileName ?? "file");
                       },
                       child: isDownloading 

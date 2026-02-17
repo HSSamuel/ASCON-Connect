@@ -35,7 +35,7 @@ class AppConfig {
   }
 
   // =========================================================
-  // 🔥 FIREBASE WEB CONFIGURATION (Added)
+  // 🔥 FIREBASE WEB CONFIGURATION
   // =========================================================
   static String get firebaseWebApiKey => "AIzaSyBBteJZoirarB77b3Cgo67njG6meoGNq_U";
   static String get firebaseWebAuthDomain => "ascon-alumni-91df2.firebaseapp.com";
@@ -43,16 +43,24 @@ class AppConfig {
   static String get firebaseWebStorageBucket => "ascon-alumni-91df2.firebasestorage.app";
   static String get firebaseWebMessagingSenderId => "826004672204";
   static String get firebaseWebAppId => "1:826004672204:web:4352aaeba03118fb68fc69";
-  static String get firebaseWebMeasurementId => "G-XYZ"; // Replace if you have a real ID
+  static String get firebaseWebMeasurementId => "G-XYZ"; 
 
   // =========================================================
-  // 🛡️ NOTIFICATION & NETWORK SETTINGS
+  // ⚙️ APP CONFIGURATION CONSTANTS
   // =========================================================
   
-  static const Duration connectionTimeout = Duration(seconds: 15);
+  // Network & Sockets
+  static const Duration apiTimeout = Duration(seconds: 30);
+  static const int socketTimeoutMs = 20000;      // ✅ Centralized
+  static const int socketReconnectionDelayMs = 1000; // ✅ Centralized
   static String get unreadCountEndpoint => '$baseUrl/api/notifications/unread-count';
 
+  // Notifications
   static const String notificationChannelId = 'ascon_high_importance'; 
   static const String notificationChannelName = 'ASCON Notifications';
   static const String notificationChannelDesc = 'This channel is used for important ASCON updates.';
+  
+  static const String callChannelId = 'ascon_call_channel';
+  static const String callChannelName = 'Incoming Calls';
+  static const String callChannelDesc = 'Ringtone for incoming calls';
 }

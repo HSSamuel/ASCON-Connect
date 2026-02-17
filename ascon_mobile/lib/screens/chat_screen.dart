@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -20,11 +19,8 @@ import 'package:open_file/open_file.dart';
 import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
-import '../services/api_client.dart'; 
 import '../viewmodels/chat_detail_view_model.dart'; 
 import '../models/chat_objects.dart';
-import '../config.dart';
-import '../config/storage_config.dart';
 import '../utils/presence_formatter.dart';
 import 'group_info_screen.dart';
 import 'alumni_detail_screen.dart'; 
@@ -102,7 +98,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setupAudioPlayerListeners();
     _setupScrollListener();
     
-    // ✅ SAFEGUARD: Only mark as read if conversation exists
     WidgetsBinding.instance.addPostFrameCallback((_) {
        if (widget.conversationId != null) {
          ref.read(_provider.notifier).markUnreadAsRead();
@@ -112,7 +107,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _setupScrollListener() {
     _scrollController.addListener(() {
-      // ✅ SAFEGUARD: Don't load more if chat doesn't exist yet
       if (_scrollController.hasClients && 
           _scrollController.position.pixels == 0 &&
           widget.conversationId != null) {
@@ -158,7 +152,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         'isOnline': widget.isOnline, 
         'lastSeen': widget.lastSeen,
       };
-      
       Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumniData)));
     }
   }
@@ -168,7 +161,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (_isTypingEmit) {
         _isTypingEmit = false;
         _typingDebounce?.cancel();
-        // Only send stop typing if convo exists
         if (widget.conversationId != null) {
           ref.read(_provider.notifier).sendStopTyping();
         }
@@ -224,7 +216,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _handleTyping(String val) {
-    if (widget.conversationId == null) return; // Don't emit typing if no chat exists yet
+    if (widget.conversationId == null) return;
 
     final notifier = ref.read(_provider.notifier);
 
@@ -315,13 +307,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (await file.exists()) {
         final result = await OpenFile.open(savePath);
-        if (result.type != ResultType.done) {
-           if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-               content: Text("Could not open file: ${result.message}"),
-               backgroundColor: Colors.red,
-             ));
-           }
+        if (result.type != ResultType.done && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+             content: Text("Could not open file: ${result.message}"),
+             backgroundColor: Colors.red,
+           ));
         }
         return; 
       }
@@ -334,16 +324,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (response.statusCode == 200) {
         await file.writeAsBytes(response.bodyBytes);
-
         final result = await OpenFile.open(savePath);
         
-        if (result.type != ResultType.done) {
-           if (mounted) {
-             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-               content: Text("Could not open file: ${result.message}"),
-               backgroundColor: Colors.red,
-             ));
-           }
+        if (result.type != ResultType.done && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+             content: Text("Could not open file: ${result.message}"),
+             backgroundColor: Colors.red,
+           ));
         }
       } else {
         throw Exception("Download failed with status: ${response.statusCode}");

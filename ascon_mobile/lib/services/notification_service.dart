@@ -71,7 +71,7 @@ class NotificationService {
         },
       );
 
-      // 1. Standard Channel
+      // 1. Standard Channel (Using AppConfig)
       const AndroidNotificationChannel standardChannel = AndroidNotificationChannel(
         AppConfig.notificationChannelId,
         AppConfig.notificationChannelName,
@@ -82,11 +82,11 @@ class NotificationService {
         showBadge: true,
       );
 
-      // 2. Call Channel (High Priority & Sound)
+      // 2. Call Channel (Using AppConfig)
       const AndroidNotificationChannel callChannel = AndroidNotificationChannel(
-        'ascon_call_channel',
-        'Incoming Calls',
-        description: 'Ringtone for incoming calls',
+        AppConfig.callChannelId,
+        AppConfig.callChannelName,
+        description: AppConfig.callChannelDesc,
         importance: Importance.max,
         enableVibration: true,
         playSound: true,
@@ -285,8 +285,8 @@ class NotificationService {
     final type = message.data['type'];
     final isCall = type == 'call_offer' || type == 'video_call';
 
-    final channelId = isCall ? 'ascon_call_channel' : AppConfig.notificationChannelId;
-    final channelName = isCall ? 'Incoming Calls' : AppConfig.notificationChannelName;
+    final channelId = isCall ? AppConfig.callChannelId : AppConfig.notificationChannelId;
+    final channelName = isCall ? AppConfig.callChannelName : AppConfig.notificationChannelName;
     
     // Explicitly set sound only for calls to ensure ringtone plays
     final sound = isCall ? const RawResourceAndroidNotificationSound('ringtone') : null;

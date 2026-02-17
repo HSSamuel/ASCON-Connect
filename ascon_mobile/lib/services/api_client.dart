@@ -25,9 +25,6 @@ class ApiClient {
   // ✅ ENCRYPTED VAULT FOR TOKENS
   final _secureStorage = StorageConfig.storage;
 
-  // Optimized timeout for mobile networks (30s is standard)
-  static const Duration _timeoutDuration = Duration(seconds: 30);
-
   // Callback to handle token refresh
   Future<String?> Function()? onTokenRefresh;
 
@@ -115,7 +112,8 @@ class ApiClient {
 
   Future<dynamic> _request(Future<http.Response> Function() req) async {
     try {
-      var response = await req().timeout(_timeoutDuration);
+      // ✅ Use Centralized Timeout
+      var response = await req().timeout(AppConfig.apiTimeout);
 
       // ✅ CRITICAL FIX: Handle Race Condition for 401
       if (response.statusCode == 401 && onTokenRefresh != null) {
@@ -149,7 +147,7 @@ class ApiClient {
         if (newToken != null) {
           print("✅ Token Refreshed. Retrying Request...");
           // This call to req() will now re-execute and pick up the NEW token
-          response = await req().timeout(_timeoutDuration); 
+          response = await req().timeout(AppConfig.apiTimeout); 
         }
       }
 
