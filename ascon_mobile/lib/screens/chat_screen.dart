@@ -35,7 +35,7 @@ import '../widgets/chat/chat_input_area.dart';
 
 import '../services/socket_service.dart';
 import '../services/data_service.dart';
-import '../services/call_service.dart'; // ✅ Imported CallService
+import '../services/call_service.dart'; // ✅ Correct Import
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String? conversationId;
@@ -236,6 +236,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     CallService().startCall(widget.receiverId);
     
+    // Use GoRouter to push the call screen
     context.push('/call', extra: {
       'remoteName': _displayReceiverName,
       'remoteId': widget.receiverId,

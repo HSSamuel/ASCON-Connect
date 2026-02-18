@@ -2,7 +2,7 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const { createClient } = require("redis");
 const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose"); // ✅ Added for ObjectId validation
+const mongoose = require("mongoose");
 const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
@@ -12,14 +12,11 @@ const logger = require("../utils/logger");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 let io;
-let redisClient; // ✅ Used for Presence (SADD, SREM)
-const onlineUsersMemory = new Map(); // Fallback if Redis is disabled
-const disconnectTimers = new Map(); // userId -> TimeoutID
-const activeCallTimers = new Map(); // callLogId -> TimeoutID
+let redisClient;
+const onlineUsersMemory = new Map();
+const disconnectTimers = new Map();
+const activeCallTimers = new Map();
 
-// ==========================================
-// 🛠️ PRESENCE HELPERS (Redis vs Memory)
-// ==========================================
 const addSocketToUser = async (userId, socketId) => {
   if (redisClient && redisClient.isOpen) {
     await redisClient.sAdd(`online_users:${userId}`, socketId);
@@ -69,9 +66,6 @@ const initializeSocket = async (server) => {
 
   io = new Server(server, ioConfig);
 
-  // ==========================================
-  // 1. REDIS ADAPTER & CLIENT SETUP
-  // ==========================================
   if (process.env.USE_REDIS === "true") {
     logger.info("🔌 Redis Enabled. Attempting to connect...");
     try {
@@ -98,9 +92,6 @@ const initializeSocket = async (server) => {
     }
   }
 
-  // ==========================================
-  // 2. AUTHENTICATION MIDDLEWARE
-  // ==========================================
   io.use(async (socket, next) => {
     try {
       const token =
@@ -121,14 +112,10 @@ const initializeSocket = async (server) => {
     }
   });
 
-  // ==========================================
-  // 3. EVENT HANDLERS
-  // ==========================================
   io.on("connection", async (socket) => {
     const userId = socket.userId;
     logger.info(`🔌 Socket Connected: ${socket.id} (User: ${userId})`);
 
-    // A. JOIN ROOMS
     socket.join(userId);
     try {
       const userGroups = await Group.find({ members: userId }).select("_id");
@@ -139,20 +126,17 @@ const initializeSocket = async (server) => {
       logger.error(`Error joining group rooms: ${err.message}`);
     }
 
-    // B. HANDLE CONNECTION (PRESENCE)
     await handleConnection(socket, userId);
 
     socket.on("join_room", (room) => socket.join(room));
     socket.on("leave_room", (room) => socket.leave(room));
 
-    // ✅ FIX: LISTEN FOR EXPLICIT RECONNECTS (Mobile App sends this)
     socket.on("user_connected", async (uid) => {
       if (uid === userId) {
         await handleConnection(socket, userId);
       }
     });
 
-    // ✅ NEW: CHECK USER STATUS ON DEMAND (Fixes Presence Issue)
     socket.on("check_user_status", async ({ userId: targetId }) => {
       try {
         const count = await getSocketCount(targetId);
@@ -164,9 +148,7 @@ const initializeSocket = async (server) => {
           if (userAuth) lastSeen = userAuth.lastSeen;
         }
 
-        // Send result ONLY to the requester
         socket.emit("user_status_update", {
-          // Use same event name as broadcast to reuse logic
           userId: targetId,
           isOnline: isOnline,
           lastSeen: lastSeen,
@@ -176,9 +158,6 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // ==========================================
-    // C. MESSAGE STATUS HANDLERS
-    // ==========================================
     socket.on(
       "mark_messages_read",
       async ({ chatId, messageIds, userId: readerId }) => {
@@ -216,24 +195,17 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // ==========================================
-    // D. WEBRTC SIGNALING
-    // ==========================================
-
     // 1. Initiate Call
     socket.on("call_user", async (data) => {
       const receiverId = data.userToCall;
       logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
 
       try {
-        // ✅ SAFETY CHECK: Validate ObjectID
         if (!mongoose.isValidObjectId(receiverId)) {
           socket.emit("call_failed", { reason: "Invalid Receiver ID" });
           return;
         }
 
-        // ✅ SAFETY CHECK: Prevent Group Calls (Current Architecture Limitation)
-        // If receiverId belongs to a Group, we must reject it to prevent DB errors.
         const isGroup = await Group.exists({ _id: receiverId });
         if (isGroup) {
           socket.emit("call_failed", {
@@ -277,14 +249,16 @@ const initializeSocket = async (server) => {
           callerName: callerName,
           callerPic: callerPic,
           callLogId: newLog._id,
+          type: "call_offer",
         };
 
         io.to(receiverId).emit("call_made", payload);
 
+        // ✅ FIX: Send Silent Push (Title/Body = NULL)
         await sendPersonalNotification(
           receiverId,
-          "Incoming Call 📞",
-          `${callerName} is calling...`,
+          null, // No Title
+          null, // No Body
           {
             type: "call_offer",
             callerId: socket.userId,
@@ -292,6 +266,7 @@ const initializeSocket = async (server) => {
             callerPic: callerPic || "",
             callLogId: newLog._id.toString(),
             uuid: newLog._id.toString(),
+            offer: JSON.stringify(data.offer), // Useful for quick connect
           },
         );
 
@@ -302,6 +277,7 @@ const initializeSocket = async (server) => {
             io.to(socket.userId).emit("call_failed", { reason: "No answer" });
             io.to(receiverId).emit("call_missed", { callLogId: newLog._id });
 
+            // Send Missed Call Notification (Visible)
             await sendPersonalNotification(
               receiverId,
               "Missed Call 📞",
@@ -319,7 +295,6 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // 2. Answer Call
     socket.on("make_answer", async (data) => {
       logger.info(`📞 Call answered by ${socket.userId}`);
 
@@ -342,7 +317,6 @@ const initializeSocket = async (server) => {
       });
     });
 
-    // 3. End Call
     socket.on("end_call", async (data) => {
       if (!data.callLogId) return;
 
@@ -388,7 +362,6 @@ const initializeSocket = async (server) => {
       });
     });
 
-    // E. DISCONNECT
     socket.on("disconnect", async () => {
       await handleDisconnect(socket, userId);
     });
@@ -397,9 +370,6 @@ const initializeSocket = async (server) => {
   return io;
 };
 
-// ==========================================
-// 4. CONNECTION LOGIC (Redis Adapted)
-// ==========================================
 const handleConnection = async (socket, userId) => {
   if (disconnectTimers.has(userId)) {
     clearTimeout(disconnectTimers.get(userId));

@@ -156,7 +156,7 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PollsScreen(),
     ),
 
-    // ✅ CALL ROUTE (Fixed: Removed 'hasAccepted')
+    // ✅ CALL ROUTE (UPDATED)
     GoRoute(
       path: '/call',
       parentNavigatorKey: rootNavigatorKey,
@@ -168,7 +168,9 @@ final GoRouter appRouter = GoRouter(
           remoteAvatar: args['remoteAvatar'],
           isCaller: args['isCaller'],
           offer: args['offer'],
-          callLogId: args['callLogId'], 
+          callLogId: args['callLogId'],
+          // ✅ FIX: Pass the acceptance flag from SocketService -> CallScreen
+          hasAccepted: args['hasAccepted'] ?? false, 
         );
       },
     ),

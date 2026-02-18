@@ -14,7 +14,6 @@ enum CallState {
 }
 
 class CallService {
-  // Singleton Pattern
   static final CallService _instance = CallService._internal();
   factory CallService() => _instance;
   CallService._internal();
@@ -24,14 +23,12 @@ class CallService {
   MediaStream? _remoteStream;
   String? _remoteId;
   bool _isCallActive = false;
-  
-  // Track current output preference
   bool _isSpeakerOn = false; 
   
-  // Buffering for ICE candidates
   bool _isRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _candidateQueue = [];
   
+  // ✅ FIX: Broadcast streams are kept open for the app's lifetime
   final _callStateController = StreamController<CallState>.broadcast();
   Stream<CallState> get callStateStream => _callStateController.stream;
 
@@ -41,37 +38,32 @@ class CallService {
   final _localStreamController = StreamController<MediaStream?>.broadcast();
   Stream<MediaStream?> get localStreamStream => _localStreamController.stream;
 
-  void dispose() {
+  // ✅ FIX: "reset" instead of "dispose" to keep streams alive
+  void reset() {
     _closePeerConnection();
+    if (!_callStateController.isClosed) {
+      // Optional: notify listeners that call is reset, but don't close stream
+    }
   }
 
-  // ✅ NEW: Robust Audio Session Re-assertion
   Future<void> ensureAudioSession({bool video = false}) async {
     if (kIsWeb) return;
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
     
     try {
-      // 1. Force the intent based on video preference
-      _isSpeakerOn = video; // Default: Video -> Speaker, Audio -> Earpiece
-      
-      // 2. Apply configuration with a slight delay to override any previous plugin resets
+      _isSpeakerOn = video;
       await Future.delayed(const Duration(milliseconds: 200));
-      await Helper.setSpeakerphoneOn(_isSpeakerOn);
-      debugPrint("✅ Audio Session Enforced: Speaker=$_isSpeakerOn");
+      await toggleSpeaker(_isSpeakerOn);
     } catch (e) {
       debugPrint("⚠️ Audio Config Error: $e");
     }
   }
 
-  // --- 1. START CALL (Caller) ---
   Future<void> startCall(String remoteUserId, {bool video = false}) async {
     if (_isCallActive) return;
-    
     await _checkPermissions();
     
-    // Initial config
     _isSpeakerOn = video;
-
     _remoteId = remoteUserId;
     _isCallActive = true;
     _isRemoteDescriptionSet = false;
@@ -100,12 +92,10 @@ class CallService {
     });
   }
 
-  // --- 2. ANSWER CALL (Receiver) ---
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, String? callLogId, {bool video = false}) async {
     await _checkPermissions();
     
     _isSpeakerOn = video;
-
     _remoteId = callerId;
     _isCallActive = true;
     _isRemoteDescriptionSet = false;
@@ -141,7 +131,6 @@ class CallService {
     });
   }
 
-  // --- 3. HANDLE ANSWER (Caller) ---
   Future<void> handleAnswer(dynamic answerData) async {
     if (_peerConnection == null) return;
     
@@ -154,12 +143,14 @@ class CallService {
     _callStateController.add(CallState.connected);
   }
 
-  // --- 4. HANDLE ICE CANDIDATES (Both) ---
   Future<void> handleIceCandidate(dynamic candidateData) async {
+    // ✅ FIX: Safe Cast for Web Compatibility
+    final Map<String, dynamic> data = Map<String, dynamic>.from(candidateData);
+
     final candidate = RTCIceCandidate(
-      candidateData['candidate'],
-      candidateData['sdpMid'],
-      candidateData['sdpMLineIndex'],
+      data['candidate'],
+      data['sdpMid'],
+      data['sdpMLineIndex'],
     );
 
     if (_peerConnection != null && _isRemoteDescriptionSet) {
@@ -176,7 +167,6 @@ class CallService {
     _candidateQueue.clear();
   }
 
-  // --- 5. SETUP PEER CONNECTION (ROBUST) ---
   Future<void> _createPeerConnection() async {
     final String rawTurnUrl = dotenv.env['TURN_URL'] ?? "";
     final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
@@ -184,25 +174,17 @@ class CallService {
 
     List<String> turnUrls = [];
     if (rawTurnUrl.isNotEmpty) {
-      turnUrls = rawTurnUrl.split(',')
-          .map((e) => e.trim()) 
-          .where((e) => e.isNotEmpty)
-          .toList();
+      turnUrls = rawTurnUrl.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     }
 
     Map<String, dynamic> configuration = {
       "iceServers": [
         {"urls": "stun:stun.l.google.com:19302"},
         if (turnUrls.isNotEmpty)
-          {
-            "urls": turnUrls,
-            "username": turnUsername,
-            "credential": turnPassword
-          }
+          {"urls": turnUrls, "username": turnUsername, "credential": turnPassword}
       ],
       "iceTransportPolicy": "all",
       "sdpSemantics": "unified-plan",
-      "iceCandidatePoolSize": 10,
     };
 
     _peerConnection = await createPeerConnection(configuration);
@@ -223,12 +205,8 @@ class CallService {
     _peerConnection!.onTrack = (RTCTrackEvent event) {
       if (event.streams.isNotEmpty) {
         _remoteStream = event.streams[0];
-        _remoteStream!.getAudioTracks().forEach((track) {
-          track.enabled = true;
-        });
+        _remoteStream!.getAudioTracks().forEach((track) => track.enabled = true);
         _remoteStreamController.add(_remoteStream);
-        
-        // ✅ FIX: Ensure audio routing when remote track arrives
         ensureAudioSession(video: _isSpeakerOn);
       }
     };
@@ -241,37 +219,25 @@ class CallService {
     };
   }
 
-  // --- UTILS ---
-
   Future<void> _checkPermissions() async {
     if (kIsWeb) return;
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
 
     var micStatus = await Permission.microphone.status;
-    if (micStatus.isDenied || micStatus.isPermanentlyDenied) {
-      micStatus = await Permission.microphone.request();
-    }
+    if (micStatus.isDenied) micStatus = await Permission.microphone.request();
     if (micStatus.isDenied) throw Exception('Microphone permission required');
-    
-    if (Platform.isAndroid) {
-      await Permission.bluetoothConnect.request();
-    }
+    if (Platform.isAndroid) await Permission.bluetoothConnect.request();
   }
 
   Future<void> _getUserMedia({bool video = false}) async {
-    final Map<String, dynamic> mediaConstraints = {
-      'audio': {
-        'echoCancellation': true,
-        'noiseSuppression': true,
-        'autoGainControl': true,
-      }, 
+    final Map<String, dynamic> constraints = {
+      'audio': {'echoCancellation': true, 'noiseSuppression': true, 'autoGainControl': true}, 
       'video': video ? {'facingMode': 'user'} : false,
     };
 
     try {
-      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _localStream = await navigator.mediaDevices.getUserMedia(constraints);
       _localStreamController.add(_localStream);
-      
       _localStream!.getAudioTracks().forEach((track) => track.enabled = true);
 
       if (_peerConnection != null) {
@@ -290,7 +256,10 @@ class CallService {
 
     try {
       _isSpeakerOn = enable;
-      await Helper.setSpeakerphoneOn(enable);
+      // ✅ FIX: Real speaker implementation
+      if (_localStream != null && _localStream!.getAudioTracks().isNotEmpty) {
+        _localStream!.getAudioTracks()[0].enableSpeakerphone(enable);
+      }
     } catch (e) {
       debugPrint("Error toggling speaker: $e");
     }

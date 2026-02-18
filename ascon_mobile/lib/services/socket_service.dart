@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb & defaultTargetPlatform
+import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart'; 
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'package:flutter_callkit_incoming/entities/entities.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../router.dart'; 
@@ -29,17 +27,13 @@ class SocketService with WidgetsBindingObserver {
 
   SocketService._internal() {
     WidgetsBinding.instance.addObserver(this);
-    
-    // ✅ Check Platform safely for Web compatibility
-    bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
-    if (isMobile) {
-      _setupCallKitListener();
-    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (socket != null && socket!.connected) return;
+
       _storage.read(key: "auth_token").then((token) {
         if (token != null && (socket == null || !socket!.connected)) {
           initSocket();
@@ -52,49 +46,6 @@ class SocketService with WidgetsBindingObserver {
     return socket;
   }
 
-  void _setupCallKitListener() {
-    try {
-      FlutterCallkitIncoming.onEvent.listen((CallEvent? event) {
-        if (event == null) return;
-        
-        switch (event.event) {
-          case Event.actionCallAccept:
-  final data = event.body['extra'];
-  if (data != null) {
-     SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (rootNavigatorKey.currentState != null) {
-          try {
-            appRouter.push('/call', extra: {
-              'remoteName': data['callerName'] ?? "Unknown Caller",
-              'remoteId': data['callerId'] ?? "Unknown",
-              'remoteAvatar': data['callerPic'],
-              'isCaller': false,
-              'offer': data['offer'],
-              'callLogId': data['callLogId'],
-              'hasAccepted': true, // ✅ IMPORTANT: Add this!
-            });
-          } catch (e) {
-            debugPrint("❌ Navigation Failed (CallKit): $e");
-          }
-        }
-     });
-  }
-  break;
-            
-          case Event.actionCallDecline:
-             if (event.body['extra'] != null && event.body['extra']['callLogId'] != null) {
-               socket?.emit('end_call', {'callLogId': event.body['extra']['callLogId']});
-             }
-             break;
-          default:
-            break;
-        }
-      });
-    } catch (e) {
-      debugPrint("⚠️ CallKit Listener Error: $e");
-    }
-  }
-
   Future<void> initSocket({String? userIdOverride}) async {
     String? token = await _storage.read(key: "auth_token");
     if (userIdOverride != null) {
@@ -103,9 +54,7 @@ class SocketService with WidgetsBindingObserver {
       _currentUserId = await _storage.read(key: "userId");
     }
 
-    if (token == null || _currentUserId == null) {
-      return;
-    }
+    if (token == null || _currentUserId == null) return;
 
     String socketUrl = AppConfig.baseUrl;
     if (socketUrl.endsWith('/')) socketUrl = socketUrl.substring(0, socketUrl.length - 1);
@@ -183,77 +132,29 @@ class SocketService with WidgetsBindingObserver {
        _messageStatusController.add({'type': 'status_update', 'data': data});
     });
 
-    // 📞 MODIFIED: Unified Call Handling
     socket!.on('call_made', (data) async {
       debugPrint("📞 INCOMING CALL EVENT (Socket): $data");
       
-      bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+      // ✅ FIX: Universal Navigation logic (Web & Mobile)
+      // Since we removed CallKit, we rely on the App Navigation to show the Call Screen
+      // whenever the app is open and receiving this event.
       
-      if (isMobile) {
-        // ✅ FIX: Use CallKit for Mobile foreground calls too.
-        // This prevents double ringing (One from Socket, one from FCM).
-        // CallKit automatically dedupes if ID matches.
-        CallKitParams params = CallKitParams(
-          id: data['callLogId'],
-          nameCaller: data['callerName'] ?? 'Unknown Member',
-          appName: 'ASCON Connect',
-          avatar: data['callerPic'],
-          handle: data['callerId'],
-          type: 0, // Audio Call
-          duration: 30000,
-          textAccept: 'Answer',
-          textDecline: 'Decline',
-          missedCallNotification: const NotificationParams(
-            showNotification: true,
-            isShowCallback: false,
-            subtitle: 'Missed call',
-          ),
-          extra: <String, dynamic>{
-            ...data,
-          },
-          android: const AndroidParams(
-            isCustomNotification: true,
-            isShowLogo: false,
-            backgroundColor: '#0F3621',
-            ringtonePath: 'system_ringtone_default',
-            actionColor: '#4CAF50',
-            incomingCallNotificationChannelName: "Incoming Call",
-            isShowFullLockedScreen: true,
-          ),
-          ios: const IOSParams(
-            iconName: 'CallKitIcon',
-            handleType: 'generic',
-            supportsVideo: false,
-            maximumCallGroups: 1,
-            maximumCallsPerCallGroup: 1,
-            audioSessionMode: 'videoChat',
-            audioSessionActive: true,
-            audioSessionPreferredSampleRate: 44100.0,
-            audioSessionPreferredIOBufferDuration: 0.005,
-            supportsDTMF: true,
-            ringtonePath: 'system_ringtone_default',
-          ),
-        );
-        await FlutterCallkitIncoming.showCallkitIncoming(params);
-      } else {
-        // ✅ WEB/DESKTOP: Keep existing behavior (Direct Push)
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (rootNavigatorKey.currentState != null) {
-            try {
-              appRouter.push('/call', extra: {
-                'remoteName': data['callerName'] ?? "Unknown",
-                'remoteId': data['callerId'] ?? "Unknown",
-                'remoteAvatar': data['callerPic'],
-                'isCaller': false,
-                'offer': data['offer'],
-                'callLogId': data['callLogId'], 
-              });
-            } catch (e) {
-              debugPrint("❌ Navigation Failed: $e");
-            }
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (rootNavigatorKey.currentState != null) {
+          try {
+            appRouter.push('/call', extra: {
+              'remoteName': data['callerName'] ?? "Unknown",
+              'remoteId': data['callerId'] ?? "Unknown",
+              'remoteAvatar': data['callerPic'],
+              'isCaller': false,
+              'offer': data['offer'],
+              'callLogId': data['callLogId'], 
+            });
+          } catch (e) {
+            debugPrint("❌ Navigation Failed: $e");
           }
-        });
-      }
+        }
+      });
     });
 
     socket!.on('answer_made', (data) {
@@ -262,14 +163,6 @@ class SocketService with WidgetsBindingObserver {
     });
     
     socket!.on('call_ended_remote', (data) async {
-      // ✅ FIX: Clean up CallKit if caller hangs up
-      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
-         if (data != null && data['callLogId'] != null) {
-            await FlutterCallkitIncoming.endCall(data['callLogId']);
-         } else {
-            await FlutterCallkitIncoming.endAllCalls();
-         }
-      }
       _callEventsController.add({'type': 'call_ended_remote', 'data': data});
     });
 
@@ -278,10 +171,6 @@ class SocketService with WidgetsBindingObserver {
     });
     
     socket!.on('call_failed', (data) async {
-      // ✅ FIX: Clean up CallKit on failure
-      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
-         await FlutterCallkitIncoming.endAllCalls();
-      }
       _callEventsController.add({'type': 'call_failed', 'data': data});
     });
 

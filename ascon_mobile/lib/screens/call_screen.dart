@@ -1,16 +1,16 @@
 import 'dart:async';
-import 'dart:convert'; // ✅ ADDED: Required for Base64 decoding
-import 'dart:ui'; 
-import 'package:flutter/foundation.dart'; 
+import 'dart:convert';
+import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:go_router/go_router.dart'; 
-import 'package:flutter_webrtc/flutter_webrtc.dart'; 
-import 'package:shimmer/shimmer.dart'; 
-import 'package:wakelock_plus/wakelock_plus.dart'; 
+import 'package:go_router/go_router.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
 
@@ -18,9 +18,10 @@ class CallScreen extends StatefulWidget {
   final String remoteName;
   final String remoteId;
   final String? remoteAvatar;
-  final bool isCaller; 
-  final Map<String, dynamic>? offer; 
-  final String? callLogId; 
+  final bool isCaller;
+  final Map<String, dynamic>? offer;
+  final String? callLogId;
+  final bool hasAccepted;
 
   const CallScreen({
     super.key,
@@ -30,6 +31,7 @@ class CallScreen extends StatefulWidget {
     required this.isCaller,
     this.offer,
     this.callLogId,
+    this.hasAccepted = false,
   });
 
   @override
@@ -39,18 +41,24 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   final CallService _callService = CallService();
   final SocketService _socketService = SocketService();
-  
+
+  // ✅ ADDED: Renderers required for Web Audio Playback
+  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
+  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
+
   late AnimationController _pulseController;
   late AudioPlayer _audioPlayer;
   StreamSubscription? _callStateSubscription;
   StreamSubscription? _socketSubscription;
+  StreamSubscription? _localStreamSubscription;
+  StreamSubscription? _remoteStreamSubscription;
 
   String _status = "Initializing...";
   bool _isMuted = false;
-  bool _isSpeakerOn = false; 
+  bool _isSpeakerOn = false;
   bool _hasAnswered = false;
   bool _permissionDenied = false;
-  
+
   String? _currentCallLogId;
 
   Timer? _callTimer;
@@ -59,21 +67,28 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _currentCallLogId = widget.callLogId; 
-    
+    _currentCallLogId = widget.callLogId;
+
     if (!kIsWeb) {
-      WakelockPlus.enable(); 
+      WakelockPlus.enable();
     }
-    
+
     _audioPlayer = AudioPlayer();
-    
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
+    _initRenderers(); // ✅ Initialize Renderers
     _setupCallListeners();
+    
     Future.delayed(const Duration(milliseconds: 500), _initCallSequence);
+  }
+
+  // ✅ Initialize WebRTC Renderers
+  Future<void> _initRenderers() async {
+    await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
   }
 
   void _startCallTimer() {
@@ -98,34 +113,32 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   void _setupCallListeners() {
+    // 1. Listen for Call State
     _callStateSubscription = _callService.callStateStream.listen((state) {
       if (!mounted) return;
 
       switch (state) {
         case CallState.connected:
           _stopRinging();
-          _triggerVibration(pattern: [0, 100]); 
-          
+          _triggerVibration(pattern: [0, 100]);
           _startCallTimer();
           setState(() {
             _status = "Connected";
             _hasAnswered = true;
           });
           break;
-          
+
         case CallState.idle:
           _stopRinging();
-          _triggerVibration(pattern: [0, 500]);
           _callTimer?.cancel();
-
           if (_currentCallLogId != null) {
             _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
           }
-
-          // ✅ FIX: This is the ONLY place that should pop the screen
-          if (mounted && context.canPop()) context.pop();
+          if (mounted && context.canPop()) {
+            context.pop();
+          }
           break;
-          
+
         case CallState.incoming:
           setState(() => _status = "Incoming Call...");
           break;
@@ -135,36 +148,57 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       }
     });
 
+    // 2. ✅ Listen for Streams to Attach to Renderers
+    _localStreamSubscription = _callService.localStreamStream.listen((stream) {
+      if (stream != null) {
+        debugPrint("✅ Attaching Local Stream to Renderer");
+        _localRenderer.srcObject = stream;
+        setState(() {}); // Refresh UI to ensure renderer updates
+      }
+    });
+
+    _remoteStreamSubscription = _callService.remoteStreamStream.listen((stream) {
+      if (stream != null) {
+        debugPrint("✅ Attaching Remote Stream to Renderer (Audio should play now)");
+        _remoteRenderer.srcObject = stream;
+        setState(() {}); 
+      }
+    });
+
+    // 3. Socket Events
     _socketSubscription = _socketService.callEvents.listen((event) {
-       if (event['type'] == 'call_log_generated') {
-         setState(() {
-           _currentCallLogId = event['data']['callLogId'];
-         });
-       }
-       else if (event['type'] == 'answer_made' && widget.isCaller) {
-         _callService.handleAnswer(event['data']['answer']);
-       } else if (event['type'] == 'ice_candidate') {
-         _callService.handleIceCandidate(event['data']['candidate']);
-       } else if (event['type'] == 'call_failed') {
-         setState(() => _status = "Call Failed: ${event['data']['reason']}");
-         Future.delayed(const Duration(seconds: 2), () {
-           if (mounted && context.canPop()) context.pop();
-         });
-       } 
-       else if (event['type'] == 'call_ended_remote') {
-         setState(() => _status = "Call Ended");
-         _stopRinging();
-         _callService.endCall();
-       }
+      if (!mounted) return;
+      
+      if (event['type'] == 'call_log_generated') {
+        setState(() => _currentCallLogId = event['data']['callLogId']);
+      } 
+      else if (event['type'] == 'answer_made' && widget.isCaller) {
+        _callService.handleAnswer(event['data']['answer']);
+      } 
+      else if (event['type'] == 'ice_candidate') {
+        _callService.handleIceCandidate(event['data']['candidate']);
+      } 
+      else if (event['type'] == 'call_failed') {
+        setState(() => _status = "Call Failed: ${event['data']['reason']}");
+        _stopRinging();
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && context.canPop()) context.pop();
+        });
+      } 
+      else if (event['type'] == 'call_ended_remote') {
+        setState(() => _status = "Call Ended");
+        _stopRinging();
+        _callService.endCall();
+      }
     });
   }
 
   Future<void> _initCallSequence() async {
     setState(() => _permissionDenied = false);
-    
+
     if (SocketService().socket == null || !SocketService().socket!.connected) {
-       setState(() => _status = "Connecting to Server...");
-       await SocketService().initSocket();
+      setState(() => _status = "Connecting to Server...");
+      await SocketService().initSocket();
     }
 
     try {
@@ -172,16 +206,26 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         setState(() => _status = "Calling...");
         _playRingtone(isDialing: true);
         await _callService.startCall(widget.remoteId);
-      } else {
+      }
+      else if (widget.hasAccepted && widget.offer != null) {
+        setState(() {
+          _status = "Connecting...";
+          _hasAnswered = true;
+        });
+        await _callService.answerCall(
+            widget.offer!,
+            widget.remoteId,
+            widget.callLogId
+        );
+      }
+      else {
         setState(() => _status = "Incoming Call...");
         _playRingtone(isDialing: false);
       }
     } catch (e) {
       debugPrint("Call Init Error: $e");
       _stopRinging();
-      
       if (!mounted) return;
-
       if (e.toString().contains("Microphone permission")) {
         setState(() {
           _status = "Microphone Permission Denied";
@@ -195,10 +239,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   Future<void> _playRingtone({required bool isDialing}) async {
     try {
+      if (_hasAnswered) return;
       String sound = isDialing ? 'sounds/dialing.mp3' : 'sounds/ringtone.mp3';
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.play(AssetSource(sound));
-
       if (!kIsWeb && !isDialing && await Vibration.hasVibrator() == true) {
         Vibration.vibrate(pattern: [500, 1000, 500, 1000], repeat: 1);
       }
@@ -210,9 +254,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   Future<void> _triggerVibration({required List<int> pattern}) async {
     if (kIsWeb) return;
     try {
-      if (await Vibration.hasVibrator() == true) {
-        Vibration.vibrate(pattern: pattern); 
-      }
+      if (await Vibration.hasVibrator() == true) Vibration.vibrate(pattern: pattern);
     } catch (_) {}
   }
 
@@ -225,25 +267,19 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   void _onAnswer() async {
     await _stopRinging();
-    
     if (widget.offer != null) {
       try {
         setState(() {
           _status = "Connecting...";
           _hasAnswered = true;
         });
-        
-        await _callService.answerCall(
-            widget.offer!, 
-            widget.remoteId, 
-            _currentCallLogId
-        );
+        await _callService.answerCall(widget.offer!, widget.remoteId, _currentCallLogId);
       } catch (e) {
         if (!mounted) return;
         debugPrint("Answer Error: $e");
         setState(() {
-           _status = "Connection Error";
-           _hasAnswered = false; 
+          _status = "Connection Error";
+          _hasAnswered = false;
         });
       }
     }
@@ -252,34 +288,39 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   void _onDecline() {
     _stopRinging();
     if (_currentCallLogId != null) {
-       _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
+      _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
     }
-    _callService.endCall(); 
+    _callService.endCall();
   }
 
   @override
   void dispose() {
+    _callStateSubscription?.cancel();
+    _socketSubscription?.cancel();
+    _localStreamSubscription?.cancel();
+    _remoteStreamSubscription?.cancel();
+    
     _callTimer?.cancel();
     _stopRinging();
     _audioPlayer.dispose();
-    _callStateSubscription?.cancel();
-    _socketSubscription?.cancel();
     _pulseController.dispose();
-    _callService.endCall();
-    
+
+    // ✅ Clean up Renderers
+    _localRenderer.dispose();
+    _remoteRenderer.dispose();
+
+    _callService.reset(); 
+
     if (!kIsWeb) {
       WakelockPlus.disable();
     }
-    
+
     super.dispose();
   }
 
-  // ✅ HELPER: PROVIDES CORRECT IMAGE PROVIDER (URL vs BASE64)
   ImageProvider? _getImageProvider(String? source) {
     if (source == null || source.isEmpty) return null;
-    if (source.startsWith('http')) {
-      return CachedNetworkImageProvider(source);
-    }
+    if (source.startsWith('http')) return CachedNetworkImageProvider(source);
     try {
       return MemoryImage(base64Decode(source));
     } catch (_) {
@@ -296,7 +337,18 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ✅ FIX 1: BACKGROUND IMAGE HANDLES BASE64
+          // ✅ HIDDEN VIDEO RENDERERS (Mandatory for Web Audio)
+          // We keep them off-screen but active.
+          Offstage(
+            offstage: true,
+            child: Row(
+              children: [
+                SizedBox(width: 100, height: 100, child: RTCVideoView(_localRenderer)),
+                SizedBox(width: 100, height: 100, child: RTCVideoView(_remoteRenderer)),
+              ],
+            ),
+          ),
+
           if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
             Image(
               image: _getImageProvider(widget.remoteAvatar)!,
@@ -304,13 +356,11 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
               errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF0F3621)),
             )
           else
-            Container(color: const Color(0xFF0F3621)), 
+            Container(color: const Color(0xFF0F3621)),
 
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              color: Colors.black.withOpacity(0.6), 
-            ),
+            child: Container(color: Colors.black.withOpacity(0.6)),
           ),
 
           SafeArea(
@@ -326,8 +376,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
-                
-                // Status Pill
+
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
@@ -335,8 +384,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    (_hasAnswered && _callDuration.inSeconds > 0) 
-                        ? _formatDuration(_callDuration) 
+                    (_hasAnswered && _callDuration.inSeconds > 0)
+                        ? _formatDuration(_callDuration)
                         : _status,
                     style: GoogleFonts.lato(
                       color: _permissionDenied ? Colors.redAccent : Colors.white70,
@@ -346,7 +395,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                
+
                 if (_permissionDenied)
                   Padding(
                     padding: const EdgeInsets.only(top: 20.0),
@@ -358,8 +407,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 const Spacer(flex: 2),
-                
-                // Controls Area
+
                 Container(
                   padding: const EdgeInsets.only(bottom: 50, top: 30, left: 20, right: 20),
                   decoration: BoxDecoration(
@@ -369,9 +417,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                       colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
                     ),
                   ),
-                  child: showIncomingControls 
-                    ? _buildIncomingControls()
-                    : _buildActiveCallControls(),
+                  child: showIncomingControls
+                      ? _buildIncomingControls()
+                      : _buildActiveCallControls(),
                 ),
               ],
             ),
@@ -381,25 +429,17 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
-  // --- WIDGETS ---
-
   Widget _buildAvatar(String? url, double size, bool pulse) {
-    // ✅ FIX 2: AVATAR HANDLES BASE64
     final imageProvider = _getImageProvider(url);
-
     Widget image = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white24, width: 4),
-        image: (imageProvider != null) 
-          ? DecorationImage(image: imageProvider, fit: BoxFit.cover)
-          : null,
+        image: (imageProvider != null) ? DecorationImage(image: imageProvider, fit: BoxFit.cover) : null,
       ),
-      child: (imageProvider == null)
-          ? Icon(Icons.person, size: size * 0.4, color: Colors.white54)
-          : null,
+      child: (imageProvider == null) ? Icon(Icons.person, size: size * 0.4, color: Colors.white54) : null,
     );
 
     if (pulse) {
@@ -424,7 +464,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Decline Button (Left)
             Column(
               children: [
                 GestureDetector(
@@ -433,7 +472,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.redAccent.withOpacity(0.2), 
+                      color: Colors.redAccent.withOpacity(0.2),
                       border: Border.all(color: Colors.redAccent, width: 1.5),
                     ),
                     child: const Icon(Icons.call_end, color: Colors.redAccent, size: 30),
@@ -443,14 +482,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                 const Text("Decline", style: TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
-            
-            // Slide to Answer Widget (Right/Center)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(left: 30),
-                child: SlideToAnswer(
-                  onAnswer: _onAnswer,
-                ),
+                child: SlideToAnswer(onAnswer: _onAnswer),
               ),
             ),
           ],
@@ -475,12 +510,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         FloatingActionButton.large(
           onPressed: () {
             _stopRinging();
-            _callService.endCall(); // This emits 'CallState.idle'
+            _callService.endCall();
             if (_currentCallLogId != null) {
-               _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
+              _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
             }
-            // ✅ FIX 3: Removed duplicate context.pop() here.
-            // The listener on '_callStateSubscription' handles navigation safely.
           },
           backgroundColor: Colors.redAccent,
           child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 36),
@@ -521,9 +554,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 }
 
-// ==========================================
-// ✅ CUSTOM SLIDE TO ANSWER WIDGET
-// ==========================================
 class SlideToAnswer extends StatefulWidget {
   final VoidCallback onAnswer;
   const SlideToAnswer({super.key, required this.onAnswer});
@@ -541,7 +571,7 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _maxWidth = constraints.maxWidth - 60; // 60 is knob width
+        _maxWidth = constraints.maxWidth - 60;
         return Container(
           height: 60,
           decoration: BoxDecoration(
@@ -552,20 +582,14 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
-              // Shimmer Text
               if (!_submitted)
                 Center(
                   child: Shimmer.fromColors(
                     baseColor: Colors.white60,
                     highlightColor: Colors.white,
-                    child: const Text(
-                      "Slide to answer >>",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                    ),
+                    child: const Text("Slide to answer >>", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                   ),
                 ),
-
-              // Draggable Knob
               Positioned(
                 left: _dragValue,
                 child: GestureDetector(
@@ -580,26 +604,19 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
                   onHorizontalDragEnd: (details) {
                     if (_submitted) return;
                     if (_dragValue > _maxWidth * 0.8) {
-                      // Trigger Answer
                       setState(() {
                         _dragValue = _maxWidth;
                         _submitted = true;
                       });
                       widget.onAnswer();
                     } else {
-                      // Reset
-                      setState(() {
-                        _dragValue = 0;
-                      });
+                      setState(() => _dragValue = 0);
                     }
                   },
                   child: Container(
                     width: 60,
                     height: 60,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
+                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
                     child: const Icon(Icons.call, color: Colors.green, size: 30),
                   ),
                 ),

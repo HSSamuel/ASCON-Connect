@@ -2523,3 +2523,39 @@
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-18 04:09:10"}
 {"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-18 04:09:12"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-18 04:09:13"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-18 13:11:21"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-18 13:11:21"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-18 13:11:21"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-18 13:11:23"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-18 13:11:27"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-18 13:11:29"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-18 13:11:29"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-18 13:11:29"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-18 13:16:29"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-18 13:16:29"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-18 13:16:29"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-18 13:16:30"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-18 13:16:37"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-18 13:16:37"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-18 13:16:37"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-18 13:16:38"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-18 13:16:40"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-18 13:16:42"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-18 13:16:42"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-18 13:16:42"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-18 14:25:57"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-18 14:25:57"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-18 14:25:57"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-18 14:25:58"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-18 14:26:00"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-18 14:26:02"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-18 14:26:03"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-18 14:26:03"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-18 14:57:47"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-18 14:57:47"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-18 14:57:47"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-18 14:57:51"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-18 14:58:01"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-18 14:58:03"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-18 14:58:04"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-18 14:58:04"}
