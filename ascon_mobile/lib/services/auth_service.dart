@@ -11,6 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../main.dart';
+import '../router.dart'; // ✅ Added Router Import
 import '../screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'api_client.dart';
@@ -380,10 +381,8 @@ class AuthService {
 
     if (kIsWeb) await Future.delayed(const Duration(milliseconds: 200));
 
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    // ✅ FIXED: Use GoRouter for logout navigation to prevent black screen context issues
+    appRouter.go('/login');
   }
 
   String _cleanError(Object e) {

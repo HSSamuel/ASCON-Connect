@@ -25,6 +25,9 @@ class CallService {
   String? _remoteId;
   bool _isCallActive = false;
   
+  // Track current output preference
+  bool _isSpeakerOn = false; 
+  
   // Buffering for ICE candidates
   bool _isRemoteDescriptionSet = false;
   final List<RTCIceCandidate> _candidateQueue = [];
@@ -42,14 +45,19 @@ class CallService {
     _closePeerConnection();
   }
 
-  // ✅ ADDED: Explicit Audio Setup to ensure Communication Mode
-  Future<void> _configureAudioSession() async {
+  // ✅ NEW: Robust Audio Session Re-assertion
+  Future<void> ensureAudioSession({bool video = false}) async {
     if (kIsWeb) return;
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
     
     try {
-      // 1. Force Speaker OFF by default (Earpiece) for Voice Calls
-      await Helper.setSpeakerphoneOn(false);
+      // 1. Force the intent based on video preference
+      _isSpeakerOn = video; // Default: Video -> Speaker, Audio -> Earpiece
+      
+      // 2. Apply configuration with a slight delay to override any previous plugin resets
+      await Future.delayed(const Duration(milliseconds: 200));
+      await Helper.setSpeakerphoneOn(_isSpeakerOn);
+      debugPrint("✅ Audio Session Enforced: Speaker=$_isSpeakerOn");
     } catch (e) {
       debugPrint("⚠️ Audio Config Error: $e");
     }
@@ -60,9 +68,9 @@ class CallService {
     if (_isCallActive) return;
     
     await _checkPermissions();
-
-    // ✅ Configure Audio Session BEFORE creating connections
-    await _configureAudioSession();
+    
+    // Initial config
+    _isSpeakerOn = video;
 
     _remoteId = remoteUserId;
     _isCallActive = true;
@@ -76,9 +84,6 @@ class CallService {
 
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
-
-    // Apply video-specific audio routing (Speaker for video, Earpiece for audio)
-    await toggleSpeaker(video); 
 
     RTCSessionDescription offer = await _peerConnection!.createOffer({
       'offerToReceiveAudio': true,
@@ -98,9 +103,8 @@ class CallService {
   // --- 2. ANSWER CALL (Receiver) ---
   Future<void> answerCall(Map<String, dynamic> offer, String callerId, String? callLogId, {bool video = false}) async {
     await _checkPermissions();
-
-    // ✅ Configure Audio Session BEFORE creating connections
-    await _configureAudioSession();
+    
+    _isSpeakerOn = video;
 
     _remoteId = callerId;
     _isCallActive = true;
@@ -120,9 +124,6 @@ class CallService {
 
     await _getUserMedia(video: video);
     if (_peerConnection == null) return;
-
-    // Apply video-specific audio routing
-    await toggleSpeaker(video);
 
     RTCSessionDescription answer = await _peerConnection!.createAnswer({
       'offerToReceiveAudio': true,
@@ -177,7 +178,6 @@ class CallService {
 
   // --- 5. SETUP PEER CONNECTION (ROBUST) ---
   Future<void> _createPeerConnection() async {
-    // ✅ Load TURN Servers from .env for reliable Mobile Data connection
     final String rawTurnUrl = dotenv.env['TURN_URL'] ?? "";
     final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
     final String turnPassword = dotenv.env['TURN_PASSWORD'] ?? "";
@@ -192,9 +192,7 @@ class CallService {
 
     Map<String, dynamic> configuration = {
       "iceServers": [
-        // Always include Google STUN as fallback
         {"urls": "stun:stun.l.google.com:19302"},
-        // Add TURN if configured
         if (turnUrls.isNotEmpty)
           {
             "urls": turnUrls,
@@ -230,23 +228,15 @@ class CallService {
         });
         _remoteStreamController.add(_remoteStream);
         
-        // ✅ REMOVED: Auto-switching speaker logic from here.
-        // It was causing audio to jump to speaker inappropriately.
+        // ✅ FIX: Ensure audio routing when remote track arrives
+        ensureAudioSession(video: _isSpeakerOn);
       }
     };
     
     _peerConnection!.onConnectionState = (RTCPeerConnectionState state) {
-      debugPrint("WebRTC Connection State: $state");
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         endCall();
-      }
-    };
-    
-    _peerConnection!.onIceConnectionState = (RTCIceConnectionState state) {
-      debugPrint("ICE Connection State: $state");
-      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
-         endCall();
       }
     };
   }
@@ -255,7 +245,6 @@ class CallService {
 
   Future<void> _checkPermissions() async {
     if (kIsWeb) return;
-
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
 
     var micStatus = await Permission.microphone.status;
@@ -265,7 +254,6 @@ class CallService {
     if (micStatus.isDenied) throw Exception('Microphone permission required');
     
     if (Platform.isAndroid) {
-      // ✅ Fix: Request Bluetooth Connect to allow headsets
       await Permission.bluetoothConnect.request();
     }
   }
@@ -301,6 +289,7 @@ class CallService {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
 
     try {
+      _isSpeakerOn = enable;
       await Helper.setSpeakerphoneOn(enable);
     } catch (e) {
       debugPrint("Error toggling speaker: $e");

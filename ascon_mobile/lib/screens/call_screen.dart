@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:convert'; // ✅ ADDED: Required for Base64 decoding
 import 'dart:ui'; 
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
@@ -21,7 +21,6 @@ class CallScreen extends StatefulWidget {
   final bool isCaller; 
   final Map<String, dynamic>? offer; 
   final String? callLogId; 
-  final bool hasAccepted;
 
   const CallScreen({
     super.key,
@@ -31,7 +30,6 @@ class CallScreen extends StatefulWidget {
     required this.isCaller,
     this.offer,
     this.callLogId,
-    this.hasAccepted = false,
   });
 
   @override
@@ -63,11 +61,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     super.initState();
     _currentCallLogId = widget.callLogId; 
     
-    if (widget.hasAccepted) {
-      _hasAnswered = true;
-      _status = "Connecting...";
-    }
-
     if (!kIsWeb) {
       WakelockPlus.enable(); 
     }
@@ -129,13 +122,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
           }
 
+          // ✅ FIX: This is the ONLY place that should pop the screen
           if (mounted && context.canPop()) context.pop();
           break;
           
         case CallState.incoming:
-          if (!widget.hasAccepted) {
-             setState(() => _status = "Incoming Call...");
-          }
+          setState(() => _status = "Incoming Call...");
           break;
         case CallState.calling:
           setState(() => _status = "Calling...");
@@ -180,11 +172,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         setState(() => _status = "Calling...");
         _playRingtone(isDialing: true);
         await _callService.startCall(widget.remoteId);
-      } 
-      else if (widget.hasAccepted) {
-        _onAnswer();
-      } 
-      else {
+      } else {
         setState(() => _status = "Incoming Call...");
         _playRingtone(isDialing: false);
       }
@@ -206,8 +194,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _playRingtone({required bool isDialing}) async {
-    if (_hasAnswered || widget.hasAccepted) return;
-
     try {
       String sound = isDialing ? 'sounds/dialing.mp3' : 'sounds/ringtone.mp3';
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
@@ -242,12 +228,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     
     if (widget.offer != null) {
       try {
-        if (mounted) {
-           setState(() {
-            _status = "Connecting...";
-            _hasAnswered = true;
-          });
-        }
+        setState(() {
+          _status = "Connecting...";
+          _hasAnswered = true;
+        });
         
         await _callService.answerCall(
             widget.offer!, 
@@ -281,12 +265,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _callStateSubscription?.cancel();
     _socketSubscription?.cancel();
     _pulseController.dispose();
-    
-    // Safety check: don't end call here if navigating away during active call
-    // But since this is a full screen call page, popping it usually means end.
-    if (!_hasAnswered || _status == "Call Ended") {
-       _callService.endCall();
-    }
+    _callService.endCall();
     
     if (!kIsWeb) {
       WakelockPlus.disable();
@@ -295,6 +274,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  // ✅ HELPER: PROVIDES CORRECT IMAGE PROVIDER (URL vs BASE64)
   ImageProvider? _getImageProvider(String? source) {
     if (source == null || source.isEmpty) return null;
     if (source.startsWith('http')) {
@@ -316,6 +296,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
+          // ✅ FIX 1: BACKGROUND IMAGE HANDLES BASE64
           if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
             Image(
               image: _getImageProvider(widget.remoteAvatar)!,
@@ -346,6 +327,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 8),
                 
+                // Status Pill
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
@@ -377,6 +359,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                   ),
                 const Spacer(flex: 2),
                 
+                // Controls Area
                 Container(
                   padding: const EdgeInsets.only(bottom: 50, top: 30, left: 20, right: 20),
                   decoration: BoxDecoration(
@@ -398,7 +381,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
+  // --- WIDGETS ---
+
   Widget _buildAvatar(String? url, double size, bool pulse) {
+    // ✅ FIX 2: AVATAR HANDLES BASE64
     final imageProvider = _getImageProvider(url);
 
     Widget image = Container(
@@ -438,6 +424,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // Decline Button (Left)
             Column(
               children: [
                 GestureDetector(
@@ -457,6 +444,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
               ],
             ),
             
+            // Slide to Answer Widget (Right/Center)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(left: 30),
@@ -487,10 +475,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         FloatingActionButton.large(
           onPressed: () {
             _stopRinging();
-            _callService.endCall(); 
+            _callService.endCall(); // This emits 'CallState.idle'
             if (_currentCallLogId != null) {
                _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
             }
+            // ✅ FIX 3: Removed duplicate context.pop() here.
+            // The listener on '_callStateSubscription' handles navigation safely.
           },
           backgroundColor: Colors.redAccent,
           child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 36),
@@ -531,6 +521,9 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 }
 
+// ==========================================
+// ✅ CUSTOM SLIDE TO ANSWER WIDGET
+// ==========================================
 class SlideToAnswer extends StatefulWidget {
   final VoidCallback onAnswer;
   const SlideToAnswer({super.key, required this.onAnswer});
@@ -548,7 +541,7 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _maxWidth = constraints.maxWidth - 60; 
+        _maxWidth = constraints.maxWidth - 60; // 60 is knob width
         return Container(
           height: 60,
           decoration: BoxDecoration(
@@ -559,6 +552,7 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
+              // Shimmer Text
               if (!_submitted)
                 Center(
                   child: Shimmer.fromColors(
@@ -570,6 +564,8 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
                     ),
                   ),
                 ),
+
+              // Draggable Knob
               Positioned(
                 left: _dragValue,
                 child: GestureDetector(
@@ -584,12 +580,14 @@ class _SlideToAnswerState extends State<SlideToAnswer> {
                   onHorizontalDragEnd: (details) {
                     if (_submitted) return;
                     if (_dragValue > _maxWidth * 0.8) {
+                      // Trigger Answer
                       setState(() {
                         _dragValue = _maxWidth;
                         _submitted = true;
                       });
                       widget.onAnswer();
                     } else {
+                      // Reset
                       setState(() {
                         _dragValue = 0;
                       });

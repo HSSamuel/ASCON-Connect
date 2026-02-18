@@ -28,5 +28,10 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ASCON Alumni needs access to your microphone to make voice calls.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>ASCON Alumni needs access to your camera for video calls.</string>
 </dict>
 </plist>
