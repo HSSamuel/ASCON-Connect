@@ -21,7 +21,7 @@ class CallScreen extends StatefulWidget {
   final bool isCaller; 
   final Map<String, dynamic>? offer; 
   final String? callLogId; 
-  final bool hasAccepted; // ✅ NEW: Flag for CallKit answers
+  final bool hasAccepted;
 
   const CallScreen({
     super.key,
@@ -31,7 +31,7 @@ class CallScreen extends StatefulWidget {
     required this.isCaller,
     this.offer,
     this.callLogId,
-    this.hasAccepted = false, // Default to false
+    this.hasAccepted = false,
   });
 
   @override
@@ -63,7 +63,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     super.initState();
     _currentCallLogId = widget.callLogId; 
     
-    // ✅ NEW: If already accepted via notification, update state immediately
     if (widget.hasAccepted) {
       _hasAnswered = true;
       _status = "Connecting...";
@@ -182,7 +181,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         _playRingtone(isDialing: true);
         await _callService.startCall(widget.remoteId);
       } 
-      // ✅ NEW: Auto-answer if coming from CallKit notification
       else if (widget.hasAccepted) {
         _onAnswer();
       } 
@@ -208,7 +206,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _playRingtone({required bool isDialing}) async {
-    // ✅ Prevent ringtone if we already answered
     if (_hasAnswered || widget.hasAccepted) return;
 
     try {
@@ -284,7 +281,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _callStateSubscription?.cancel();
     _socketSubscription?.cancel();
     _pulseController.dispose();
-    _callService.endCall();
+    
+    // Safety check: don't end call here if navigating away during active call
+    // But since this is a full screen call page, popping it usually means end.
+    if (!_hasAnswered || _status == "Call Ended") {
+       _callService.endCall();
+    }
     
     if (!kIsWeb) {
       WakelockPlus.disable();
@@ -307,7 +309,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Logic Update: Don't show incoming controls if we already answered
     bool showIncomingControls = !widget.isCaller && !_hasAnswered;
 
     return Scaffold(

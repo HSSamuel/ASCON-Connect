@@ -11,6 +11,7 @@ const swaggerUi = require("swagger-ui-express");
 const http = require("http");
 
 const UserAuth = require("./models/UserAuth");
+const CallLog = require("./models/CallLog"); // ✅ NEW: Import CallLog
 const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
@@ -35,22 +36,6 @@ app.use(
     stream: { write: (message) => logger.info(message.trim()) },
   }),
 );
-
-// RATE LIMITER REMOVED PER REQUEST
-/*
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-  message: {
-    message:
-      "Too many requests from this IP, please try again after 15 minutes.",
-  },
-});
-app.use("/api", limiter);
-*/
 
 // ==========================================
 // 📖 API DOCUMENTATION
@@ -81,13 +66,11 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // 2. CONFIGURATION & ROUTES
 // ==========================================
 
-// ✅ IMPROVEMENT: Robust Origin Parsing
 const getOrigins = () => {
   const envOrigins = process.env.ALLOWED_ORIGINS;
   if (envOrigins) {
     return envOrigins.split(",").map((origin) => origin.trim());
   }
-  // Fallback for Development
   if (process.env.NODE_ENV !== "production") {
     return ["http://localhost:3000", "http://localhost:5000"];
   }
@@ -99,13 +82,11 @@ const allowedOrigins = getOrigins();
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.indexOf(origin) !== -1) {
         return callback(null, true);
       } else {
-        // Log rejected origin for debugging
         logger.warn(`🚫 Blocked CORS request from: ${origin}`);
         return callback(new Error("Not allowed by CORS"));
       }
@@ -159,10 +140,18 @@ mongoose
     logger.info("✅ Connected to MongoDB Successfully!");
 
     try {
+      // 1. Reset User Status
       await UserAuth.updateMany({}, { isOnline: false });
       logger.info("🧹 Reset all user statuses to Offline");
+
+      // 2. ✅ NEW: Reset Stuck Calls
+      const stuckCalls = await CallLog.updateMany(
+        { status: { $in: ["ringing", "ongoing", "initiated"] } },
+        { $set: { status: "ended", endTime: new Date() } },
+      );
+      logger.info(`📞 Cleaned up ${stuckCalls.modifiedCount} stuck calls.`);
     } catch (err) {
-      logger.error("⚠️ Failed to reset user statuses:", err);
+      logger.error("⚠️ Failed to run startup cleanup:", err);
     }
 
     app.get("/", (req, res) => {

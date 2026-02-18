@@ -7,10 +7,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert'; // ✅ ADDED: Required for base64Decode
+import 'dart:convert'; 
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart'; 
+import 'package:go_router/go_router.dart';
 
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -34,6 +35,7 @@ import '../widgets/chat/chat_input_area.dart';
 
 import '../services/socket_service.dart';
 import '../services/data_service.dart';
+import '../services/call_service.dart'; // ✅ Imported CallService
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String? conversationId;
@@ -226,6 +228,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       };
       Navigator.push(context, MaterialPageRoute(builder: (_) => AlumniDetailScreen(alumniData: alumniData)));
     }
+  }
+
+  // ✅ NEW: Initiate Voice Call
+  void _initiateCall() {
+    if (widget.isGroup) return; // Guard clause
+
+    CallService().startCall(widget.receiverId);
+    
+    context.push('/call', extra: {
+      'remoteName': _displayReceiverName,
+      'remoteId': widget.receiverId,
+      'remoteAvatar': widget.receiverProfilePic,
+      'isCaller': true,
+    });
   }
 
   Future<void> _sendMessage({String? text, String? filePath, Uint8List? fileBytes, String? fileName, String type = 'text'}) async {
@@ -658,6 +674,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
             actions: [
+              // ✅ NEW: Voice Call Button (Only for 1-on-1)
+              if (!widget.isGroup)
+                IconButton(
+                  icon: const Icon(Icons.call),
+                  color: primaryColor,
+                  tooltip: 'Voice Call',
+                  onPressed: _initiateCall,
+                ),
+
               if (widget.isGroup && widget.groupId != null)
                 IconButton(icon: const Icon(Icons.info_outline), onPressed: _openDetails),
             ],

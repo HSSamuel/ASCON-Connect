@@ -43,14 +43,12 @@ class CallService {
   }
 
   // ✅ ADDED: Explicit Audio Setup to ensure Communication Mode
-  // This is critical for Android to prioritize the mic correctly.
   Future<void> _configureAudioSession() async {
     if (kIsWeb) return;
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) return;
     
     try {
-      // 1. Force Speaker OFF by default (Earpiece)
-      // 2. This helper method in flutter_webrtc triggers AudioManager.setMode(MODE_IN_COMMUNICATION) on Android
+      // 1. Force Speaker OFF by default (Earpiece) for Voice Calls
       await Helper.setSpeakerphoneOn(false);
     } catch (e) {
       debugPrint("⚠️ Audio Config Error: $e");
@@ -179,6 +177,7 @@ class CallService {
 
   // --- 5. SETUP PEER CONNECTION (ROBUST) ---
   Future<void> _createPeerConnection() async {
+    // ✅ Load TURN Servers from .env for reliable Mobile Data connection
     final String rawTurnUrl = dotenv.env['TURN_URL'] ?? "";
     final String turnUsername = dotenv.env['TURN_USERNAME'] ?? "";
     final String turnPassword = dotenv.env['TURN_PASSWORD'] ?? "";
@@ -193,7 +192,9 @@ class CallService {
 
     Map<String, dynamic> configuration = {
       "iceServers": [
+        // Always include Google STUN as fallback
         {"urls": "stun:stun.l.google.com:19302"},
+        // Add TURN if configured
         if (turnUrls.isNotEmpty)
           {
             "urls": turnUrls,
@@ -229,9 +230,8 @@ class CallService {
         });
         _remoteStreamController.add(_remoteStream);
         
-        // ✅ REMOVED: Auto-switching speaker here is dangerous (Race Condition)
-        // We now handle initial audio routing in _configureAudioSession()
-        // and toggleSpeaker() inside startCall/answerCall.
+        // ✅ REMOVED: Auto-switching speaker logic from here.
+        // It was causing audio to jump to speaker inappropriately.
       }
     };
     
