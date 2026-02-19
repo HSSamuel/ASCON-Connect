@@ -30,10 +30,21 @@ class CallService {
     String? fcmToken;
     try {
        fcmToken = await FirebaseMessaging.instance.getToken();
+       
+       // ✅ FIX: Maintain Twilio connectivity whenever the OS refreshes the Push Token
+       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+         debugPrint("🔄 FCM Token Refreshed. Re-registering with Twilio...");
+         _registerTwilioTokens(newToken);
+       });
+
     } catch (e) {
        debugPrint("⚠️ FCM Token Warning: $e");
     }
 
+    await _registerTwilioTokens(fcmToken);
+  }
+
+  Future<void> _registerTwilioTokens(String? fcmToken) async {
     // 3. Get Access Token from Your Backend
     try {
       // ✅ FIX: Added '/api' to the endpoint to match server.js

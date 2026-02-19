@@ -11,4 +11,7 @@ router.get("/token", verifyToken, twilioController.getAccessToken);
 // POST /api/twilio/voice - Webhook for Twilio (Public)
 router.post("/voice", twilioController.voiceWebhook);
 
+// POST /api/twilio/events - Webhook for Twilio Call Statuses (Public)
+router.post("/events", twilioController.callStatusWebhook);
+
 module.exports = router;

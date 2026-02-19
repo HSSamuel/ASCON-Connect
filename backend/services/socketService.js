@@ -7,15 +7,12 @@ const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const Message = require("../models/Message");
-const CallLog = require("../models/CallLog");
 const logger = require("../utils/logger");
-const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 let io;
 let redisClient;
 const onlineUsersMemory = new Map();
 const disconnectTimers = new Map();
-const activeCallTimers = new Map();
 
 const addSocketToUser = async (userId, socketId) => {
   if (redisClient && redisClient.isOpen) {
@@ -195,172 +192,7 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // 1. Initiate Call
-    socket.on("call_user", async (data) => {
-      const receiverId = data.userToCall;
-      logger.info(`📞 Call initiated by ${socket.userId} to ${receiverId}`);
-
-      try {
-        if (!mongoose.isValidObjectId(receiverId)) {
-          socket.emit("call_failed", { reason: "Invalid Receiver ID" });
-          return;
-        }
-
-        const isGroup = await Group.exists({ _id: receiverId });
-        if (isGroup) {
-          socket.emit("call_failed", {
-            reason: "Group calling not supported yet",
-          });
-          return;
-        }
-
-        const busyCheck = await CallLog.findOne({
-          $or: [{ caller: receiverId }, { receiver: receiverId }],
-          status: { $in: ["ongoing", "ringing"] },
-        });
-
-        if (busyCheck) {
-          socket.emit("call_failed", { reason: "User is busy" });
-          return;
-        }
-
-        const callerProfile = await UserProfile.findOne({
-          userId: socket.userId,
-        }).select("fullName profilePicture");
-        const callerName = callerProfile
-          ? callerProfile.fullName
-          : "Unknown Caller";
-        const callerPic = callerProfile ? callerProfile.profilePicture : null;
-
-        const newLog = await CallLog.create({
-          caller: socket.userId,
-          receiver: receiverId,
-          status: "ringing",
-          callerName: callerName,
-          callerPic: callerPic,
-        });
-
-        socket.emit("call_log_generated", { callLogId: newLog._id });
-
-        const payload = {
-          offer: data.offer,
-          socket: socket.id,
-          callerId: socket.userId,
-          callerName: callerName,
-          callerPic: callerPic,
-          callLogId: newLog._id,
-          type: "call_offer",
-        };
-
-        io.to(receiverId).emit("call_made", payload);
-
-        // ✅ FIX: Send Silent Push (Title/Body = NULL)
-        await sendPersonalNotification(
-          receiverId,
-          null, // No Title
-          null, // No Body
-          {
-            type: "call_offer",
-            callerId: socket.userId,
-            callerName,
-            callerPic: callerPic || "",
-            callLogId: newLog._id.toString(),
-            uuid: newLog._id.toString(),
-            offer: JSON.stringify(data.offer), // Useful for quick connect
-          },
-        );
-
-        const timerId = setTimeout(async () => {
-          const checkLog = await CallLog.findById(newLog._id);
-          if (checkLog && checkLog.status === "ringing") {
-            await CallLog.findByIdAndUpdate(newLog._id, { status: "missed" });
-            io.to(socket.userId).emit("call_failed", { reason: "No answer" });
-            io.to(receiverId).emit("call_missed", { callLogId: newLog._id });
-
-            // Send Missed Call Notification (Visible)
-            await sendPersonalNotification(
-              receiverId,
-              "Missed Call 📞",
-              `${callerName} tried to call you.`,
-              { type: "call_missed", callerId: socket.userId, callerName },
-            );
-          }
-          activeCallTimers.delete(newLog._id.toString());
-        }, 30000);
-
-        activeCallTimers.set(newLog._id.toString(), timerId);
-      } catch (err) {
-        logger.error(`Call Error: ${err.message}`);
-        socket.emit("call_failed", { reason: "Server Error" });
-      }
-    });
-
-    socket.on("make_answer", async (data) => {
-      logger.info(`📞 Call answered by ${socket.userId}`);
-
-      if (data.callLogId) {
-        const timerId = activeCallTimers.get(data.callLogId);
-        if (timerId) {
-          clearTimeout(timerId);
-          activeCallTimers.delete(data.callLogId);
-        }
-
-        await CallLog.findByIdAndUpdate(data.callLogId, {
-          status: "ongoing",
-          startTime: new Date(),
-        });
-      }
-
-      io.to(data.to).emit("answer_made", {
-        socket: socket.id,
-        answer: data.answer,
-      });
-    });
-
-    socket.on("end_call", async (data) => {
-      if (!data.callLogId) return;
-
-      try {
-        const timerId = activeCallTimers.get(data.callLogId);
-        if (timerId) {
-          clearTimeout(timerId);
-          activeCallTimers.delete(data.callLogId);
-        }
-
-        const log = await CallLog.findById(data.callLogId);
-        if (log && log.status !== "ended" && log.status !== "missed") {
-          const endTime = new Date();
-          const duration = (endTime - new Date(log.startTime)) / 1000;
-          const status = log.status === "ringing" ? "declined" : "ended";
-
-          await CallLog.findByIdAndUpdate(data.callLogId, {
-            status: status,
-            endTime: endTime,
-            duration: status === "ended" ? duration : 0,
-          });
-
-          const otherParty =
-            log.caller.toString() === socket.userId
-              ? log.receiver.toString()
-              : log.caller.toString();
-
-          io.to(otherParty).emit("call_ended_remote", {
-            callLogId: data.callLogId,
-          });
-          logger.info(
-            `📞 Call ${data.callLogId} ended. Duration: ${duration}s`,
-          );
-        }
-      } catch (e) {
-        logger.error(`End Call Error: ${e.message}`);
-      }
-    });
-
-    socket.on("ice_candidate", (data) => {
-      io.to(data.to).emit("ice_candidate_received", {
-        candidate: data.candidate,
-      });
-    });
+    // ✅ FIX: WebRTC Signaling removed from Sockets. Handled natively by Twilio backend Webhooks.
 
     socket.on("disconnect", async () => {
       await handleDisconnect(socket, userId);
@@ -388,34 +220,6 @@ const handleConnection = async (socket, userId) => {
 
 const handleDisconnect = async (socket, userId) => {
   await removeSocketFromUser(userId, socket.id);
-
-  try {
-    const activeCall = await CallLog.findOne({
-      $or: [{ caller: userId }, { receiver: userId }],
-      status: { $in: ["ringing", "ongoing"] },
-    });
-
-    if (activeCall) {
-      await CallLog.findByIdAndUpdate(activeCall._id, {
-        status: activeCall.status === "ringing" ? "missed" : "ended",
-        endTime: new Date(),
-      });
-
-      const isCaller = activeCall.caller.toString() === userId;
-      const otherParty = isCaller ? activeCall.receiver : activeCall.caller;
-
-      io.to(otherParty.toString()).emit("call_failed", {
-        reason: "User disconnected",
-      });
-
-      if (activeCallTimers.has(activeCall._id.toString())) {
-        clearTimeout(activeCallTimers.get(activeCall._id.toString()));
-        activeCallTimers.delete(activeCall._id.toString());
-      }
-    }
-  } catch (err) {
-    logger.error(`Call Cleanup Error: ${err.message}`);
-  }
 
   const timer = setTimeout(async () => {
     const count = await getSocketCount(userId);

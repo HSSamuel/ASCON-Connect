@@ -8,13 +8,15 @@ import '../services/call_service.dart';
 class CallScreen extends StatefulWidget {
   final String remoteName;
   final String remoteId;
-  final String? remoteAvatar; // Added back safely as optional
+  final String? remoteAvatar; 
+  final bool isIncoming; // ✅ FIX: Added to prevent auto-dialing an incoming answered call
 
   const CallScreen({
     super.key, 
     required this.remoteName, 
     required this.remoteId,
     this.remoteAvatar,
+    this.isIncoming = false, 
   });
 
   @override
@@ -23,7 +25,7 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   final CallService _callService = CallService();
-  String _status = "Calling...";
+  String _status = "Connecting...";
   
   bool _isMuted = false;
   bool _isSpeakerOn = false;
@@ -48,14 +50,25 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 1, milliseconds: 500),
     )..repeat(reverse: true);
 
-    _startCall();
     _listenToEvents();
+
+    // ✅ FIX: Discern call direction. Incoming calls are already ringing/connected by Twilio Native CallKit UI.
+    if (!widget.isIncoming) {
+      _status = "Calling...";
+      _startCall();
+    } else {
+      // It's an incoming call being displayed in-app. Default to UI connected state if already answered.
+      _status = "Connected";
+      _isConnected = true;
+      _pulseController.stop();
+      _startTimer();
+    }
   }
 
-void _startCall() async {
+  void _startCall() async {
     bool success = await _callService.placeCall(widget.remoteId, widget.remoteName);
     
-    // ✅ If it failed to start, show an error and exit
+    // If it failed to start, show an error and exit
     if (!success && mounted) {
       setState(() {
         _status = "Call Failed to Start";
@@ -99,6 +112,9 @@ void _startCall() async {
   }
 
   void _startTimer() {
+    // Prevent multiple timers if already started
+    if (_callTimer != null && _callTimer!.isActive) return;
+
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() => _callDuration += const Duration(seconds: 1));

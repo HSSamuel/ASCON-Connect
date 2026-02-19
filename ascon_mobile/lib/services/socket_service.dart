@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart'; 
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import '../config.dart';
 import '../config/storage_config.dart';
-import '../router.dart'; 
 
 class SocketService with WidgetsBindingObserver {
   IO.Socket? socket;
@@ -132,47 +130,8 @@ class SocketService with WidgetsBindingObserver {
        _messageStatusController.add({'type': 'status_update', 'data': data});
     });
 
-    socket!.on('call_made', (data) async {
-      debugPrint("📞 INCOMING CALL EVENT (Socket): $data");
-      
-      // ✅ FIX: Universal Navigation logic (Web & Mobile)
-      // Since we removed CallKit, we rely on the App Navigation to show the Call Screen
-      // whenever the app is open and receiving this event.
-      
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (rootNavigatorKey.currentState != null) {
-          try {
-            appRouter.push('/call', extra: {
-              'remoteName': data['callerName'] ?? "Unknown",
-              'remoteId': data['callerId'] ?? "Unknown",
-              'remoteAvatar': data['callerPic'],
-              'isCaller': false,
-              'offer': data['offer'],
-              'callLogId': data['callLogId'], 
-            });
-          } catch (e) {
-            debugPrint("❌ Navigation Failed: $e");
-          }
-        }
-      });
-    });
-
-    socket!.on('answer_made', (data) {
-      debugPrint("✅ Call Answered by Peer");
-      _callEventsController.add({'type': 'answer_made', 'data': data});
-    });
-    
-    socket!.on('call_ended_remote', (data) async {
-      _callEventsController.add({'type': 'call_ended_remote', 'data': data});
-    });
-
-    socket!.on('ice_candidate_received', (data) {
-      _callEventsController.add({'type': 'ice_candidate', 'data': data});
-    });
-    
-    socket!.on('call_failed', (data) async {
-      _callEventsController.add({'type': 'call_failed', 'data': data});
-    });
+    // ✅ FIX: Removed manual Call navigation listener. 
+    // Twilio Voice handles CallKit UI waking up the OS independently.
 
     socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
     socket!.onError((data) => debugPrint('⚠️ Socket Error: $data'));

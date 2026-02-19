@@ -5,12 +5,17 @@ const callLogSchema = new mongoose.Schema(
     caller: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
-      required: true,
+      // ✅ FIX: Removed required: true to prevent validation errors when Twilio webhooks create the initial record
     },
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
-      required: true,
+    },
+    // ✅ FIX: Added twilioCallSid to accurately map Twilio background webhooks to this specific call record
+    twilioCallSid: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
     // status: 'initiated', 'ringing', 'ongoing', 'ended', 'missed', 'declined'
     status: {
