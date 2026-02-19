@@ -52,8 +52,21 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     _listenToEvents();
   }
 
-  void _startCall() async {
-    await _callService.placeCall(widget.remoteId, widget.remoteName);
+void _startCall() async {
+    bool success = await _callService.placeCall(widget.remoteId, widget.remoteName);
+    
+    // ✅ If it failed to start, show an error and exit
+    if (!success && mounted) {
+      setState(() {
+        _status = "Call Failed to Start";
+      });
+      _pulseController.stop(); // Stop the animation
+      
+      // Close the screen after 2 seconds
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      });
+    }
   }
 
   void _listenToEvents() {

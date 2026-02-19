@@ -40,7 +40,10 @@ android {
 
     defaultConfig {
         applicationId = "com.example.ascon_mobile"
-        minSdk = flutter.minSdkVersion
+        
+        // ✅ CRITICAL FIX: Explicitly set to 26 for twilio_voice compatibility
+        minSdk = 26
+        
         targetSdk = 36
         
         versionCode = flutter.versionCode.toInt()
