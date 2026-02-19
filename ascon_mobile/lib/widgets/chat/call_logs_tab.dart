@@ -243,10 +243,8 @@ class _CallLogsTabState extends State<CallLogsTab> {
                 onPressed: () {
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => CallScreen(
-                      isCaller: true,
                       remoteId: log['remoteId'],
                       remoteName: log['remoteName'] ?? "User",
-                      remoteAvatar: log['remotePic'], 
                     )
                   ));
                 },

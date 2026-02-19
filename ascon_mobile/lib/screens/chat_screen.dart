@@ -234,7 +234,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _initiateCall() {
     if (widget.isGroup) return; // Guard clause
 
-    CallService().startCall(widget.receiverId);
+    CallService().placeCall(widget.receiverId, widget.receiverName);
     
     // Use GoRouter to push the call screen
     context.push('/call', extra: {

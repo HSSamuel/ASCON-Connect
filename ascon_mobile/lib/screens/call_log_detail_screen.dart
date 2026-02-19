@@ -74,8 +74,6 @@ class CallLogDetailScreen extends StatelessWidget {
                                     builder: (_) => CallScreen(
                                       remoteId: callerId!,
                                       remoteName: name,
-                                      remoteAvatar: avatar,
-                                      isCaller: true,
                                     ),
                                   ),
                                 );

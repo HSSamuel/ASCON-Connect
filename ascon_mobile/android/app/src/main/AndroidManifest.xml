@@ -91,18 +91,13 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/brand_color" />
 
-        <receiver android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
-            android:exported="true">
+        <service
+            android:name="com.twilio.twilio_voice.fcm.VoiceFirebaseMessagingService"
+            android:exported="false">
             <intent-filter>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_INCOMING"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_START"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_ACCEPT"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_DECLINE"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_ENDED"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_TIMEOUT"/>
-                <action android:name="com.hiennv.flutter_callkit_incoming.ACTION_CALL_CALLBACK"/>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
-        </receiver>
+        </service>
 
     </application>
 </manifest>

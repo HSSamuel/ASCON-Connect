@@ -59,7 +59,6 @@ final GoRouter appRouter = GoRouter(
         return HomeScreen(navigationShell: navigationShell);
       },
       branches: [
-        // Tab 0: Dashboard
         StatefulShellBranch(
           navigatorKey: homeNavKey, 
           routes: [
@@ -69,8 +68,6 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-        
-        // Tab 1: Events
         StatefulShellBranch(
           navigatorKey: eventsNavKey, 
           routes: [
@@ -80,8 +77,6 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-
-        // Tab 2: Updates
         StatefulShellBranch(
           navigatorKey: updatesNavKey, 
           routes: [
@@ -91,8 +86,6 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-
-        // Tab 3: Directory
         StatefulShellBranch(
           navigatorKey: directoryNavKey, 
           routes: [
@@ -102,8 +95,6 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
-
-        // Tab 4: Profile
         StatefulShellBranch(
           navigatorKey: profileNavKey, 
           routes: [
@@ -119,7 +110,6 @@ final GoRouter appRouter = GoRouter(
       ],
     ),
 
-    // Standalone Screens (Outside Shell)
     GoRoute(
       path: '/chat',
       parentNavigatorKey: rootNavigatorKey, 
@@ -156,21 +146,16 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PollsScreen(),
     ),
 
-    // ✅ CALL ROUTE (UPDATED)
+    // ✅ FIXED CALL ROUTE
     GoRoute(
       path: '/call',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) {
         final args = state.extra as Map<String, dynamic>;
+        // We only extract what CallScreen actually accepts now
         return CallScreen(
-          remoteName: args['remoteName'],
-          remoteId: args['remoteId'],
-          remoteAvatar: args['remoteAvatar'],
-          isCaller: args['isCaller'],
-          offer: args['offer'],
-          callLogId: args['callLogId'],
-          // ✅ FIX: Pass the acceptance flag from SocketService -> CallScreen
-          hasAccepted: args['hasAccepted'] ?? false, 
+          remoteName: args['remoteName'] ?? "Unknown",
+          remoteId: args['remoteId'] ?? "",
         );
       },
     ),

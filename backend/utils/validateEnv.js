@@ -15,6 +15,10 @@ const validateEnv = () => {
     "MAILER_CLIENT_ID",
     "MAILER_CLIENT_SECRET",
     "MAILER_REFRESH_TOKEN",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_API_KEY",
+    "TWILIO_API_SECRET",
+    "TWILIO_APP_SID",
   ];
 
   const missing = requiredEnv.filter((env) => !process.env[env]);

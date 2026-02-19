@@ -1,630 +1,139 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:ui';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:vibration/vibration.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:go_router/go_router.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:shimmer/shimmer.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:twilio_voice/twilio_voice.dart';
 import '../services/call_service.dart';
-import '../services/socket_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String remoteName;
   final String remoteId;
-  final String? remoteAvatar;
-  final bool isCaller;
-  final Map<String, dynamic>? offer;
-  final String? callLogId;
-  final bool hasAccepted;
 
+  // ✅ Fixed Constructor
   const CallScreen({
-    super.key,
-    required this.remoteName,
-    required this.remoteId,
-    this.remoteAvatar,
-    required this.isCaller,
-    this.offer,
-    this.callLogId,
-    this.hasAccepted = false,
+    super.key, 
+    required this.remoteName, 
+    required this.remoteId
   });
 
   @override
   State<CallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
+class _CallScreenState extends State<CallScreen> {
   final CallService _callService = CallService();
-  final SocketService _socketService = SocketService();
-
-  // ✅ ADDED: Renderers required for Web Audio Playback
-  final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
-  final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
-
-  late AnimationController _pulseController;
-  late AudioPlayer _audioPlayer;
-  StreamSubscription? _callStateSubscription;
-  StreamSubscription? _socketSubscription;
-  StreamSubscription? _localStreamSubscription;
-  StreamSubscription? _remoteStreamSubscription;
-
   String _status = "Initializing...";
   bool _isMuted = false;
   bool _isSpeakerOn = false;
-  bool _hasAnswered = false;
-  bool _permissionDenied = false;
-
-  String? _currentCallLogId;
-
-  Timer? _callTimer;
-  Duration _callDuration = Duration.zero;
+  StreamSubscription<CallEvent>? _listener;
 
   @override
   void initState() {
     super.initState();
-    _currentCallLogId = widget.callLogId;
-
-    if (!kIsWeb) {
-      WakelockPlus.enable();
-    }
-
-    _audioPlayer = AudioPlayer();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-
-    _initRenderers(); // ✅ Initialize Renderers
-    _setupCallListeners();
-    
-    Future.delayed(const Duration(milliseconds: 500), _initCallSequence);
+    _startCall();
+    _listenToEvents();
   }
 
-  // ✅ Initialize WebRTC Renderers
-  Future<void> _initRenderers() async {
-    await _localRenderer.initialize();
-    await _remoteRenderer.initialize();
+  void _startCall() async {
+    setState(() => _status = "Calling...");
+    await _callService.placeCall(widget.remoteId, widget.remoteName);
   }
 
-  void _startCallTimer() {
-    if (_callTimer != null) return;
-    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _callDuration += const Duration(seconds: 1);
-        });
-      }
-    });
-  }
-
-  String _formatDuration(Duration d) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String twoDigitMinutes = twoDigits(d.inMinutes.remainder(60));
-    String twoDigitSeconds = twoDigits(d.inSeconds.remainder(60));
-    if (d.inHours > 0) {
-      return "${twoDigits(d.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
-    }
-    return "$twoDigitMinutes:$twoDigitSeconds";
-  }
-
-  void _setupCallListeners() {
-    // 1. Listen for Call State
-    _callStateSubscription = _callService.callStateStream.listen((state) {
+  void _listenToEvents() {
+    _listener = _callService.callEvents.listen((event) {
       if (!mounted) return;
 
-      switch (state) {
-        case CallState.connected:
-          _stopRinging();
-          _triggerVibration(pattern: [0, 100]);
-          _startCallTimer();
-          setState(() {
+      setState(() {
+        // ✅ FIXED: Using Enum comparison
+        switch (event) {
+          case CallEvent.connected:
             _status = "Connected";
-            _hasAnswered = true;
-          });
-          break;
-
-        case CallState.idle:
-          _stopRinging();
-          _callTimer?.cancel();
-          if (_currentCallLogId != null) {
-            _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
-          }
-          if (mounted && context.canPop()) {
-            context.pop();
-          }
-          break;
-
-        case CallState.incoming:
-          setState(() => _status = "Incoming Call...");
-          break;
-        case CallState.calling:
-          setState(() => _status = "Calling...");
-          break;
-      }
+            break;
+          case CallEvent.ringing:
+            _status = "Ringing...";
+            break;
+          case CallEvent.callEnded:
+            _status = "Ended";
+            Future.delayed(const Duration(seconds: 1), () {
+               if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+            });
+            break;
+          default:
+            break;
+        }
+      });
     });
-
-    // 2. ✅ Listen for Streams to Attach to Renderers
-    _localStreamSubscription = _callService.localStreamStream.listen((stream) {
-      if (stream != null) {
-        debugPrint("✅ Attaching Local Stream to Renderer");
-        _localRenderer.srcObject = stream;
-        setState(() {}); // Refresh UI to ensure renderer updates
-      }
-    });
-
-    _remoteStreamSubscription = _callService.remoteStreamStream.listen((stream) {
-      if (stream != null) {
-        debugPrint("✅ Attaching Remote Stream to Renderer (Audio should play now)");
-        _remoteRenderer.srcObject = stream;
-        setState(() {}); 
-      }
-    });
-
-    // 3. Socket Events
-    _socketSubscription = _socketService.callEvents.listen((event) {
-      if (!mounted) return;
-      
-      if (event['type'] == 'call_log_generated') {
-        setState(() => _currentCallLogId = event['data']['callLogId']);
-      } 
-      else if (event['type'] == 'answer_made' && widget.isCaller) {
-        _callService.handleAnswer(event['data']['answer']);
-      } 
-      else if (event['type'] == 'ice_candidate') {
-        _callService.handleIceCandidate(event['data']['candidate']);
-      } 
-      else if (event['type'] == 'call_failed') {
-        setState(() => _status = "Call Failed: ${event['data']['reason']}");
-        _stopRinging();
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && context.canPop()) context.pop();
-        });
-      } 
-      else if (event['type'] == 'call_ended_remote') {
-        setState(() => _status = "Call Ended");
-        _stopRinging();
-        _callService.endCall();
-      }
-    });
-  }
-
-  Future<void> _initCallSequence() async {
-    setState(() => _permissionDenied = false);
-
-    if (SocketService().socket == null || !SocketService().socket!.connected) {
-      setState(() => _status = "Connecting to Server...");
-      await SocketService().initSocket();
-    }
-
-    try {
-      if (widget.isCaller) {
-        setState(() => _status = "Calling...");
-        _playRingtone(isDialing: true);
-        await _callService.startCall(widget.remoteId);
-      }
-      else if (widget.hasAccepted && widget.offer != null) {
-        setState(() {
-          _status = "Connecting...";
-          _hasAnswered = true;
-        });
-        await _callService.answerCall(
-            widget.offer!,
-            widget.remoteId,
-            widget.callLogId
-        );
-      }
-      else {
-        setState(() => _status = "Incoming Call...");
-        _playRingtone(isDialing: false);
-      }
-    } catch (e) {
-      debugPrint("Call Init Error: $e");
-      _stopRinging();
-      if (!mounted) return;
-      if (e.toString().contains("Microphone permission")) {
-        setState(() {
-          _status = "Microphone Permission Denied";
-          _permissionDenied = true;
-        });
-      } else {
-        setState(() => _status = "Connection Failed");
-      }
-    }
-  }
-
-  Future<void> _playRingtone({required bool isDialing}) async {
-    try {
-      if (_hasAnswered) return;
-      String sound = isDialing ? 'sounds/dialing.mp3' : 'sounds/ringtone.mp3';
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.play(AssetSource(sound));
-      if (!kIsWeb && !isDialing && await Vibration.hasVibrator() == true) {
-        Vibration.vibrate(pattern: [500, 1000, 500, 1000], repeat: 1);
-      }
-    } catch (e) {
-      debugPrint("⚠️ Audio Play Warning: $e");
-    }
-  }
-
-  Future<void> _triggerVibration({required List<int> pattern}) async {
-    if (kIsWeb) return;
-    try {
-      if (await Vibration.hasVibrator() == true) Vibration.vibrate(pattern: pattern);
-    } catch (_) {}
-  }
-
-  Future<void> _stopRinging() async {
-    try {
-      await _audioPlayer.stop();
-      if (!kIsWeb) Vibration.cancel();
-    } catch (_) {}
-  }
-
-  void _onAnswer() async {
-    await _stopRinging();
-    if (widget.offer != null) {
-      try {
-        setState(() {
-          _status = "Connecting...";
-          _hasAnswered = true;
-        });
-        await _callService.answerCall(widget.offer!, widget.remoteId, _currentCallLogId);
-      } catch (e) {
-        if (!mounted) return;
-        debugPrint("Answer Error: $e");
-        setState(() {
-          _status = "Connection Error";
-          _hasAnswered = false;
-        });
-      }
-    }
-  }
-
-  void _onDecline() {
-    _stopRinging();
-    if (_currentCallLogId != null) {
-      _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
-    }
-    _callService.endCall();
   }
 
   @override
   void dispose() {
-    _callStateSubscription?.cancel();
-    _socketSubscription?.cancel();
-    _localStreamSubscription?.cancel();
-    _remoteStreamSubscription?.cancel();
-    
-    _callTimer?.cancel();
-    _stopRinging();
-    _audioPlayer.dispose();
-    _pulseController.dispose();
-
-    // ✅ Clean up Renderers
-    _localRenderer.dispose();
-    _remoteRenderer.dispose();
-
-    _callService.reset(); 
-
-    if (!kIsWeb) {
-      WakelockPlus.disable();
-    }
-
+    _listener?.cancel();
     super.dispose();
-  }
-
-  ImageProvider? _getImageProvider(String? source) {
-    if (source == null || source.isEmpty) return null;
-    if (source.startsWith('http')) return CachedNetworkImageProvider(source);
-    try {
-      return MemoryImage(base64Decode(source));
-    } catch (_) {
-      return null;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    bool showIncomingControls = !widget.isCaller && !_hasAnswered;
-
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // ✅ HIDDEN VIDEO RENDERERS (Mandatory for Web Audio)
-          // We keep them off-screen but active.
-          Offstage(
-            offstage: true,
-            child: Row(
-              children: [
-                SizedBox(width: 100, height: 100, child: RTCVideoView(_localRenderer)),
-                SizedBox(width: 100, height: 100, child: RTCVideoView(_remoteRenderer)),
-              ],
-            ),
-          ),
-
-          if (widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty)
-            Image(
-              image: _getImageProvider(widget.remoteAvatar)!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(color: const Color(0xFF0F3621)),
-            )
-          else
-            Container(color: const Color(0xFF0F3621)),
-
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(color: Colors.black.withOpacity(0.6)),
-          ),
-
-          SafeArea(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(flex: 1),
-                _buildAvatar(widget.remoteAvatar, 150, _status.contains("Incoming") || _status.contains("Calling")),
-                const SizedBox(height: 25),
-                Text(
-                  widget.remoteName,
-                  style: GoogleFonts.lato(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _permissionDenied ? Colors.red.withOpacity(0.2) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    (_hasAnswered && _callDuration.inSeconds > 0)
-                        ? _formatDuration(_callDuration)
-                        : _status,
-                    style: GoogleFonts.lato(
-                      color: _permissionDenied ? Colors.redAccent : Colors.white70,
-                      fontSize: (_hasAnswered && _callDuration.inSeconds > 0) ? 20 : 15,
-                      fontWeight: (_hasAnswered && _callDuration.inSeconds > 0) ? FontWeight.bold : FontWeight.w500,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-
-                if (_permissionDenied)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 20.0),
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.mic, color: Colors.white),
-                      label: const Text("Allow Microphone Access"),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                      onPressed: _initCallSequence,
-                    ),
-                  ),
-                const Spacer(flex: 2),
-
-                Container(
-                  padding: const EdgeInsets.only(bottom: 50, top: 30, left: 20, right: 20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-                    ),
-                  ),
-                  child: showIncomingControls
-                      ? _buildIncomingControls()
-                      : _buildActiveCallControls(),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAvatar(String? url, double size, bool pulse) {
-    final imageProvider = _getImageProvider(url);
-    Widget image = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white24, width: 4),
-        image: (imageProvider != null) ? DecorationImage(image: imageProvider, fit: BoxFit.cover) : null,
-      ),
-      child: (imageProvider == null) ? Icon(Icons.person, size: size * 0.4, color: Colors.white54) : null,
-    );
-
-    if (pulse) {
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          ScaleTransition(
-            scale: Tween(begin: 1.0, end: 1.3).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut)),
-            child: Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.1))),
-          ),
-          image,
-        ],
-      );
-    }
-    return image;
-  }
-
-  Widget _buildIncomingControls() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Column(
-              children: [
-                GestureDetector(
-                  onTap: _onDecline,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.redAccent.withOpacity(0.2),
-                      border: Border.all(color: Colors.redAccent, width: 1.5),
-                    ),
-                    child: const Icon(Icons.call_end, color: Colors.redAccent, size: 30),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text("Decline", style: TextStyle(color: Colors.white60, fontSize: 12)),
-              ],
+            const Spacer(flex: 1),
+            CircleAvatar(
+              radius: 60,
+              backgroundColor: Colors.white24,
+              child: Text(
+                widget.remoteName.substring(0, 1).toUpperCase(),
+                style: const TextStyle(fontSize: 40, color: Colors.white),
+              ),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 30),
-                child: SlideToAnswer(onAnswer: _onAnswer),
+            const SizedBox(height: 20),
+            
+            Text(
+              widget.remoteName,
+              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _status,
+              style: const TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+            
+            const Spacer(flex: 2),
+            
+            Padding(
+              padding: const EdgeInsets.only(bottom: 50.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  IconButton(
+                    icon: Icon(_isMuted ? Icons.mic_off : Icons.mic, color: Colors.white, size: 32),
+                    onPressed: () {
+                      setState(() => _isMuted = !_isMuted);
+                      _callService.toggleMute(_isMuted);
+                    },
+                  ),
+                  FloatingActionButton.large(
+                    backgroundColor: Colors.redAccent,
+                    onPressed: () {
+                      _callService.hangUp();
+                      Navigator.pop(context);
+                    },
+                    child: const Icon(Icons.call_end, color: Colors.white, size: 36),
+                  ),
+                  IconButton(
+                    icon: Icon(_isSpeakerOn ? Icons.volume_up : Icons.volume_down, color: Colors.white, size: 32),
+                    onPressed: () {
+                      setState(() => _isSpeakerOn = !_isSpeakerOn);
+                      _callService.toggleSpeaker(_isSpeakerOn);
+                    },
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildActiveCallControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildGlassOption(
-          icon: _isMuted ? Icons.mic_off : Icons.mic,
-          label: "Mute",
-          isActive: _isMuted,
-          onTap: () {
-            setState(() => _isMuted = !_isMuted);
-            _callService.toggleMute(_isMuted);
-          },
-        ),
-        FloatingActionButton.large(
-          onPressed: () {
-            _stopRinging();
-            _callService.endCall();
-            if (_currentCallLogId != null) {
-              _socketService.socket?.emit('end_call', {'callLogId': _currentCallLogId});
-            }
-          },
-          backgroundColor: Colors.redAccent,
-          child: const Icon(Icons.call_end_rounded, color: Colors.white, size: 36),
-        ),
-        _buildGlassOption(
-          icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-          label: "Speaker",
-          isActive: _isSpeakerOn,
-          onTap: () {
-            setState(() => _isSpeakerOn = !_isSpeakerOn);
-            _callService.toggleSpeaker(_isSpeakerOn);
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGlassOption({required IconData icon, required String label, required bool isActive, required VoidCallback onTap}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: isActive ? Colors.white : Colors.white.withOpacity(0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Icon(icon, color: isActive ? Colors.black : Colors.white, size: 28),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-      ],
-    );
-  }
-}
-
-class SlideToAnswer extends StatefulWidget {
-  final VoidCallback onAnswer;
-  const SlideToAnswer({super.key, required this.onAnswer});
-
-  @override
-  State<SlideToAnswer> createState() => _SlideToAnswerState();
-}
-
-class _SlideToAnswerState extends State<SlideToAnswer> {
-  double _dragValue = 0.0;
-  double _maxWidth = 0.0;
-  bool _submitted = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        _maxWidth = constraints.maxWidth - 60;
-        return Container(
-          height: 60,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white24),
-          ),
-          child: Stack(
-            alignment: Alignment.centerLeft,
-            children: [
-              if (!_submitted)
-                Center(
-                  child: Shimmer.fromColors(
-                    baseColor: Colors.white60,
-                    highlightColor: Colors.white,
-                    child: const Text("Slide to answer >>", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                  ),
-                ),
-              Positioned(
-                left: _dragValue,
-                child: GestureDetector(
-                  onHorizontalDragUpdate: (details) {
-                    if (_submitted) return;
-                    setState(() {
-                      _dragValue += details.delta.dx;
-                      if (_dragValue < 0) _dragValue = 0;
-                      if (_dragValue > _maxWidth) _dragValue = _maxWidth;
-                    });
-                  },
-                  onHorizontalDragEnd: (details) {
-                    if (_submitted) return;
-                    if (_dragValue > _maxWidth * 0.8) {
-                      setState(() {
-                        _dragValue = _maxWidth;
-                        _submitted = true;
-                      });
-                      widget.onAnswer();
-                    } else {
-                      setState(() => _dragValue = 0);
-                    }
-                  },
-                  child: Container(
-                    width: 60,
-                    height: 60,
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                    child: const Icon(Icons.call, color: Colors.green, size: 30),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+      ),
     );
   }
 }

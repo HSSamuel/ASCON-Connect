@@ -229,8 +229,6 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
         builder: (_) => CallScreen(
           remoteName: fullName,
           remoteId: targetId,
-          remoteAvatar: profilePic,
-          isCaller: true,
         ),
       ),
     );
