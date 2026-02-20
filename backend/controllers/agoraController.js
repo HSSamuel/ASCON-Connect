@@ -15,8 +15,8 @@ exports.generateToken = (req, res) => {
   // Set role to Publisher (they can send and receive audio)
   const role = RtcRole.PUBLISHER;
 
-  // Set Token expiration time (1 hour = 3600 seconds)
-  const expirationTimeInSeconds = 3600;
+  // ⏱️ COST SAFEGUARD: Set Max Call Duration to 45 minutes (2700 seconds)
+  const expirationTimeInSeconds = 2700;
   const currentTimestamp = Math.floor(Date.now() / 1000);
   const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
@@ -32,7 +32,7 @@ exports.generateToken = (req, res) => {
     );
 
     // Send the token back to the Flutter app!
-    res.json({ token, channelName });
+    res.json({ token, channelName, maxDurationSecs: expirationTimeInSeconds });
   } catch (error) {
     console.error("Agora Token Error:", error);
     res.status(500).json({ error: "Failed to generate token" });

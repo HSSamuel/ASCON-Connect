@@ -15,6 +15,11 @@ let redisClient;
 const onlineUsersMemory = new Map();
 const disconnectTimers = new Map();
 
+// ✅ COST SAFEGUARD TIMERS
+const activeCallTimers = new Map();
+const MAX_RING_TIME = 60 * 1000; // 60 Seconds
+const MAX_CALL_DURATION = 45 * 60 * 1000; // 45 Minutes
+
 const addSocketToUser = async (userId, socketId) => {
   if (redisClient && redisClient.isOpen) {
     await redisClient.sAdd(`online_users:${userId}`, socketId);
@@ -259,11 +264,31 @@ const initializeSocket = async (server) => {
           logger.error("Error creating CallLog:", error);
         }
 
-        // ✅ 3. Ring the receiver's phone with the correct Database profile data!
+        // ✅ 3. Ring the receiver's phone with the correct Database profile data
         socket.to(targetUserId).emit("incoming_call", {
           callerId: userId,
           channelName,
           callerData: enrichedCallerData,
+        });
+
+        // ⏱️ SAFEGUARD 1: Stop Ringing if Unanswered
+        const ringTimer = setTimeout(async () => {
+          logger.info(`Call Ring Timeout triggered for ${channelName}`);
+          io.to(targetUserId)
+            .to(userId)
+            .emit("call_ended", { channelName, reason: "No Answer" });
+
+          await CallLog.updateOne(
+            { channelName: channelName, status: "initiated" },
+            { status: "missed", endTime: new Date() },
+          );
+          activeCallTimers.delete(channelName);
+        }, MAX_RING_TIME);
+
+        activeCallTimers.set(channelName, {
+          timer: ringTimer,
+          caller: userId,
+          receiver: targetUserId,
         });
       },
     );
@@ -279,9 +304,43 @@ const initializeSocket = async (server) => {
       }
 
       socket.to(targetUserId).emit("call_answered", { channelName });
+
+      // ⏱️ SAFEGUARD 2: Max Call Duration Enforcer
+      const callData = activeCallTimers.get(channelName);
+      if (callData) clearTimeout(callData.timer); // Clear the ringing timer
+
+      const ongoingTimer = setTimeout(async () => {
+        logger.warn(
+          `Max call duration reached for ${channelName}. Force terminating.`,
+        );
+
+        // Force kick both users via socket
+        io.to(targetUserId)
+          .to(userId)
+          .emit("call_ended", { channelName, reason: "Max Duration Reached" });
+
+        await CallLog.updateOne(
+          { channelName: channelName, status: "ongoing" },
+          { status: "ended", endTime: new Date() },
+        );
+        activeCallTimers.delete(channelName);
+      }, MAX_CALL_DURATION);
+
+      activeCallTimers.set(channelName, {
+        timer: ongoingTimer,
+        caller: userId,
+        receiver: targetUserId,
+      });
     });
 
     socket.on("end_call", async ({ targetUserId, channelName }) => {
+      // 🧹 CLEANUP TIMERS ON MANUAL HANGUP
+      const callData = activeCallTimers.get(channelName);
+      if (callData) {
+        clearTimeout(callData.timer);
+        activeCallTimers.delete(channelName);
+      }
+
       try {
         const log = await CallLog.findOne({ channelName: channelName });
         if (log) {
@@ -317,7 +376,7 @@ const initializeSocket = async (server) => {
     socket.on("disconnect", async () => {
       await handleDisconnect(socket, userId);
     });
-  }); // ✅ FIXED SYNTAX ERROR HERE
+  });
 
   return io;
 };

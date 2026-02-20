@@ -5,17 +5,18 @@ const callLogSchema = new mongoose.Schema(
     caller: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
-      // ✅ FIX: Removed required: true to prevent validation errors when Twilio webhooks create the initial record
+      required: true, // ✅ Restored since we no longer have external webhooks creating empty logs
     },
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
+      required: true,
     },
-    // ✅ FIX: Added twilioCallSid to accurately map Twilio background webhooks to this specific call record
-    twilioCallSid: {
+    // Used by Agora & Socket to map active rooms to this DB record
+    channelName: {
       type: String,
-      unique: true,
-      sparse: true,
+      required: true,
+      index: true,
     },
     // status: 'initiated', 'ringing', 'ongoing', 'ended', 'missed', 'declined'
     status: {
@@ -27,7 +28,7 @@ const callLogSchema = new mongoose.Schema(
     endTime: { type: Date },
     duration: { type: Number, default: 0 }, // In seconds
 
-    // Snapshot of user details at the time of call (optional but useful)
+    // Snapshot of user details at the time of call (optional but useful for mobile UI history)
     callerName: { type: String },
     callerPic: { type: String },
     receiverName: { type: String },
