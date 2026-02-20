@@ -125,7 +125,7 @@ app.use("/api/updates", require("./routes/updates"));
 app.use("/api/polls", require("./routes/polls"));
 app.use("/api/groups", require("./routes/groups"));
 app.use("/api/calls", require("./routes/callLogs"));
-app.use("/api/twilio", require("./routes/twilio"));
+app.use("/api/agora", require("./routes/agora"));
 
 app.use(errorHandler);
 

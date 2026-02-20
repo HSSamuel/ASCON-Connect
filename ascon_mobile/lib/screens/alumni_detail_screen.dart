@@ -217,18 +217,22 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
-  // ✅ START 1-on-1 VOICE CALL
+  // ✅ UPDATED: Agora Voice Call Integration
   void _startVoiceCall() {
     final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     final String fullName = _currentAlumniData['fullName'] ?? 'Alumni Member';
-    final String? profilePic = _currentAlumniData['profilePicture']; // Get the image
+    final String? profilePic = _currentAlumniData['profilePicture']; 
 
-    Navigator.push(
-      context,
+    String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
+
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         builder: (_) => CallScreen(
           remoteName: fullName,
           remoteId: targetId,
+          channelName: uniqueChannel,
+          remoteAvatar: profilePic,
+          isIncoming: false,
         ),
       ),
     );

@@ -243,9 +243,12 @@ class _CallLogsTabState extends State<CallLogsTab> {
                 onPressed: () {
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => CallScreen(
-                      remoteId: log['remoteId'],
-                      remoteName: log['remoteName'] ?? "User",
-                    )
+  remoteName: log.remoteName, // (Keep whatever variable is already here)
+  remoteId: log.remoteId,     // (Keep whatever variable is already here)
+  // ADD THESE TWO LINES:
+  channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
+  isIncoming: false,
+)
                   ));
                 },
               ),

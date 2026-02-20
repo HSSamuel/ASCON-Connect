@@ -17,6 +17,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.1"
+  agora_rtc_engine:
+    dependency: "direct main"
+    description:
+      name: agora_rtc_engine
+      sha256: "6559294d18ce4445420e19dbdba10fb58cac955cd8f22dbceae26716e194d70e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.5.3"
   ansicolor:
     dependency: transitive
     description:
@@ -728,6 +736,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.0"
+  iris_method_channel:
+    dependency: transitive
+    description:
+      name: iris_method_channel
+      sha256: bfb5cfc6c6eae42da8cd1b35977a72d8b8881848a5dfc3d672e4760a907d11a0
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.4"
   js:
     dependency: transitive
     description:
@@ -736,14 +752,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.2"
-  js_notifications:
-    dependency: transitive
-    description:
-      name: js_notifications
-      sha256: "980280649b29d618669866bdbf99e4a813009033101a434652d231eaf976c975"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.5"
   json_annotation:
     dependency: transitive
     description:
@@ -1052,18 +1060,18 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: "59adad729136f01ea9e35a48f5d1395e25cba6cea552249ddbe9cf950f5d7849"
+      sha256: bc917da36261b00137bbc8896bf1482169cd76f866282368948f032c8c1caae1
       url: "https://pub.dev"
     source: hosted
-    version: "11.4.0"
+    version: "12.0.1"
   permission_handler_android:
     dependency: transitive
     description:
       name: permission_handler_android
-      sha256: d3971dcdd76182a0c198c096b5db2f0884b0d4196723d21a866fc4cdea057ebc
+      sha256: "1e3bc410ca1bf84662104b100eb126e066cb55791b7451307f9708d4007350e6"
       url: "https://pub.dev"
     source: hosted
-    version: "12.1.0"
+    version: "13.0.1"
   permission_handler_apple:
     dependency: transitive
     description:
@@ -1312,14 +1320,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
-  simple_print:
-    dependency: transitive
-    description:
-      name: simple_print
-      sha256: "49b6796fb93b557bbba4eca687b8521d3d20ffee47d74d8a0857f6ee0727042b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.1+2"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -1461,14 +1461,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.10.1"
-  twilio_voice:
-    dependency: "direct main"
-    description:
-      name: twilio_voice
-      sha256: "010ac416dc8bcc842486407aec2e6f97fd5bb34b521c04fd4a4a5710f9ec045b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.2+2"
   typed_data:
     dependency: transitive
     description:
@@ -1653,14 +1645,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
-  web_callkit:
-    dependency: transitive
-    description:
-      name: web_callkit
-      sha256: ca05b0fd79366ea072c1ea4982c8a7880ad219e4d1cc74a3a541b010533febee
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.4+1"
   win32:
     dependency: transitive
     description:

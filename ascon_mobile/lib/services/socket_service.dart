@@ -130,8 +130,18 @@ class SocketService with WidgetsBindingObserver {
        _messageStatusController.add({'type': 'status_update', 'data': data});
     });
 
-    // ✅ FIX: Removed manual Call navigation listener. 
-    // Twilio Voice handles CallKit UI waking up the OS independently.
+    // --- NEW CALL LISTENERS ---
+    socket!.on('incoming_call', (data) {
+       _callEventsController.add({'type': 'incoming', 'data': data});
+    });
+
+    socket!.on('call_answered', (data) {
+       _callEventsController.add({'type': 'answered', 'data': data});
+    });
+
+    socket!.on('call_ended', (data) {
+       _callEventsController.add({'type': 'ended', 'data': data});
+    });
 
     socket!.onDisconnect((_) => debugPrint('❌ Socket Disconnected'));
     socket!.onError((data) => debugPrint('⚠️ Socket Error: $data'));
@@ -153,6 +163,29 @@ class SocketService with WidgetsBindingObserver {
         'messageId': messageId,
         'chatId': chatId,
       });
+    }
+  }
+
+  // --- NEW CALL METHODS ---
+  void initiateCall(String targetUserId, String channelName, Map<String, dynamic> callerData) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('initiate_call', {
+        'targetUserId': targetUserId,
+        'channelName': channelName,
+        'callerData': callerData
+      });
+    }
+  }
+
+  void answerCall(String targetUserId, String channelName) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('answer_call', {'targetUserId': targetUserId, 'channelName': channelName});
+    }
+  }
+
+  void endCall(String targetUserId, String channelName) {
+    if (socket != null && socket!.connected) {
+      socket!.emit('end_call', {'targetUserId': targetUserId, 'channelName': channelName});
     }
   }
 

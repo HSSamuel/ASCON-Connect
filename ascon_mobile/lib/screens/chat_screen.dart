@@ -26,6 +26,7 @@ import '../models/chat_objects.dart';
 import '../utils/presence_formatter.dart';
 import 'group_info_screen.dart';
 import 'alumni_detail_screen.dart'; 
+import 'call_screen.dart'; // ✅ Added CallScreen import
 
 import '../widgets/full_screen_image.dart';
 import '../widgets/chat/poll_creation_sheet.dart';
@@ -35,7 +36,7 @@ import '../widgets/chat/chat_input_area.dart';
 
 import '../services/socket_service.dart';
 import '../services/data_service.dart';
-import '../services/call_service.dart'; // ✅ Correct Import
+import '../services/call_service.dart'; 
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String? conversationId;
@@ -230,19 +231,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  // ✅ NEW: Initiate Voice Call
+  // ✅ UPDATED: Agora Voice Call Integration
   void _initiateCall() {
     if (widget.isGroup) return; // Guard clause
 
-    CallService().placeCall(widget.receiverId, widget.receiverName);
-    
-    // Use GoRouter to push the call screen
-    context.push('/call', extra: {
-      'remoteName': _displayReceiverName,
-      'remoteId': widget.receiverId,
-      'remoteAvatar': widget.receiverProfilePic,
-      'isCaller': true,
-    });
+    String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
+
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (context) => CallScreen(
+          remoteName: _displayReceiverName,
+          remoteId: widget.receiverId,
+          channelName: uniqueChannel,
+          remoteAvatar: widget.receiverProfilePic,
+          isIncoming: false, 
+        ),
+      ),
+    );
   }
 
   Future<void> _sendMessage({String? text, String? filePath, Uint8List? fileBytes, String? fileName, String type = 'text'}) async {
@@ -675,7 +680,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
             actions: [
-              // ✅ NEW: Voice Call Button (Only for 1-on-1)
+              // ✅ UPDATED: Voice Call Button (Only for 1-on-1)
               if (!widget.isGroup)
                 IconButton(
                   icon: const Icon(Icons.call),

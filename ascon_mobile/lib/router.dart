@@ -146,16 +146,18 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const PollsScreen(),
     ),
 
-    // ✅ FIXED CALL ROUTE
+    // ✅ FIXED CALL ROUTE (using 'args' consistently)
     GoRoute(
       path: '/call',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) {
         final args = state.extra as Map<String, dynamic>;
-        // We only extract what CallScreen actually accepts now
         return CallScreen(
           remoteName: args['remoteName'] ?? "Unknown",
           remoteId: args['remoteId'] ?? "",
+          channelName: args['channelName'] ?? "call_${DateTime.now().millisecondsSinceEpoch}",
+          remoteAvatar: args['remoteAvatar'],
+          isIncoming: args['isIncoming'] ?? false,
         );
       },
     ),

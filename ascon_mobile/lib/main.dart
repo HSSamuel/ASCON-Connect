@@ -11,7 +11,8 @@ import 'config/theme.dart';
 import 'config.dart';
 import 'router.dart'; 
 import 'utils/error_handler.dart'; 
-import 'package:ascon_mobile/services/call_service.dart';
+import 'services/call_service.dart';
+import 'screens/call_screen.dart'; // ✅ Added CallScreen import
 
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -36,6 +37,7 @@ void main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
+    // ✅ Updated to env.txt from your earlier web fix
     await dotenv.load(fileName: "env.txt");
     
     // Initialize Socket (Lazy connection)
@@ -59,8 +61,6 @@ void main() async {
         );
       } else {
         await Firebase.initializeApp();
-        // NOTE: Background Handler is now registered inside NotificationService().init()
-        // to avoid duplicate handlers.
       }
     }
 
@@ -78,8 +78,50 @@ void main() async {
   });
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  StreamSubscription? _callSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenForIncomingCalls();
+  }
+
+  void _listenForIncomingCalls() {
+    // This listens globally for the socket 'incoming_call' event
+    _callSubscription = SocketService().callEvents.listen((event) {
+      if (event['type'] == 'incoming') {
+        final data = event['data'];
+        
+        // Push the Call Screen over whatever the user is currently looking at
+        if (navigatorKey.currentContext != null) {
+          Navigator.of(navigatorKey.currentContext!, rootNavigator: true).push(
+            MaterialPageRoute(
+              builder: (context) => CallScreen(
+                remoteName: data['callerData']?['callerName'] ?? "Alumni User",
+                remoteId: data['callerId'] ?? "", 
+                channelName: data['channelName'] ?? "",
+                isIncoming: true, 
+              ),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _callSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

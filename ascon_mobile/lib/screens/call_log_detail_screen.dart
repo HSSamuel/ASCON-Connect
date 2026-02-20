@@ -74,6 +74,8 @@ class CallLogDetailScreen extends StatelessWidget {
                                     builder: (_) => CallScreen(
                                       remoteId: callerId!,
                                       remoteName: name,
+                                      channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
+                                      isIncoming: false,
                                     ),
                                   ),
                                 );

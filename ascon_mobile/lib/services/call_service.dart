@@ -1,109 +1,127 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:twilio_voice/twilio_voice.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:ascon_mobile/services/api_client.dart'; 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ascon_mobile/services/api_client.dart';
+
+enum CallEvent { ringing, connected, callEnded, error }
 
 class CallService {
   static final CallService _instance = CallService._internal();
   factory CallService() => _instance;
   CallService._internal();
 
-  String? _myIdentity;
+  late RtcEngine _engine;
   bool _isInitialized = false;
+  bool isJoined = false;
 
-  // Listen to call events 
-  Stream<CallEvent> get callEvents => TwilioVoice.instance.callEventsListener;
+  final _callEventController = StreamController<CallEvent>.broadcast();
+  Stream<CallEvent> get callEvents => _callEventController.stream;
 
   Future<void> init() async {
     if (_isInitialized) return;
 
-    debugPrint("🔄 Initializing Twilio Voice...");
-
-    // 1. Request Permissions (Mobile only)
+    // 1. Request microphone permissions
     if (!kIsWeb) {
-      await [Permission.microphone, Permission.notification, Permission.phone].request();
+      await [Permission.microphone].request();
     }
 
-    // 2. Get FCM Token (Required for Android, skipped on Web/iOS if not needed)
-    String? fcmToken;
-    try {
-       fcmToken = await FirebaseMessaging.instance.getToken();
-       
-       // ✅ FIX: Maintain Twilio connectivity whenever the OS refreshes the Push Token
-       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-         debugPrint("🔄 FCM Token Refreshed. Re-registering with Twilio...");
-         _registerTwilioTokens(newToken);
-       });
-
-    } catch (e) {
-       debugPrint("⚠️ FCM Token Warning: $e");
+    // 2. Load Agora App ID from env.txt
+    String appId = dotenv.env['AGORA_APP_ID'] ?? '';
+    if (appId.isEmpty) {
+      debugPrint("❌ Agora App ID is missing from env.txt");
+      return;
     }
 
-    await _registerTwilioTokens(fcmToken);
+    // 3. Initialize the Agora Engine
+    _engine = createAgoraRtcEngine();
+    await _engine.initialize(
+  RtcEngineContext(
+    appId: appId,
+    logConfig: const LogConfig(
+      level: LogLevel.logLevelError, // 🔥 This silences all the DEBUG/INFO spam!
+    ),
+  ),
+);
+
+    // 4. Listen for Call Events (when the other person answers or hangs up)
+    _engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          debugPrint("✅ Agora Joined Channel: ${connection.channelId}");
+          isJoined = true;
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          debugPrint("📞 Remote user answered! UID: $remoteUid");
+          _callEventController.add(CallEvent.connected);
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          debugPrint("📞 Remote user hung up! UID: $remoteUid");
+          _callEventController.add(CallEvent.callEnded);
+          leaveCall();
+        },
+        onError: (ErrorCodeType err, String msg) {
+          debugPrint("❌ Agora Error: $err - $msg");
+          _callEventController.add(CallEvent.error);
+        },
+      ),
+    );
+
+    await _engine.enableAudio();
+    _isInitialized = true;
   }
 
-  Future<void> _registerTwilioTokens(String? fcmToken) async {
-    // 3. Get Access Token from Your Backend
-    try {
-      // ✅ FIX: Added '/api' to the endpoint to match server.js
-      final response = await ApiClient().get('/api/twilio/token'); 
-      
-      if (response['data'] != null && response['data']['token'] != null) {
-        String accessToken = response['data']['token'];
-        _myIdentity = response['data']['identity'];
-
-        // 4. Register with Twilio
-        // ✅ FIX: Handle null return with ?? false for Web compatibility
-        bool success = await TwilioVoice.instance.setTokens(
-          accessToken: accessToken, 
-          deviceToken: fcmToken
-        ) ?? false;
-
-        if (success) {
-          _isInitialized = true;
-          debugPrint("✅ Twilio Registered successfully as: $_myIdentity");
-        } else {
-          debugPrint("❌ Twilio Registration Failed: setTokens returned false");
-        }
-      } else {
-        debugPrint("❌ Twilio Init Error: Token missing in response $response");
-      }
-    } catch (e) {
-      debugPrint("❌ Twilio Init Error: $e");
-    }
-  }
-
-  Future<bool> placeCall(String recipientId, String recipientName) async {
-    // Ensure we are initialized before calling
+  Future<bool> joinCall({required String channelName}) async {
     if (!_isInitialized) await init();
 
-    if (!_isInitialized) {
-      debugPrint("⛔ Cannot place call: Twilio not initialized.");
+    try {
+      debugPrint("⏳ Requesting Agora Token for channel: $channelName");
+      
+      // Request Secure Token from your Node.js backend
+      final response = await ApiClient().post('/api/agora/token', {
+        'channelName': channelName,
+      });
+
+      // ✅ THE FIX: Unwrap the response if it is nested inside a 'data' object
+      final responseData = response['data'] ?? response;
+
+      if (responseData['token'] != null) {
+        String token = responseData['token'];
+
+        // Join the actual voice channel
+        await _engine.joinChannel(
+          token: token,
+          channelId: channelName,
+          uid: 0,
+          options: const ChannelMediaOptions(
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+            channelProfile: ChannelProfileType.channelProfileCommunication,
+          ),
+        );
+        return true;
+      } else {
+        debugPrint("❌ Token missing in backend response: $response");
+        return false;
+      }
+    } catch (e) {
+      debugPrint("❌ Error joining Agora call: $e");
       return false;
     }
-
-    debugPrint("📞 Calling $recipientName ($recipientId)...");
-    
-    // ✅ FIX: Null safety return
-    return await TwilioVoice.instance.call.place(
-      to: recipientId, 
-      from: _myIdentity ?? "Ascon User",
-      extraOptions: {"recipientName": recipientName}
-    ) ?? false;
   }
 
-  Future<void> hangUp() async {
-    // ✅ FIX: Use hangUp() (CamelCase)
-    await TwilioVoice.instance.call.hangUp();
+  Future<void> leaveCall() async {
+    if (isJoined) {
+      await _engine.leaveChannel();
+      isJoined = false;
+    }
   }
 
   Future<void> toggleMute(bool isMuted) async {
-    await TwilioVoice.instance.call.toggleMute(isMuted);
+    if (_isInitialized) await _engine.muteLocalAudioStream(isMuted);
   }
 
   Future<void> toggleSpeaker(bool isSpeakerOn) async {
-    await TwilioVoice.instance.call.toggleSpeaker(isSpeakerOn);
+    if (_isInitialized) await _engine.setEnableSpeakerphone(isSpeakerOn);
   }
 }

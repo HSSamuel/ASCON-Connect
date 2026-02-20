@@ -2616,3 +2616,22 @@
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-19 16:46:30"}
 {"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-19 16:46:30"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-19 16:46:30"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 01:39:24"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 01:39:59"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 01:40:55"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 01:43:16"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-20 01:43:16"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-20 01:43:18"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-20 01:43:19"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-20 01:43:22"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-20 01:43:24"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-20 01:43:25"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-20 01:43:25"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 01:44:08"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-20 01:44:08"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-20 01:44:10"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-20 01:44:11"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-20 01:44:13"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-20 01:44:15"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-20 01:44:16"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-20 01:44:16"}

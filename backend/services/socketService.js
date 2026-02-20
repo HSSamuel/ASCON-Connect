@@ -113,6 +113,8 @@ const initializeSocket = async (server) => {
     const userId = socket.userId;
     logger.info(`🔌 Socket Connected: ${socket.id} (User: ${userId})`);
 
+    // The user automatically joins a room with their own User ID.
+    // This makes it incredibly easy to send targeted events to them!
     socket.join(userId);
     try {
       const userGroups = await Group.find({ members: userId }).select("_id");
@@ -192,7 +194,29 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // ✅ FIX: WebRTC Signaling removed from Sockets. Handled natively by Twilio backend Webhooks.
+    // --- AGORA CALL SIGNALING ---
+
+    // 1. User A initiates a call to User B
+    socket.on("initiate_call", ({ targetUserId, channelName, callerData }) => {
+      // Ring User B's phone! (User B is in a room matching their targetUserId)
+      socket.to(targetUserId).emit("incoming_call", {
+        callerId: userId, // This is the ID of User A (the one making the call)
+        channelName,
+        callerData,
+      });
+    });
+
+    // 2. User B clicks the Green "Accept" button
+    socket.on("answer_call", ({ targetUserId, channelName }) => {
+      // Tell User A to stop ringing and connect the audio
+      socket.to(targetUserId).emit("call_answered", { channelName });
+    });
+
+    // 3. Someone clicks the Red "Decline/Hang Up" button
+    socket.on("end_call", ({ targetUserId, channelName }) => {
+      // Tell the other person's phone to close the call screen
+      socket.to(targetUserId).emit("call_ended", { channelName });
+    });
 
     socket.on("disconnect", async () => {
       await handleDisconnect(socket, userId);
