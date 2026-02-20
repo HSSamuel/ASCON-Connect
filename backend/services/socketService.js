@@ -7,7 +7,7 @@ const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const Message = require("../models/Message");
-const CallLog = require("../models/CallLog"); // ✅ ADDED: Import CallLog
+const CallLog = require("../models/CallLog");
 const logger = require("../utils/logger");
 
 let io;
@@ -231,8 +231,22 @@ const initializeSocket = async (server) => {
     socket.on(
       "initiate_call",
       async ({ targetUserId, channelName, callerData }) => {
+        let enrichedCallerData = { ...callerData };
+
         try {
-          // ✅ 1. Save Call to DB (Ignore group calls to keep logs clean)
+          // ✅ 1. Fetch Real Caller Profile from Database
+          const callerProfile = await UserProfile.findOne({
+            userId: userId,
+          }).select("fullName profilePicture");
+
+          if (callerProfile) {
+            enrichedCallerData.callerName =
+              callerProfile.fullName || "Alumni User";
+            enrichedCallerData.callerAvatar =
+              callerProfile.profilePicture || null;
+          }
+
+          // ✅ 2. Save Call to DB (Ignore group calls to keep logs clean)
           if (!callerData.isGroupCall) {
             await CallLog.create({
               caller: userId,
@@ -245,17 +259,17 @@ const initializeSocket = async (server) => {
           logger.error("Error creating CallLog:", error);
         }
 
+        // ✅ 3. Ring the receiver's phone with the correct Database profile data!
         socket.to(targetUserId).emit("incoming_call", {
           callerId: userId,
           channelName,
-          callerData,
+          callerData: enrichedCallerData,
         });
       },
     );
 
     socket.on("answer_call", async ({ targetUserId, channelName }) => {
       try {
-        // ✅ 2. Update DB when call is answered
         await CallLog.findOneAndUpdate(
           { channelName: channelName },
           { status: "ongoing", startTime: new Date() },
@@ -269,14 +283,12 @@ const initializeSocket = async (server) => {
 
     socket.on("end_call", async ({ targetUserId, channelName }) => {
       try {
-        // ✅ 3. Finalize Call in DB when someone hangs up
         const log = await CallLog.findOne({ channelName: channelName });
         if (log) {
           let finalStatus = "ended";
           let duration = 0;
 
           if (log.status === "initiated") {
-            // If caller hung up before answer = missed. If receiver declined = declined.
             finalStatus =
               userId.toString() === log.caller.toString()
                 ? "missed"
@@ -292,7 +304,6 @@ const initializeSocket = async (server) => {
             { status: finalStatus, endTime: new Date(), duration: duration },
           );
 
-          // Tell the apps to refresh their call log screens
           io.to(targetUserId).emit("call_log_generated");
           socket.emit("call_log_generated");
         }
@@ -306,7 +317,7 @@ const initializeSocket = async (server) => {
     socket.on("disconnect", async () => {
       await handleDisconnect(socket, userId);
     });
-  });
+  }); // ✅ FIXED SYNTAX ERROR HERE
 
   return io;
 };

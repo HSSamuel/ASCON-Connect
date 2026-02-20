@@ -2651,3 +2651,11 @@
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-20 15:54:50"}
 {"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-20 15:54:51"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-20 15:54:51"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-20 17:38:36"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-20 17:38:36"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-20 17:38:39"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-20 17:38:40"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-20 17:38:43"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-20 17:38:45"}
+{"level":"info","message":"📞 Cleaned up 1 stuck calls.","timestamp":"2026-02-20 17:38:45"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-20 17:38:45"}
