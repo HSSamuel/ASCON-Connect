@@ -36,7 +36,7 @@ void main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
-    await dotenv.load(fileName: ".env");
+    await dotenv.load(fileName: "env.txt");
     
     // Initialize Socket (Lazy connection)
     SocketService().initSocket();

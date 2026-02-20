@@ -84,6 +84,8 @@ _Located in `/ascon_mobile`_
     - Web (CORS Disabled): `flutter run -d chrome --web-browser-flag "--disable-web-security"`
 5.  **Build Release (Android):** `flutter build apk --release`
 6.  **Build Release (iPhone):** `flutter build ios --release`
+7.  **Build Web Version:** flutter build web
+8.  **Deploy to Netlify:** netlify deploy --prod --dir=build/web
 
 ---
 
