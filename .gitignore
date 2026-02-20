@@ -3,4 +3,5 @@ node_modules/
 /ascon_web_admin/node_modules/
 /ascon_mobile/build/
 .env
+env.txt
 .DS_Store
