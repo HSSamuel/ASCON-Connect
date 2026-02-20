@@ -105,7 +105,8 @@ class _MyAppState extends State<MyApp> {
           Navigator.of(navigatorKey.currentContext!, rootNavigator: true).push(
             MaterialPageRoute(
               builder: (context) => CallScreen(
-                isGroupCall: isGroup, // ✅ Pass Group Flag
+                isGroupCall: isGroup, 
+                isVideoCall: data['callerData']?['isVideoCall'] ?? false, // ✅ READ VIDEO FLAG
                 remoteName: displayRemoteName,
                 remoteId: data['callerId'] ?? "", 
                 channelName: data['channelName'] ?? "",

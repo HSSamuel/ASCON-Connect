@@ -240,7 +240,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // ✅ UPDATED: Handles both 1-on-1 and Group Calls
-  void _initiateCall() {
+  void _initiateCall({required bool isVideo}) { // ✅ Added parameter
     String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
     
     final userProfile = ref.read(profileProvider).userProfile;
@@ -250,7 +250,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     List<String> targets = [];
     if (widget.isGroup) {
       final myUserId = ref.read(_provider).myUserId;
-      targets = _groupMemberIds.where((id) => id != myUserId).toList(); // Strip self from targets
+      targets = _groupMemberIds.where((id) => id != myUserId).toList(); 
       if (targets.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No other members in group to call.")));
         return;
@@ -261,7 +261,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       MaterialPageRoute(
         builder: (context) => CallScreen(
           isGroupCall: widget.isGroup, 
-          targetIds: targets, // ✅ Pass multiple users for a group
+          isVideoCall: isVideo, // ✅ Pass to CallScreen
+          targetIds: targets, 
           remoteName: _displayReceiverName,
           remoteId: widget.isGroup ? null : widget.receiverId, 
           channelName: uniqueChannel,
@@ -704,13 +705,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
             actions: [
-              // ✅ Call Button (Now Enabled for Groups as well!)
               if (!widget.isGroup || (widget.isGroup && widget.groupId != null))
-                IconButton(
-                  icon: const Icon(Icons.call),
-                  color: primaryColor,
-                  tooltip: widget.isGroup ? 'Group Voice Call' : 'Voice Call',
-                  onPressed: _initiateCall,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 📹 VIDEO CALL BUTTON
+                    IconButton(
+                      icon: const Icon(Icons.videocam),
+                      color: primaryColor,
+                      tooltip: widget.isGroup ? 'Group Video Call' : 'Video Call',
+                      onPressed: () => _initiateCall(isVideo: true), // ✅ Pass true
+                    ),
+                    // 📞 VOICE CALL BUTTON
+                    IconButton(
+                      icon: const Icon(Icons.call),
+                      color: primaryColor,
+                      tooltip: widget.isGroup ? 'Group Voice Call' : 'Voice Call',
+                      onPressed: () => _initiateCall(isVideo: false), // ✅ Pass false
+                    ),
+                  ],
                 ),
 
               if (widget.isGroup && widget.groupId != null)
