@@ -131,8 +131,12 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     _messageStatusSubscription?.cancel(); 
     sendStopTyping();
     
+    // ✅ Leave rooms to clean up listeners
     if (isGroup && groupId != null) {
       _socket.socket?.emit('leave_room', groupId);
+    }
+    if (state.conversationId != null) {
+      _socket.socket?.emit('leave_room', state.conversationId);
     }
     
     _socket.socket?.off('new_message');
@@ -160,13 +164,15 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     if (!mounted) return;
 
     if (state.conversationId != null) {
+      // ✅ Join the 1-on-1 conversation room instantly
+      _socket.socket?.emit('join_room', state.conversationId);
       await loadMessages(initial: true);
     } else {
       try {
         await _findOrCreateConversation();
       } catch (e) {
         debugPrint("Initial chat check failed: $e");
-        if(mounted) state = state.copyWith(isLoading: false); // Ensure spinner stops
+        if(mounted) state = state.copyWith(isLoading: false); 
       }
     }
 
@@ -201,9 +207,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       if (!mounted) return null;
 
       if (result['success'] == true) {
-        // ✅ NEW LOGIC: Handle NULL data (Means no chat exists yet)
         if (result['data'] == null) {
-          if (mounted) state = state.copyWith(isLoading: false); // Stop loading
+          if (mounted) state = state.copyWith(isLoading: false); 
           return null;
         }
 
@@ -213,11 +218,12 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         
         if (newId != null && mounted) {
           state = state.copyWith(conversationId: newId.toString());
+          // ✅ Join room as soon as we discover it
+          _socket.socket?.emit('join_room', newId.toString());
           loadMessages(initial: true);
           return newId.toString();
         }
       }
-      // If we reach here, it might be an error or unexpected response
       if (mounted) state = state.copyWith(isLoading: false);
       return null;
     } catch (e) {
@@ -301,7 +307,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
         return m;
       }).toList();
-      state = state.copyWith(messages: updated);
+      state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
       return true;
     } catch (e) {
       return false;
@@ -319,10 +325,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
             }
             return m;
           }).toList();
-          state = state.copyWith(messages: updated);
+          state = state.copyWith(messages: List.from(updated));
         } else {
           final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
-          state = state.copyWith(messages: updated);
+          state = state.copyWith(messages: List.from(updated));
         }
       }
 
@@ -346,9 +352,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     ChatMessage? replyingToMessage,
   }) async {
     if (!mounted) return "View disposed";
-
-    // ❌ REMOVED: Auto-create Logic from here
-    // String? currentConvId = state.conversationId; ...
 
     final token = await _auth.getToken();
     if (!mounted) return "View disposed";
@@ -378,7 +381,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           ? AppConfig.baseUrl.substring(0, AppConfig.baseUrl.length - 1)
           : AppConfig.baseUrl;
 
-      // ✅ UPDATED: Use the new robust endpoint
       final url = Uri.parse('$baseUrl/api/chat/message/send');
       
       var request = http.MultipartRequest('POST', url);
@@ -388,7 +390,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       request.fields['type'] = type;
       if (replyToId != null) request.fields['replyToId'] = replyToId;
 
-      // ✅ CRITICAL: Pass Context (Conversation ID or Recipient)
       if (state.conversationId != null) {
         request.fields['conversationId'] = state.conversationId!;
       }
@@ -417,13 +418,14 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           final data = jsonDecode(response.body);
           final realMessage = ChatMessage.fromJson(data);
           
-          // ✅ NEW: Capture the newly created Conversation ID!
           if (data['newConversationId'] != null) {
              state = state.copyWith(conversationId: data['newConversationId']);
+             // ✅ Join the newly created room immediately
+             _socket.socket?.emit('join_room', data['newConversationId']);
           }
 
           final updated = state.messages.map((m) => m.id == tempId ? realMessage : m).toList();
-          state = state.copyWith(messages: updated);
+          state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
           return null; 
         } catch (e) {
           debugPrint("Send Parse Error: $e");
@@ -442,7 +444,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   void _markMessageError(String tempId) {
     if (!mounted) return;
     final updated = state.messages.map((m) => m.id == tempId ? (m..status = MessageStatus.error) : m).toList();
-    state = state.copyWith(messages: updated);
+    state = state.copyWith(messages: List.from(updated));
   }
 
   void markUnreadAsRead() {
@@ -462,7 +464,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
         return m;
       }).toList();
-      state = state.copyWith(messages: updated);
+      state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
     }
   }
 
@@ -505,7 +507,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               }
               return m;
             }).toList();
-            state = state.copyWith(messages: updated);
+            state = state.copyWith(messages: List.from(updated)); // ✅ Triggers instant blue tick refresh
          }
       } else if (event['type'] == 'status_update') {
          final data = event['data'];
@@ -517,7 +519,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               }
               return m;
             }).toList();
-            state = state.copyWith(messages: updated);
+            state = state.copyWith(messages: List.from(updated)); // ✅ Triggers instant double tick refresh
          }
       }
     });
@@ -552,10 +554,10 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
              }
              return m;
            }).toList();
-           state = state.copyWith(messages: updated);
+           state = state.copyWith(messages: List.from(updated));
         } else {
            final updated = state.messages.where((m) => !ids.contains(m.id)).toList();
-           state = state.copyWith(messages: updated);
+           state = state.copyWith(messages: List.from(updated));
         }
       }
     });

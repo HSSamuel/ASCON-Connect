@@ -9,27 +9,32 @@ import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http; 
 import 'package:url_launcher/url_launcher.dart'; 
 
+// ✅ IMPORT RIVERPOD & PROFILE VIEW MODEL
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../viewmodels/profile_view_model.dart';
+
 import '../config.dart'; 
 import '../services/data_service.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart'; 
 import '../services/socket_service.dart'; 
 import 'alumni_detail_screen.dart';
-// ❌ REMOVED: import 'call_screen.dart'; 
-import 'polls_screen.dart'; // ✅ ADDED: Polls feature
+import 'call_screen.dart'; // ✅ RESTORED: Import Call Screen
+import 'polls_screen.dart'; 
 import '../widgets/full_screen_image.dart'; 
 
-class GroupInfoScreen extends StatefulWidget {
+// ✅ CHANGED TO ConsumerStatefulWidget
+class GroupInfoScreen extends ConsumerStatefulWidget {
   final String groupId;
   final String groupName;
 
   const GroupInfoScreen({super.key, required this.groupId, required this.groupName});
 
   @override
-  State<GroupInfoScreen> createState() => _GroupInfoScreenState();
+  ConsumerState<GroupInfoScreen> createState() => _GroupInfoScreenState();
 }
 
-class _GroupInfoScreenState extends State<GroupInfoScreen> {
+class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   final DataService _dataService = DataService();
   final ApiClient _api = ApiClient();
   final ImagePicker _picker = ImagePicker();
@@ -178,14 +183,52 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
   }
 
   // ==========================================
-  // 📊 POLLS LOGIC (Replaces Voice Call)
+  // 📞 GROUP CALL LOGIC
+  // ==========================================
+  void _initiateGroupCall() {
+    String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
+    
+    final userProfile = ref.read(profileProvider).userProfile;
+    final currentUserName = userProfile?['fullName'] ?? "Alumni User";
+    final currentUserAvatar = userProfile?['profilePicture'];
+
+    // Extract member IDs, excluding self
+    List<String> targets = _allMembers
+        .map((m) => m['_id'].toString())
+        .where((id) => id != _myUserId)
+        .toList();
+
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No other members in group to call."))
+      );
+      return;
+    }
+
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (context) => CallScreen(
+          isGroupCall: true, 
+          targetIds: targets, // ✅ Pass group members
+          remoteName: widget.groupName, // Display Group Name
+          remoteId: null, 
+          channelName: uniqueChannel,
+          remoteAvatar: _groupData?['icon'], // Pass Group Icon
+          isIncoming: false, 
+          currentUserName: currentUserName,      
+          currentUserAvatar: currentUserAvatar,  
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // 📊 POLLS LOGIC
   // ==========================================
   void _openPolls() {
     Navigator.push(
       context, 
       MaterialPageRoute(
-        // Assuming PollsScreen can handle a filter or just opens the general polls
-        // You might need to update PollsScreen to accept a 'groupId' if you want group-specific polls
         builder: (_) => const PollsScreen() 
       )
     );
@@ -302,10 +345,8 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     );
   }
 
-  // ✅ FIXED UPLOAD LOGIC FOR WEB & MOBILE
   Future<void> _uploadFile() async {
     try {
-      // 1. Pick File with Data (Critical for Web)
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         withData: true, 
       );
@@ -323,9 +364,7 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
           Uri.parse('${AppConfig.baseUrl}/api/groups/${widget.groupId}/documents')
         );
         
-        // 2. Add File based on Platform
         if (kIsWeb) {
-          // 🌍 WEB: Use Bytes
           if (platformFile.bytes != null) {
             request.files.add(http.MultipartFile.fromBytes(
               'file', 
@@ -336,7 +375,6 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
             throw Exception("File bytes are missing. Cannot upload on Web.");
           }
         } else {
-          // 📱 MOBILE: Use Path
           if (platformFile.path != null) {
             request.files.add(await http.MultipartFile.fromPath('file', platformFile.path!));
           } else {
@@ -672,13 +710,14 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
                     ),
                   ),
 
+                  // ✅ UPDATED ACTION BUTTONS: 4 Buttons neatly fitted
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          // ✅ REPLACED Voice with Polls
+                          _buildActionBtn(Icons.call, "Call", _initiateGroupCall, Colors.green),
                           _buildActionBtn(Icons.poll, "Polls", _openPolls, Colors.purple),
                           _buildActionBtn(Icons.campaign, "Notices", _openNoticeBoard, Colors.orange),
                           _buildActionBtn(Icons.description, "Docs", _openDocsSheet, Colors.blue),
@@ -790,15 +829,33 @@ class _GroupInfoScreenState extends State<GroupInfoScreen> {
     );
   }
 
+  // ✅ UPDATED Action Button to comfortably fit 4 items
   Widget _buildActionBtn(IconData icon, String label, VoidCallback onTap, Color color) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 100,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(16)),
-        child: Column(children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600))]),
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08), 
+              borderRadius: BorderRadius.circular(16)
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 24), 
+                const SizedBox(height: 6), 
+                Text(
+                  label, 
+                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)
+                )
+              ]
+            ),
+          ),
+        ),
       ),
     );
   }

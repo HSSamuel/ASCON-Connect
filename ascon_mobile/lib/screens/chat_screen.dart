@@ -22,11 +22,12 @@ import 'package:vibration/vibration.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 
 import '../viewmodels/chat_detail_view_model.dart'; 
+import '../viewmodels/profile_view_model.dart'; 
 import '../models/chat_objects.dart';
 import '../utils/presence_formatter.dart';
 import 'group_info_screen.dart';
 import 'alumni_detail_screen.dart'; 
-import 'call_screen.dart'; // ✅ Added CallScreen import
+import 'call_screen.dart'; 
 
 import '../widgets/full_screen_image.dart';
 import '../widgets/chat/poll_creation_sheet.dart';
@@ -94,6 +95,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _realtimeLastSeen;
   String _groupParticipants = "Tap for info"; 
   String _displayReceiverName = "";
+  List<String> _groupMemberIds = []; // ✅ Added to store Group Targets
 
   StreamSubscription? _statusSubscription; 
 
@@ -164,6 +166,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         final members = groupData['members'] as List<dynamic>? ?? [];
         if (members.isNotEmpty) {
+          // ✅ Save all IDs to loop for the group call
+          _groupMemberIds = members.map((m) {
+            if (m is Map) return (m['_id'] ?? m['userId']).toString();
+            return m.toString();
+          }).toList();
+
           final List<String> names = members.take(4).map<String>((m) {
              if (m is Map) return m['fullName']?.split(" ")[0] ?? "Member";
              return "Member";
@@ -231,20 +239,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  // ✅ UPDATED: Agora Voice Call Integration
+  // ✅ UPDATED: Handles both 1-on-1 and Group Calls
   void _initiateCall() {
-    if (widget.isGroup) return; // Guard clause
-
     String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
+    
+    final userProfile = ref.read(profileProvider).userProfile;
+    final currentUserName = userProfile?['fullName'] ?? "Alumni User";
+    final currentUserAvatar = userProfile?['profilePicture'];
+
+    List<String> targets = [];
+    if (widget.isGroup) {
+      final myUserId = ref.read(_provider).myUserId;
+      targets = _groupMemberIds.where((id) => id != myUserId).toList(); // Strip self from targets
+      if (targets.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No other members in group to call.")));
+        return;
+      }
+    }
 
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         builder: (context) => CallScreen(
+          isGroupCall: widget.isGroup, 
+          targetIds: targets, // ✅ Pass multiple users for a group
           remoteName: _displayReceiverName,
-          remoteId: widget.receiverId,
+          remoteId: widget.isGroup ? null : widget.receiverId, 
           channelName: uniqueChannel,
           remoteAvatar: widget.receiverProfilePic,
           isIncoming: false, 
+          currentUserName: currentUserName,      
+          currentUserAvatar: currentUserAvatar,  
         ),
       ),
     );
@@ -680,12 +704,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
             actions: [
-              // ✅ UPDATED: Voice Call Button (Only for 1-on-1)
-              if (!widget.isGroup)
+              // ✅ Call Button (Now Enabled for Groups as well!)
+              if (!widget.isGroup || (widget.isGroup && widget.groupId != null))
                 IconButton(
                   icon: const Icon(Icons.call),
                   color: primaryColor,
-                  tooltip: 'Voice Call',
+                  tooltip: widget.isGroup ? 'Group Voice Call' : 'Voice Call',
                   onPressed: _initiateCall,
                 ),
 

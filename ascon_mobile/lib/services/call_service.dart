@@ -22,30 +22,26 @@ class CallService {
   Future<void> init() async {
     if (_isInitialized) return;
 
-    // 1. Request microphone permissions
     if (!kIsWeb) {
       await [Permission.microphone].request();
     }
 
-    // 2. Load Agora App ID from env.txt
     String appId = dotenv.env['AGORA_APP_ID'] ?? '';
     if (appId.isEmpty) {
       debugPrint("❌ Agora App ID is missing from env.txt");
       return;
     }
 
-    // 3. Initialize the Agora Engine
     _engine = createAgoraRtcEngine();
     await _engine.initialize(
-  RtcEngineContext(
-    appId: appId,
-    logConfig: const LogConfig(
-      level: LogLevel.logLevelError, // 🔥 This silences all the DEBUG/INFO spam!
-    ),
-  ),
-);
+      RtcEngineContext(
+        appId: appId,
+        logConfig: const LogConfig(
+          level: LogLevel.logLevelError, 
+        ),
+      ),
+    );
 
-    // 4. Listen for Call Events (when the other person answers or hangs up)
     _engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
@@ -57,9 +53,9 @@ class CallService {
           _callEventController.add(CallEvent.connected);
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-          debugPrint("📞 Remote user hung up! UID: $remoteUid");
+          debugPrint("📞 Remote user left! UID: $remoteUid");
           _callEventController.add(CallEvent.callEnded);
-          leaveCall();
+          // ✅ FIXED: Removed leaveCall() here so group calls don't drop when one person leaves
         },
         onError: (ErrorCodeType err, String msg) {
           debugPrint("❌ Agora Error: $err - $msg");
@@ -76,20 +72,15 @@ class CallService {
     if (!_isInitialized) await init();
 
     try {
-      debugPrint("⏳ Requesting Agora Token for channel: $channelName");
-      
-      // Request Secure Token from your Node.js backend
       final response = await ApiClient().post('/api/agora/token', {
         'channelName': channelName,
       });
 
-      // ✅ THE FIX: Unwrap the response if it is nested inside a 'data' object
       final responseData = response['data'] ?? response;
 
       if (responseData['token'] != null) {
         String token = responseData['token'];
 
-        // Join the actual voice channel
         await _engine.joinChannel(
           token: token,
           channelId: channelName,
@@ -101,11 +92,9 @@ class CallService {
         );
         return true;
       } else {
-        debugPrint("❌ Token missing in backend response: $response");
         return false;
       }
     } catch (e) {
-      debugPrint("❌ Error joining Agora call: $e");
       return false;
     }
   }

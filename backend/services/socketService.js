@@ -7,6 +7,7 @@ const UserAuth = require("../models/UserAuth");
 const UserProfile = require("../models/UserProfile");
 const Group = require("../models/Group");
 const Message = require("../models/Message");
+const CallLog = require("../models/CallLog"); // ✅ ADDED: Import CallLog
 const logger = require("../utils/logger");
 
 let io;
@@ -113,8 +114,6 @@ const initializeSocket = async (server) => {
     const userId = socket.userId;
     logger.info(`🔌 Socket Connected: ${socket.id} (User: ${userId})`);
 
-    // The user automatically joins a room with their own User ID.
-    // This makes it incredibly easy to send targeted events to them!
     socket.join(userId);
     try {
       const userGroups = await Group.find({ members: userId }).select("_id");
@@ -194,27 +193,113 @@ const initializeSocket = async (server) => {
       }
     });
 
-    // --- AGORA CALL SIGNALING ---
+    // ==========================================
+    // --- REAL-TIME TYPING INDICATORS ---
+    // ==========================================
 
-    // 1. User A initiates a call to User B
-    socket.on("initiate_call", ({ targetUserId, channelName, callerData }) => {
-      // Ring User B's phone! (User B is in a room matching their targetUserId)
-      socket.to(targetUserId).emit("incoming_call", {
-        callerId: userId, // This is the ID of User A (the one making the call)
-        channelName,
-        callerData,
-      });
+    socket.on("typing", ({ receiverId, conversationId, groupId }) => {
+      // If it's a group, send typing indicator to the whole group room
+      if (groupId) {
+        socket
+          .to(groupId)
+          .emit("typing_start", { senderId: userId, conversationId });
+      }
+      // If 1-on-1, send it to the conversation room (both users are inside)
+      else if (conversationId) {
+        socket
+          .to(conversationId)
+          .emit("typing_start", { senderId: userId, conversationId });
+      }
     });
 
-    // 2. User B clicks the Green "Accept" button
-    socket.on("answer_call", ({ targetUserId, channelName }) => {
-      // Tell User A to stop ringing and connect the audio
+    socket.on("stop_typing", ({ receiverId, conversationId, groupId }) => {
+      if (groupId) {
+        socket
+          .to(groupId)
+          .emit("typing_stop", { senderId: userId, conversationId });
+      } else if (conversationId) {
+        socket
+          .to(conversationId)
+          .emit("typing_stop", { senderId: userId, conversationId });
+      }
+    });
+
+    // ==========================================
+    // --- AGORA CALL SIGNALING & DB LOGGING ---
+    // ==========================================
+
+    socket.on(
+      "initiate_call",
+      async ({ targetUserId, channelName, callerData }) => {
+        try {
+          // ✅ 1. Save Call to DB (Ignore group calls to keep logs clean)
+          if (!callerData.isGroupCall) {
+            await CallLog.create({
+              caller: userId,
+              receiver: targetUserId,
+              channelName: channelName,
+              status: "initiated",
+            });
+          }
+        } catch (error) {
+          logger.error("Error creating CallLog:", error);
+        }
+
+        socket.to(targetUserId).emit("incoming_call", {
+          callerId: userId,
+          channelName,
+          callerData,
+        });
+      },
+    );
+
+    socket.on("answer_call", async ({ targetUserId, channelName }) => {
+      try {
+        // ✅ 2. Update DB when call is answered
+        await CallLog.findOneAndUpdate(
+          { channelName: channelName },
+          { status: "ongoing", startTime: new Date() },
+        );
+      } catch (error) {
+        logger.error("Error answering CallLog:", error);
+      }
+
       socket.to(targetUserId).emit("call_answered", { channelName });
     });
 
-    // 3. Someone clicks the Red "Decline/Hang Up" button
-    socket.on("end_call", ({ targetUserId, channelName }) => {
-      // Tell the other person's phone to close the call screen
+    socket.on("end_call", async ({ targetUserId, channelName }) => {
+      try {
+        // ✅ 3. Finalize Call in DB when someone hangs up
+        const log = await CallLog.findOne({ channelName: channelName });
+        if (log) {
+          let finalStatus = "ended";
+          let duration = 0;
+
+          if (log.status === "initiated") {
+            // If caller hung up before answer = missed. If receiver declined = declined.
+            finalStatus =
+              userId.toString() === log.caller.toString()
+                ? "missed"
+                : "declined";
+          } else if (log.status === "ongoing") {
+            const endTime = new Date();
+            duration = Math.round((endTime - log.startTime) / 1000);
+            finalStatus = "ended";
+          }
+
+          await CallLog.updateOne(
+            { _id: log._id },
+            { status: finalStatus, endTime: new Date(), duration: duration },
+          );
+
+          // Tell the apps to refresh their call log screens
+          io.to(targetUserId).emit("call_log_generated");
+          socket.emit("call_log_generated");
+        }
+      } catch (error) {
+        logger.error("Error ending CallLog:", error);
+      }
+
       socket.to(targetUserId).emit("call_ended", { channelName });
     });
 

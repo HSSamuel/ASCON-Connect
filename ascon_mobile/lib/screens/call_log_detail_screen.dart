@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+
+// ✅ IMPORT RIVERPOD AND PROFILE VIEW MODEL
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../viewmodels/profile_view_model.dart';
+
 import 'chat_screen.dart';
 import 'call_screen.dart'; 
 import '../widgets/full_screen_image.dart';
 
-class CallLogDetailScreen extends StatelessWidget {
+// ✅ CHANGED to ConsumerWidget
+class CallLogDetailScreen extends ConsumerWidget {
   final String name;
   final String? avatar;
   final String? callerId;
@@ -21,7 +27,7 @@ class CallLogDetailScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) { // ✅ Added WidgetRef ref
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -68,14 +74,22 @@ class CallLogDetailScreen extends StatelessWidget {
                             color: const Color(0xFF1B5E3A),
                             onTap: () {
                               if (callerId != null) {
+                                // ✅ FETCH CURRENT USER DETAILS
+                                final userProfile = ref.read(profileProvider).userProfile;
+                                final currentUserName = userProfile?['fullName'] ?? "Alumni User";
+                                final currentUserAvatar = userProfile?['profilePicture'];
+
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => CallScreen(
                                       remoteId: callerId!,
                                       remoteName: name,
+                                      remoteAvatar: avatar, // ✅ Passed avatar for UI
                                       channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
                                       isIncoming: false,
+                                      currentUserName: currentUserName,      // ✅ FIXED
+                                      currentUserAvatar: currentUserAvatar,  // ✅ FIXED
                                     ),
                                   ),
                                 );

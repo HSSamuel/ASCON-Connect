@@ -5,6 +5,11 @@ import 'dart:async';
 import 'package:intl/intl.dart'; 
 import 'package:url_launcher/url_launcher.dart'; 
 import 'package:cached_network_image/cached_network_image.dart'; 
+
+// ✅ IMPORT RIVERPOD & PROFILE VIEW MODEL
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../viewmodels/profile_view_model.dart'; 
+
 import '../widgets/full_screen_image.dart'; 
 import 'chat_screen.dart'; 
 import 'call_screen.dart'; // ✅ Import Call Screen
@@ -12,16 +17,18 @@ import '../services/data_service.dart';
 import '../services/socket_service.dart';
 import '../utils/presence_formatter.dart'; 
 
-class AlumniDetailScreen extends StatefulWidget {
+// ✅ CHANGE TO ConsumerStatefulWidget
+class AlumniDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> alumniData;
 
   const AlumniDetailScreen({super.key, required this.alumniData});
 
   @override
-  State<AlumniDetailScreen> createState() => _AlumniDetailScreenState();
+  ConsumerState<AlumniDetailScreen> createState() => _AlumniDetailScreenState();
 }
 
-class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
+// ✅ CHANGE TO ConsumerState
+class _AlumniDetailScreenState extends ConsumerState<AlumniDetailScreen> {
   final DataService _dataService = DataService();
   
   late Map<String, dynamic> _currentAlumniData;
@@ -217,13 +224,18 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
     }
   }
 
-  // ✅ UPDATED: Agora Voice Call Integration
+  // ✅ FIXED: Using ref.read to get current user data
   void _startVoiceCall() {
     final String targetId = _currentAlumniData['userId'] ?? _currentAlumniData['_id'];
     final String fullName = _currentAlumniData['fullName'] ?? 'Alumni Member';
     final String? profilePic = _currentAlumniData['profilePicture']; 
 
     String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
+
+    // ✅ Fetch current user details from profileProvider
+    final userProfile = ref.read(profileProvider).userProfile;
+    final String currentUserName = userProfile?['fullName'] ?? "Alumni User";
+    final String? currentUserAvatar = userProfile?['profilePicture'];
 
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
@@ -233,6 +245,8 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
           channelName: uniqueChannel,
           remoteAvatar: profilePic,
           isIncoming: false,
+          currentUserName: currentUserName,      // ✅ Correctly defined now
+          currentUserAvatar: currentUserAvatar,  // ✅ Correctly defined now
         ),
       ),
     );
@@ -536,7 +550,7 @@ class _AlumniDetailScreenState extends State<AlumniDetailScreen> {
 
                   const SizedBox(height: 10),
 
-                  // ✅ ACTION BUTTONS (Voice Call Added)
+                  // ✅ ACTION BUTTONS
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(

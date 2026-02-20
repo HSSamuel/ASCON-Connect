@@ -1,6 +1,6 @@
 import 'dart:async'; 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // Required for defaultTargetPlatform
+import 'package:flutter/foundation.dart'; 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'; 
@@ -11,8 +11,7 @@ import 'config/theme.dart';
 import 'config.dart';
 import 'router.dart'; 
 import 'utils/error_handler.dart'; 
-import 'services/call_service.dart';
-import 'screens/call_screen.dart'; // ✅ Added CallScreen import
+import 'screens/call_screen.dart'; 
 
 final GlobalKey<NavigatorState> navigatorKey = rootNavigatorKey;
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
@@ -37,10 +36,8 @@ void main() async {
   await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     
-    // ✅ Updated to env.txt from your earlier web fix
     await dotenv.load(fileName: "env.txt");
     
-    // Initialize Socket (Lazy connection)
     SocketService().initSocket();
 
     bool isMobile = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
@@ -64,7 +61,6 @@ void main() async {
       }
     }
 
-    // Initialize Notification Service (Mobile Only)
     if (isMobile) {
        await NotificationService().init();
     }
@@ -95,19 +91,25 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _listenForIncomingCalls() {
-    // This listens globally for the socket 'incoming_call' event
     _callSubscription = SocketService().callEvents.listen((event) {
       if (event['type'] == 'incoming') {
         final data = event['data'];
         
-        // Push the Call Screen over whatever the user is currently looking at
+        // ✅ MAP GROUP CALL UI
+        bool isGroup = data['callerData']?['isGroupCall'] ?? false;
+        String displayRemoteName = isGroup 
+            ? (data['callerData']?['groupName'] ?? "Group Call") 
+            : (data['callerData']?['callerName'] ?? "Alumni User");
+
         if (navigatorKey.currentContext != null) {
           Navigator.of(navigatorKey.currentContext!, rootNavigator: true).push(
             MaterialPageRoute(
               builder: (context) => CallScreen(
-                remoteName: data['callerData']?['callerName'] ?? "Alumni User",
+                isGroupCall: isGroup, // ✅ Pass Group Flag
+                remoteName: displayRemoteName,
                 remoteId: data['callerId'] ?? "", 
                 channelName: data['channelName'] ?? "",
+                remoteAvatar: data['callerData']?['callerAvatar'], 
                 isIncoming: true, 
               ),
             ),

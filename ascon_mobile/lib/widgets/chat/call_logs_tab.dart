@@ -2,19 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Added
+
+import '../../viewmodels/profile_view_model.dart'; // ✅ Added
 import '../../services/api_client.dart';
 import '../../services/socket_service.dart';
 import '../../screens/call_screen.dart';
 import '../../screens/call_log_detail_screen.dart';
 
-class CallLogsTab extends StatefulWidget {
+// ✅ Converted to ConsumerStatefulWidget to fetch profile data
+class CallLogsTab extends ConsumerStatefulWidget {
   const CallLogsTab({super.key});
 
   @override
-  State<CallLogsTab> createState() => _CallLogsTabState();
+  ConsumerState<CallLogsTab> createState() => _CallLogsTabState();
 }
 
-class _CallLogsTabState extends State<CallLogsTab> {
+class _CallLogsTabState extends ConsumerState<CallLogsTab> {
   final ApiClient _api = ApiClient();
   final SocketService _socketService = SocketService();
   
@@ -49,7 +53,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
       if (res['success'] == true) {
         final serverResponse = res['data']; 
 
-        // Handle nested list structure { success: true, data: [...] }
         if (serverResponse is Map && serverResponse['data'] is List) {
           if (mounted) {
             setState(() {
@@ -58,7 +61,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
             });
           }
         } else if (serverResponse is List) {
-          // Fallback if backend returns direct list
           if (mounted) {
             setState(() {
               _logs = serverResponse;
@@ -80,18 +82,16 @@ class _CallLogsTabState extends State<CallLogsTab> {
 
   Future<void> _deleteLog(String id) async {
     try {
-      // Optimistic update
       setState(() {
         _logs.removeWhere((l) => l['_id'] == id);
       });
       await _api.delete('/api/calls/$id');
     } catch (e) {
       debugPrint("Delete error: $e");
-      _fetchLogs(); // Revert on error
+      _fetchLogs(); 
     }
   }
 
-  // 🔹 NEW: Grouping Logic for Consecutive Calls
   List<Map<String, dynamic>> _groupConsecutiveLogs(List<dynamic> logs) {
     if (logs.isEmpty) return [];
 
@@ -102,25 +102,21 @@ class _CallLogsTabState extends State<CallLogsTab> {
       final current = logs[i];
       final previous = logs[i - 1];
 
-      // Check if same remoteId
       final currentRemote = current['remoteId'];
       final previousRemote = previous['remoteId'];
 
       if (currentRemote != null && currentRemote == previousRemote) {
         currentGroup.add(current);
       } else {
-        // Finalize previous group
         grouped.add({
-          'primary': currentGroup.first, // The most recent log is the primary
+          'primary': currentGroup.first, 
           'count': currentGroup.length,
           'logs': List.from(currentGroup),
         });
-        // Start new group
         currentGroup = [current];
       }
     }
     
-    // Add the final group
     grouped.add({
       'primary': currentGroup.first,
       'count': currentGroup.length,
@@ -131,7 +127,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
   }
 
   void _openLogDetails(Map<String, dynamic> log) {
-    // We filter _logs to pass ALL history for this user to the detail screen
     final userLogs = _logs.where((l) => l['remoteId'] == log['remoteId']).toList();
     final strictLogs = userLogs.map((e) => Map<String, dynamic>.from(e)).toList();
 
@@ -164,7 +159,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
       );
     }
 
-    // ✅ Apply Grouping
     final groupedLogs = _groupConsecutiveLogs(_logs);
 
     return RefreshIndicator(
@@ -174,12 +168,12 @@ class _CallLogsTabState extends State<CallLogsTab> {
         separatorBuilder: (c, i) => Divider(height: 1, indent: 70, color: Colors.grey.withOpacity(0.1)),
         itemBuilder: (context, index) {
           final group = groupedLogs[index];
-          final log = group['primary']; // Use the primary log for display
+          final log = group['primary']; 
           final int count = group['count'];
           final String type = log['type'] ?? 'dialed'; 
           
           return Dismissible(
-            key: Key(log['_id']), // Deleting the primary item
+            key: Key(log['_id']), 
             direction: DismissDirection.endToStart,
             background: Container(
               color: Colors.red,
@@ -206,7 +200,6 @@ class _CallLogsTabState extends State<CallLogsTab> {
                       ),
                     ),
                   ),
-                  // ✅ COUNTER BADGE
                   if (count > 1) ...[
                     const SizedBox(width: 6),
                     Container(
@@ -241,14 +234,21 @@ class _CallLogsTabState extends State<CallLogsTab> {
               trailing: IconButton(
                 icon: const Icon(Icons.call, color: Colors.green),
                 onPressed: () {
+                  // ✅ FIXED: Fetch profile data correctly
+                  final userProfile = ref.read(profileProvider).userProfile;
+                  final currentUserName = userProfile?['fullName'] ?? "Alumni User";
+                  final currentUserAvatar = userProfile?['profilePicture'];
+
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => CallScreen(
-  remoteName: log.remoteName, // (Keep whatever variable is already here)
-  remoteId: log.remoteId,     // (Keep whatever variable is already here)
-  // ADD THESE TWO LINES:
-  channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
-  isIncoming: false,
-)
+                      remoteName: log['remoteName'] ?? "Unknown", // ✅ FIXED Map Access
+                      remoteId: log['remoteId'],                  // ✅ FIXED Map Access
+                      remoteAvatar: log['remotePic'],
+                      channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
+                      isIncoming: false,
+                      currentUserName: currentUserName,           // ✅ Correctly passed
+                      currentUserAvatar: currentUserAvatar,       // ✅ Correctly passed
+                    )
                   ));
                 },
               ),

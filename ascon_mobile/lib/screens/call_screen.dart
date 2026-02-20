@@ -1,23 +1,32 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:audioplayers/audioplayers.dart'; 
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
 
 class CallScreen extends StatefulWidget {
+  final bool isGroupCall;          // ✅ Added for Group Logic
+  final List<String>? targetIds;   // ✅ Added to ring multiple people
   final String remoteName;
-  final String remoteId;
-  final String channelName; // The unique room name (e.g. "call_123_456")
+  final String? remoteId;          // Nullable now (initiator doesn't need it for groups)
+  final String channelName; 
   final String? remoteAvatar; 
   final bool isIncoming; 
+  final String? currentUserName;   
+  final String? currentUserAvatar; 
 
   const CallScreen({
     super.key, 
+    this.isGroupCall = false, // defaults to false
+    this.targetIds,
     required this.remoteName, 
-    required this.remoteId,
+    this.remoteId,
     required this.channelName,
     this.remoteAvatar,
     this.isIncoming = false, 
+    this.currentUserName,     
+    this.currentUserAvatar,   
   });
 
   @override
@@ -27,12 +36,14 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   final CallService _callService = CallService();
   final SocketService _socketService = SocketService();
+  final AudioPlayer _audioPlayer = AudioPlayer(); 
   
   String _status = "Connecting...";
   bool _isMuted = false;
   bool _isSpeakerOn = false;
   bool _isConnected = false;
   bool _hasAccepted = false;
+  int _activeGroupUsers = 0; // ✅ Tracks how many people are in the group call
 
   StreamSubscription<CallEvent>? _listener;
   StreamSubscription<Map<String, dynamic>>? _socketListener;
@@ -55,22 +66,51 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     if (widget.isIncoming) {
       _status = "Incoming Call...";
       _pulseController.repeat(reverse: true);
+      _playRingtone(); 
     } else {
       _status = "Ringing...";
       _startOutgoingCall();
+      _playDialingSound(); 
     }
   }
 
+  void _playRingtone() async {
+    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    await _audioPlayer.play(AssetSource('sounds/ringtone.mp3'));
+  }
+
+  void _playDialingSound() async {
+    await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    await _audioPlayer.play(AssetSource('sounds/dialing.mp3'));
+  }
+
+  void _stopAudio() async {
+    await _audioPlayer.stop();
+  }
+
   void _startOutgoingCall() async {
-    // 1. Join the Agora Channel
     bool success = await _callService.joinCall(channelName: widget.channelName);
     
     if (success) {
-      // 2. Tell the other user's phone to ring via Socket
-      _socketService.initiateCall(widget.remoteId, widget.channelName, {
-        'callerName': "Ascon User", // Replace with actual current user name if available
-        'callerAvatar': null
-      });
+      // ✅ GROUP CALL LOOP
+      if (widget.isGroupCall && widget.targetIds != null) {
+        for (String target in widget.targetIds!) {
+          _socketService.initiateCall(target, widget.channelName, {
+            'callerName': widget.currentUserName ?? "Unknown User", 
+            'callerAvatar': widget.currentUserAvatar,
+            'isGroupCall': true,
+            'groupName': widget.remoteName // Send group name so receivers see it
+          });
+        }
+      } 
+      // 1-ON-1 CALL
+      else if (widget.remoteId != null) {
+        _socketService.initiateCall(widget.remoteId!, widget.channelName, {
+          'callerName': widget.currentUserName ?? "Unknown User", 
+          'callerAvatar': widget.currentUserAvatar,
+          'isGroupCall': false
+        });
+      }
     } else {
       _endCallUI("Call Failed");
     }
@@ -82,42 +122,71 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       _status = "Connecting...";
     });
     
-    // 1. Tell caller we answered
-    _socketService.answerCall(widget.remoteId, widget.channelName);
+    _stopAudio(); 
+
+    if (widget.remoteId != null) {
+      _socketService.answerCall(widget.remoteId!, widget.channelName);
+    }
     
-    // 2. Join the Agora Audio Room
     await _callService.joinCall(channelName: widget.channelName);
   }
 
   void _listenToEvents() {
-    // Listen to Agora Audio Engine Events
     _listener = _callService.callEvents.listen((event) {
       if (!mounted) return;
       setState(() {
         if (event == CallEvent.connected) {
-          _status = "Connected";
+          // ✅ Group logic vs 1-on-1 logic
+          if (widget.isGroupCall) {
+            _activeGroupUsers++;
+            _status = "Connected ($_activeGroupUsers joined)";
+          } else {
+            _status = "Connected";
+          }
+          
           _isConnected = true;
+          _stopAudio(); 
           _pulseController.stop();
           _startTimer();
         } else if (event == CallEvent.callEnded) {
-          _endCallUI("Call Ended");
+          // ✅ If someone leaves a group call, don't end it for everyone
+          if (widget.isGroupCall) {
+            _activeGroupUsers--;
+            if (_activeGroupUsers > 0) {
+              _status = "Connected ($_activeGroupUsers joined)";
+            } else {
+              _status = "Waiting for others...";
+            }
+          } else {
+            _endCallUI("Call Ended");
+          }
         }
       });
     });
 
-    // Listen to Socket Events (if the other person hangs up while ringing)
     _socketListener = _socketService.callEvents.listen((event) {
       if (!mounted) return;
+      
       if (event['type'] == 'ended' && event['data']['channelName'] == widget.channelName) {
-        _endCallUI("Call Ended");
+        if (widget.isGroupCall) {
+           // If I'm ringing and the person who started the group call cancels it, stop ringing
+           if (widget.isIncoming && !_hasAccepted && event['data']['callerId'] == widget.remoteId) {
+             _endCallUI("Call Ended");
+           }
+        } else {
+           _endCallUI("Call Ended");
+        }
       } else if (event['type'] == 'answered' && event['data']['channelName'] == widget.channelName) {
-        setState(() => _status = "Connecting Audio...");
+        if (!widget.isGroupCall) {
+          setState(() => _status = "Connecting Audio...");
+        }
       }
     });
   }
 
   void _endCallUI(String message) {
     setState(() => _status = message);
+    _stopAudio(); 
     _stopTimer();
     _pulseController.stop();
     _callService.leaveCall();
@@ -145,6 +214,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _stopAudio(); 
+    _audioPlayer.dispose();
     _listener?.cancel();
     _socketListener?.cancel();
     _stopTimer();
@@ -171,9 +242,20 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
               const Spacer(flex: 2),
               _buildPulsingAvatar(),
               const SizedBox(height: 30),
+              
+              // Add Group Call Label
+              if (widget.isGroupCall)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  margin: const EdgeInsets.only(bottom: 8.0),
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
+                  child: const Text("GROUP CALL", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+
               Text(
                 widget.remoteName,
                 style: GoogleFonts.lato(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
@@ -182,23 +264,22 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
               ),
               const Spacer(flex: 3),
               
-              // Controls UI
               Padding(
                 padding: const EdgeInsets.only(bottom: 50.0),
                 child: widget.isIncoming && !_hasAccepted 
                 ? Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // Decline Button
                       _buildActionCircle(Icons.call_end, Colors.redAccent, () {
-                        _socketService.endCall(widget.remoteId, widget.channelName);
+                        if (widget.remoteId != null) {
+                          _socketService.endCall(widget.remoteId!, widget.channelName);
+                        }
                         _endCallUI("Declined");
                       }),
-                      // Accept Button
                       _buildActionCircle(Icons.call, Colors.green, _acceptIncomingCall),
                     ],
                   )
-                : Row( // Active Call Controls
+                : Row( 
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
                       _buildControlButton(
@@ -211,7 +292,14 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                         },
                       ),
                       _buildActionCircle(Icons.call_end, Colors.redAccent, () {
-                        _socketService.endCall(widget.remoteId, widget.channelName);
+                        // ✅ Loop end_call for group targets if caller drops
+                        if (widget.isGroupCall && widget.targetIds != null && !widget.isIncoming) {
+                           for(String target in widget.targetIds!) {
+                              _socketService.endCall(target, widget.channelName);
+                           }
+                        } else if (widget.remoteId != null) {
+                           _socketService.endCall(widget.remoteId!, widget.channelName);
+                        }
                         _endCallUI("Call Ended");
                       }),
                       _buildControlButton(
@@ -234,12 +322,18 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildPulsingAvatar() {
+    // ✅ Add this check: Ensure it's not null AND not an empty string
+    final bool hasValidAvatar = widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty;
+
     Widget avatar = CircleAvatar(
       radius: 65,
       backgroundColor: Colors.white24,
-      backgroundImage: widget.remoteAvatar != null ? NetworkImage(widget.remoteAvatar!) : null,
-      child: widget.remoteAvatar == null ? Text(widget.remoteName[0].toUpperCase(), style: const TextStyle(fontSize: 48, color: Colors.white)) : null,
+      backgroundImage: hasValidAvatar ? NetworkImage(widget.remoteAvatar!) : null,
+      child: !hasValidAvatar 
+        ? Text(widget.remoteName.isNotEmpty ? widget.remoteName[0].toUpperCase() : "?", style: const TextStyle(fontSize: 48, color: Colors.white)) 
+        : null,
     );
+    
     if (_isConnected) return avatar;
 
     return Stack(
