@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart'; 
@@ -6,12 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart'; 
 import '../services/socket_service.dart'; 
-import '../services/biometric_service.dart'; 
+import '../services/biometric_service.dart'; // ✅ Added import
 import '../config.dart'; 
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import 'welcome_dialog.dart'; 
-import 'edit_profile_screen.dart'; // ✅ Required for profile completion
 
 class LoginScreen extends StatefulWidget {
   final Map<String, dynamic>? pendingNavigation;
@@ -26,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-  final BiometricService _biometricService = BiometricService(); 
+  final BiometricService _biometricService = BiometricService(); // ✅ Instance
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? AppConfig.googleWebClientId : null,
@@ -45,14 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!kIsWeb) {
       _checkBiometrics();
     }
-  }
-
-  // ✅ ADDED: Dispose method to prevent memory leaks
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
   }
 
   Future<void> _checkBiometrics() async {
@@ -125,25 +117,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     String safeName = user['fullName'] ?? "Alumni"; 
-
-    // ✅ CRITICAL: ENFORCE PROFILE COMPLETION
-    // If yearOfAttendance is missing (null, 0, or "null"), stop here and redirect.
-    var year = user['yearOfAttendance'];
-    if (year == null || year == 0 || year == "null" || year.toString().trim().isEmpty) {
-      debugPrint("⚠️ Incomplete Profile Detected. Redirecting to Edit Profile.");
-      if (!mounted) return;
-      
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => EditProfileScreen(
-            userData: user,
-            isFirstTime: true, // ✅ Forces "Onboarding Mode" (No back button)
-          ),
-        ),
-      );
-      return;
-    }
 
     // Handle Pending Navigation
     if (widget.pendingNavigation != null) {
@@ -296,185 +269,213 @@ class _LoginScreenState extends State<LoginScreen> {
     final cardColor = Theme.of(context).cardColor;
     final bool isAnyLoading = _isEmailLoading || _isGoogleLoading;
 
-    // A modern input decoration template
-    InputDecoration modernInputDecoration(String label, IconData icon) {
-      return InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon, color: primaryColor, size: 22),
-        filled: true,
-        fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: primaryColor, width: 1.5),
-        ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      );
-    }
-
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch, // ✅ Makes elements fill width naturally
-              children: [
-                Center(
-                  child: Container(
-                    height: 110, width: 110,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle, 
-                      color: cardColor,
-                      boxShadow: [BoxShadow(color: isDark ? Colors.black38 : Colors.black12, blurRadius: 20, offset: const Offset(0, 10))]
-                    ),
-                    child: ClipOval(child: Image.asset('assets/logo.png', fit: BoxFit.cover, errorBuilder: (c, o, s) => Icon(Icons.school, size: 60, color: primaryColor))),
-                  ),
-                ),
-                const SizedBox(height: 32), 
-                
-                Text('Welcome Back', textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: primaryColor, letterSpacing: -0.5)),
-                const SizedBox(height: 6),
-                Text('Sign in to access your alumni network', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: subTextColor, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 36), 
-
-                // ✅ OPTIMIZED: Email Keyboard & Next Action
-                TextFormField(
-                  controller: _emailController, 
-                  enabled: !isAnyLoading, 
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  decoration: modernInputDecoration('Email Address', Icons.email_outlined),
-                ),
-                const SizedBox(height: 16), 
-                
-                // ✅ OPTIMIZED: Done Action
-                TextFormField(
-                  controller: _passwordController, 
-                  enabled: !isAnyLoading, 
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => loginUser(), // Hit enter to login
-                  decoration: modernInputDecoration('Password', Icons.lock_outline).copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 22), 
-                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword)
-                    ),
-                  ),
-                ),
-                
-                Align(
-                  alignment: Alignment.centerRight, 
-                  child: TextButton(
-                    onPressed: isAnyLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())), 
-                    child: Text("Forgot Password?", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13))
-                  )
-                ),
-                const SizedBox(height: 8),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 54, // ✅ Taller, more premium button
-                        child: ElevatedButton(
-                          onPressed: isAnyLoading ? null : loginUser, 
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor, 
-                            foregroundColor: Colors.white, 
-                            elevation: 2,
-                            shadowColor: primaryColor.withOpacity(0.4),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
-                          ), 
-                          child: _isEmailLoading 
-                            ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) 
-                            : const Text('LOGIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1.2))
-                        )
-                      ),
-                    ),
-                    if (_canCheckBiometrics) ...[
-                      const SizedBox(width: 16),
-                      Container(
-                        height: 54, width: 54,
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [if(!isDark) BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-                          border: Border.all(color: primaryColor.withOpacity(0.2), width: 1.5)
-                        ),
-                        child: IconButton(
-                          icon: Icon(Icons.fingerprint, color: primaryColor, size: 28),
-                          onPressed: isAnyLoading ? null : _handleBiometricLogin,
-                        ),
-                      )
-                    ]
-                  ],
-                ),
-                const SizedBox(height: 30),
-
-                // ✅ ADDED: Premium "OR" Divider
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], thickness: 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text("OR", style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.w800)),
-                    ),
-                    Expanded(child: Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], thickness: 1)),
-                  ],
-                ),
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  height: 54, 
-                  child: OutlinedButton(
-                    onPressed: isAnyLoading ? null : signInWithGoogle, 
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 1.5), 
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
-                      backgroundColor: cardColor
-                    ), 
-                    child: _isGoogleLoading 
-                      ? SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: primaryColor, strokeWidth: 2.5)) 
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center, 
-                          children: [
-                            // You can replace this icon with a Google SVG asset later
-                            Icon(Icons.g_mobiledata_rounded, color: isDark ? Colors.white : Colors.black87, size: 32), 
-                            const SizedBox(width: 8), 
-                            Text(
-                              "Continue with Google", 
-                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 15)
-                            )
-                          ]
-                        )
-                  )
-                ),
-                const SizedBox(height: 40),
-                
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center, 
-                  children: [
-                    Text("New here? ", style: TextStyle(fontSize: 14, color: subTextColor)), 
-                    GestureDetector(
-                      onTap: () { 
-                        if (!isAnyLoading) Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())); 
-                      }, 
-                      child: Text("Create Account", style: TextStyle(color: primaryColor, fontWeight: FontWeight.w800, fontSize: 14))
-                    )
-                  ]
-                ),
-              ],
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF0F4F8),
+      body: Stack(
+        children: [
+          // ==========================================
+          // 1. FLOATING BACKGROUND ORBS
+          // ==========================================
+          // Top Left Orb
+          Positioned(
+            top: -50,
+            left: -50,
+            child: Container(
+              height: 250,
+              width: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(isDark ? 0.3 : 0.2),
+              ),
             ),
           ),
-        ),
+          // Bottom Right Orb
+          Positioned(
+            bottom: -100,
+            right: -50,
+            child: Container(
+              height: 300,
+              width: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(isDark ? 0.4 : 0.15),
+              ),
+            ),
+          ),
+          
+          // ==========================================
+          // 2. FROSTED GLASS EFFECT (BackdropFilter)
+          // ==========================================
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 60.0, sigmaY: 60.0), // Heavy blur for premium look
+              child: const SizedBox(), // Empty container to hold the blur
+            ),
+          ),
+
+          // ==========================================
+          // 3. THE FOREGROUND LOGIN CONTENT
+          // ==========================================
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                child: Container(
+                  // The "Glass Pane" card
+                  padding: const EdgeInsets.all(24.0),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.8),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Center(
+                        child: Container(
+                          height: 90, width: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle, 
+                            color: Colors.white, // Ensure logo pops on glass
+                            boxShadow: [
+                              BoxShadow(
+                                color: primaryColor.withOpacity(0.2), 
+                                blurRadius: 15, 
+                                offset: const Offset(0, 8)
+                              )
+                            ]
+                          ),
+                          child: ClipOval(
+                            child: Image.asset('assets/logo.png', fit: BoxFit.cover, errorBuilder: (c, o, s) => Icon(Icons.school, size: 70, color: primaryColor))
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16), 
+                      Text('Welcome Back', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: -0.5)),
+                      const SizedBox(height: 4),
+                      Text('Sign in to access your alumni network', style: TextStyle(fontSize: 14, color: subTextColor)),
+                      const SizedBox(height: 28), 
+
+                      // Text Fields
+                      TextFormField(
+                        controller: _emailController, 
+                        enabled: !isAnyLoading, 
+                        decoration: InputDecoration(
+                          labelText: 'Email Address', 
+                          prefixIcon: Icon(Icons.email_outlined, color: primaryColor, size: 20),
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5), // Semi-transparent fields
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        )
+                      ),
+                      const SizedBox(height: 12), 
+                      TextFormField(
+                        controller: _passwordController, 
+                        enabled: !isAnyLoading, 
+                        obscureText: _obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: 'Password', 
+                          prefixIcon: Icon(Icons.lock_outline, color: primaryColor, size: 20),
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          suffixIcon: IconButton(icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 20), onPressed: () => setState(() => _obscurePassword = !_obscurePassword)),
+                        ),
+                      ),
+                      
+                      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: isAnyLoading ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())), child: Text("Forgot Password?", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 13)))),
+                      const SizedBox(height: 8),
+
+                      // Login & Biometric Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: 50, // Slightly taller for premium feel
+                              child: ElevatedButton(
+                                onPressed: isAnyLoading ? null : loginUser, 
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor, 
+                                  foregroundColor: Colors.white, 
+                                  elevation: 5,
+                                  shadowColor: primaryColor.withOpacity(0.5),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                                ), 
+                                child: _isEmailLoading 
+                                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                                  : const Text('LOGIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2))
+                              )
+                            ),
+                          ),
+                          if (_canCheckBiometrics) ...[
+                            const SizedBox(width: 12),
+                            Container(
+                              height: 50, width: 50,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: primaryColor.withOpacity(0.3))
+                              ),
+                              child: IconButton(
+                                icon: Icon(Icons.fingerprint, color: primaryColor, size: 26),
+                                onPressed: isAnyLoading ? null : _handleBiometricLogin,
+                              ),
+                            )
+                          ]
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Google Button
+                      SizedBox(
+                        width: double.infinity, 
+                        height: 50, 
+                        child: OutlinedButton(
+                          onPressed: isAnyLoading ? null : signInWithGoogle, 
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: primaryColor.withOpacity(0.5), width: 1.5), 
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+                            backgroundColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5)
+                          ), 
+                          child: _isGoogleLoading 
+                            ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: primaryColor, strokeWidth: 2)) 
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center, 
+                                children: [
+                                  Image.asset('assets/images/google_logo.png', height: 22), 
+                                  const SizedBox(width: 10), 
+                                  Text("Continue with Google", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 15))
+                                ]
+                              )
+                        )
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center, 
+                        children: [
+                          Text("New here? ", style: TextStyle(fontSize: 14, color: subTextColor)), 
+                          GestureDetector(
+                            onTap: () { if (!isAnyLoading) Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())); }, 
+                            child: Text("Create Account", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 14))
+                          )
+                        ]
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

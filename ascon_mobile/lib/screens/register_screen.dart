@@ -1,3 +1,4 @@
+import 'dart:ui'; // ✅ Needed for Glassmorphism blur
 import 'package:flutter/material.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl/intl.dart'; // ✅ Needed for Date Format
@@ -56,7 +57,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   // ✅ Date Picker Logic
- Future<void> _pickDate() async {
+  Future<void> _pickDate() async {
     final DateTime now = DateTime.now();
     // Normalize to Midnight to avoid time conflicts
     final DateTime today = DateTime(now.year, now.month, now.day);
@@ -187,8 +188,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
         phoneNumber: _completePhoneNumber, 
-        // ✅ Simplified: We pass empty strings here.
-        // The backend has been updated to ignore these and force profile completion later.
         programmeTitle: "",
         yearOfAttendance: "",
         googleToken: widget.googleToken,
@@ -217,146 +216,212 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).primaryColor;
-    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF0F4F8),
+      extendBodyBehindAppBar: true, // ✅ Allows glassmorphism to flow under AppBar
       appBar: AppBar(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        backgroundColor: Colors.transparent, // ✅ Transparent to see the blur
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: primaryColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                
-                Center(
-                  child: Container(
-                    height: 100, width: 100,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: isDark ? Colors.black38 : Colors.black12,
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        )
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/logo.png', 
-                        fit: BoxFit.cover,
-                        errorBuilder: (c,o,s) => Icon(Icons.school, size: 80, color: primaryColor)
-                      ),
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(height: 20),
-
-                Text(
-                  "Create Account",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryColor),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Join the ASCON Alumni Network",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: subTextColor),
-                ),
-                const SizedBox(height: 30),
-
-                _buildTextField("Full Name", _nameController, Icons.person_outline),
-                const SizedBox(height: 16),
-                _buildTextField("Email Address", _emailController, Icons.email_outlined),
-                const SizedBox(height: 16),
-
-                // ✅ Date of Birth Field (Optional)
-                _buildTextField(
-                  "Date of Birth (Optional)",
-                  _dobController,
-                  Icons.cake_outlined,
-                  readOnly: true,
-                  onTap: _pickDate,
-                ),
-                const SizedBox(height: 16),
-
-                IntlPhoneField(
-                  decoration: InputDecoration(
-                    labelText: 'Phone Number',
-                    labelStyle: TextStyle(fontSize: 13, color: subTextColor),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-                  ),
-                  initialCountryCode: 'NG', 
-                  style: TextStyle(fontSize: 14, color: textColor),
-                  dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
-                  onChanged: (phone) {
-                    _completePhoneNumber = phone.completeNumber; 
-                  },
-                ),
-                
-                // ❌ REMOVED: Programme Dropdown & Custom Programme Field
-                // ❌ REMOVED: Year of Attendance Field
-
-                const SizedBox(height: 16),
-                
-                _buildTextField("Password", _passwordController, Icons.lock_outline, isPassword: true),
-                const SizedBox(height: 16),
-                _buildTextField("Confirm Password", _confirmPasswordController, Icons.lock_outline, isPassword: true),
-
-                const SizedBox(height: 30),
-
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: _handleRegister, 
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text("REGISTER", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text("Already a member? ", style: TextStyle(color: subTextColor)),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.pushAndRemoveUntil(
-                          context, 
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          (route) => false
-                        );
-                      },
-                      child: Text("Login", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 30),
-              ],
+      body: Stack(
+        children: [
+          // ==========================================
+          // 1. FLOATING BACKGROUND ORBS
+          // ==========================================
+          Positioned(
+            top: -50,
+            left: -50,
+            child: Container(
+              height: 250,
+              width: 250,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(isDark ? 0.3 : 0.2),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            bottom: -100,
+            right: -50,
+            child: Container(
+              height: 300,
+              width: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(isDark ? 0.4 : 0.15),
+              ),
+            ),
+          ),
+          
+          // ==========================================
+          // 2. FROSTED GLASS EFFECT (BackdropFilter)
+          // ==========================================
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 60.0, sigmaY: 60.0),
+              child: const SizedBox(),
+            ),
+          ),
+
+          // ==========================================
+          // 3. FOREGROUND CONTENT
+          // ==========================================
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
+              child: Container(
+                // ✅ The "Glass Pane" Card
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.black.withOpacity(0.4) : Colors.white.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: isDark ? Colors.white.withOpacity(0.1) : Colors.white.withOpacity(0.8),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    )
+                  ],
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          height: 90, width: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle, 
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: primaryColor.withOpacity(0.2), 
+                                blurRadius: 15, 
+                                offset: const Offset(0, 8)
+                              )
+                            ]
+                          ),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/logo.png', 
+                              fit: BoxFit.cover,
+                              errorBuilder: (c,o,s) => Icon(Icons.school, size: 70, color: primaryColor)
+                            )
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
+
+                      Text(
+                        "Create Account",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: primaryColor, letterSpacing: -0.5),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Join the ASCON Alumni Network",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 14, color: subTextColor),
+                      ),
+                      const SizedBox(height: 30),
+
+                      _buildTextField("Full Name", _nameController, Icons.person_outline),
+                      const SizedBox(height: 16),
+                      _buildTextField("Email Address", _emailController, Icons.email_outlined),
+                      const SizedBox(height: 16),
+
+                      _buildTextField(
+                        "Date of Birth (Optional)",
+                        _dobController,
+                        Icons.cake_outlined,
+                        readOnly: true,
+                        onTap: _pickDate,
+                      ),
+                      const SizedBox(height: 16),
+
+                      IntlPhoneField(
+                        decoration: InputDecoration(
+                          labelText: 'Phone Number',
+                          labelStyle: TextStyle(fontSize: 13, color: subTextColor),
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5), // ✅ Premium transparency
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), // ✅ Removed hard border
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                        ),
+                        initialCountryCode: 'NG', 
+                        style: TextStyle(fontSize: 14, color: textColor),
+                        dropdownTextStyle: TextStyle(fontSize: 14, color: textColor),
+                        onChanged: (phone) {
+                          _completePhoneNumber = phone.completeNumber; 
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+                      
+                      _buildTextField("Password", _passwordController, Icons.lock_outline, isPassword: true),
+                      const SizedBox(height: 16),
+                      _buildTextField("Confirm Password", _confirmPasswordController, Icons.lock_outline, isPassword: true),
+
+                      const SizedBox(height: 32),
+
+                      SizedBox(
+                        height: 50, // ✅ Taller for premium feel
+                        child: ElevatedButton(
+                          onPressed: _handleRegister, 
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            foregroundColor: Colors.white,
+                            elevation: 5,
+                            shadowColor: primaryColor.withOpacity(0.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text("REGISTER", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text("Already a member? ", style: TextStyle(fontSize: 14, color: subTextColor)),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pushAndRemoveUntil(
+                                context, 
+                                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                (route) => false
+                              );
+                            },
+                            child: Text("Login", style: TextStyle(color: primaryColor, fontSize: 14, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // ✅ Updated to match the Glassmorphism aesthetics
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, {bool isPassword = false, bool isNumber = false, bool readOnly = false, VoidCallback? onTap}) {
     final subTextColor = Theme.of(context).textTheme.bodyMedium?.color;
     final textColor = Theme.of(context).textTheme.bodyLarge?.color;
@@ -370,17 +435,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       onTap: onTap,
       style: TextStyle(fontSize: 14, color: textColor),
       validator: (value) {
-        if (label.contains("Optional")) return null; // ✅ Allow empty DOB
+        if (label.contains("Optional")) return null; 
         return value == null || value.isEmpty ? 'Field required' : null;
       },
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(fontSize: 13, color: subTextColor),
         prefixIcon: Icon(icon, color: primaryColor, size: 20),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        filled: true,
+        fillColor: Theme.of(context).scaffoldBackgroundColor.withOpacity(0.5), // ✅ Transparent background
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none), // ✅ Soft rounded corners
         suffixIcon: isPassword 
           ? IconButton(
-              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: Colors.grey, size: 20),
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
             ) 
           : null,
