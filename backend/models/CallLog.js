@@ -5,20 +5,24 @@ const callLogSchema = new mongoose.Schema(
     caller: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
-      required: true, // ✅ Restored since we no longer have external webhooks creating empty logs
+      required: true,
     },
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "UserAuth",
       required: true,
     },
-    // Used by Agora & Socket to map active rooms to this DB record
     channelName: {
       type: String,
       required: true,
       index: true,
     },
-    // status: 'initiated', 'ringing', 'ongoing', 'ended', 'missed', 'declined'
+    // ✅ Differentiate between Voice and Video
+    callType: {
+      type: String,
+      enum: ["voice", "video"],
+      default: "voice", // Defaults to voice for backward compatibility
+    },
     status: {
       type: String,
       enum: ["initiated", "ringing", "ongoing", "ended", "missed", "declined"],
@@ -26,9 +30,8 @@ const callLogSchema = new mongoose.Schema(
     },
     startTime: { type: Date, default: Date.now },
     endTime: { type: Date },
-    duration: { type: Number, default: 0 }, // In seconds
+    duration: { type: Number, default: 0 },
 
-    // Snapshot of user details at the time of call (optional but useful for mobile UI history)
     callerName: { type: String },
     callerPic: { type: String },
     receiverName: { type: String },

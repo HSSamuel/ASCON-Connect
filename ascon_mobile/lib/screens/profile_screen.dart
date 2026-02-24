@@ -7,7 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../viewmodels/profile_view_model.dart';
 import '../utils/presence_formatter.dart'; 
 import '../widgets/shimmer_utils.dart'; 
-import '../widgets/full_screen_image.dart'; // ✅ ADDED THIS IMPORT
+import '../widgets/full_screen_image.dart'; 
 
 import 'edit_profile_screen.dart';
 import 'document_request_screen.dart'; 
@@ -22,6 +22,37 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  // ✅ NEW: Scroll Controller and State to track scroll position
+  late ScrollController _scrollController;
+  bool _isScrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    _scrollController.addListener(_onScroll);
+  }
+
+  // ✅ NEW: Listener function to update UI when scrolled past header
+  void _onScroll() {
+    // 120px is roughly where the green header ends behind the AppBar
+    if (_scrollController.offset > 120 && !_isScrolled) {
+      setState(() {
+        _isScrolled = true;
+      });
+    } else if (_scrollController.offset <= 120 && _isScrolled) {
+      setState(() {
+        _isScrolled = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
   
   Future<void> _logout() async {
     final dialogBg = Theme.of(context).cardColor;
@@ -92,18 +123,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final String bio = userProfile?['bio'] ?? '';
     final String statusText = profileState.isOnline ? "Active Now" : _formatLastSeen(profileState.lastSeen);
     
-    // ✅ Extract image string for easier use
     final String? profilePicString = userProfile?['profilePicture'];
 
     return Scaffold(
       backgroundColor: scaffoldBg,
       extendBodyBehindAppBar: true, 
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        // ✅ UPDATED: Fade in a background color for the AppBar to keep it clean when scrolled
+        backgroundColor: _isScrolled ? scaffoldBg.withOpacity(0.95) : Colors.transparent,
+        elevation: _isScrolled ? 1 : 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
+            // ✅ UPDATED: Dynamic Icon that turns Black (or White in Dark Mode) and gets bolder
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                Icons.logout_rounded, // Rounded makes it naturally slightly bolder
+                key: ValueKey<bool>(_isScrolled),
+                color: _isScrolled ? (isDark ? Colors.white : Colors.black87) : Colors.white,
+                size: _isScrolled ? 28 : 24, // Enlarge it slightly to make it pop more
+                shadows: !_isScrolled 
+                    ? [const Shadow(color: Colors.black26, blurRadius: 4)] // Helps visibility on the green gradient
+                    : null, 
+              ),
+            ),
             tooltip: "Logout",
             onPressed: _logout,
           ),
@@ -113,6 +156,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         onRefresh: () async => ref.read(profileProvider.notifier).loadProfile(), 
         color: primaryColor,
         child: SingleChildScrollView(
+          controller: _scrollController, // ✅ ADDED: Attached the scroll controller
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
@@ -152,7 +196,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                         
-                        // ✅ FIX: WRAP AVATAR WITH GESTURE DETECTOR & HERO
                         GestureDetector(
                           onTap: () {
                             if (profilePicString != null && profilePicString.isNotEmpty) {
@@ -161,7 +204,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => FullScreenImage(
                                     imageUrl: profilePicString,
-                                    heroTag: 'my_profile_pic', // Unique tag for animation
+                                    heroTag: 'my_profile_pic', 
                                   ),
                                 ),
                               );

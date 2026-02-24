@@ -2,15 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Added
+import 'package:flutter_riverpod/flutter_riverpod.dart'; 
 
-import '../../viewmodels/profile_view_model.dart'; // ✅ Added
+import '../../viewmodels/profile_view_model.dart'; 
 import '../../services/api_client.dart';
 import '../../services/socket_service.dart';
 import '../../screens/call_screen.dart';
 import '../../screens/call_log_detail_screen.dart';
 
-// ✅ Converted to ConsumerStatefulWidget to fetch profile data
 class CallLogsTab extends ConsumerStatefulWidget {
   const CallLogsTab({super.key});
 
@@ -68,14 +67,12 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
             });
           }
         } else {
-          debugPrint("⚠️ Unexpected API format in CallLogs: $serverResponse");
           if (mounted) setState(() => _isLoading = false);
         }
       } else {
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint("Error fetching call logs: $e");
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -87,7 +84,6 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
       });
       await _api.delete('/api/calls/$id');
     } catch (e) {
-      debugPrint("Delete error: $e");
       _fetchLogs(); 
     }
   }
@@ -170,7 +166,10 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
           final group = groupedLogs[index];
           final log = group['primary']; 
           final int count = group['count'];
+          
           final String type = log['type'] ?? 'dialed'; 
+          // ✅ Read callType from DB
+          final String callType = log['callType'] ?? 'voice'; 
           
           return Dismissible(
             key: Key(log['_id']), 
@@ -218,7 +217,8 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
               ),
               subtitle: Row(
                 children: [
-                  Icon(_getIcon(type), color: _getIconColor(type), size: 14),
+                  // ✅ Dynamic Icon based on Voice/Video
+                  Icon(_getIcon(type, callType), color: _getIconColor(type), size: 14),
                   const SizedBox(width: 6),
                   Text(
                     _formatDate(log['createdAt']), 
@@ -232,22 +232,24 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
                 ],
               ),
               trailing: IconButton(
-                icon: const Icon(Icons.call, color: Colors.green),
+                // ✅ Dynamic Trailing Icon (Phone vs Video)
+                icon: Icon(callType == 'video' ? Icons.videocam : Icons.call, color: Colors.green),
                 onPressed: () {
-                  // ✅ FIXED: Fetch profile data correctly
                   final userProfile = ref.read(profileProvider).userProfile;
                   final currentUserName = userProfile?['fullName'] ?? "Alumni User";
                   final currentUserAvatar = userProfile?['profilePicture'];
 
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => CallScreen(
-                      remoteName: log['remoteName'] ?? "Unknown", // ✅ FIXED Map Access
-                      remoteId: log['remoteId'],                  // ✅ FIXED Map Access
+                      remoteName: log['remoteName'] ?? "Unknown",
+                      remoteId: log['remoteId'],                  
                       remoteAvatar: log['remotePic'],
                       channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
                       isIncoming: false,
-                      currentUserName: currentUserName,           // ✅ Correctly passed
-                      currentUserAvatar: currentUserAvatar,       // ✅ Correctly passed
+                      // ✅ Set to true if redialing a video call
+                      isVideoCall: callType == 'video', 
+                      currentUserName: currentUserName,           
+                      currentUserAvatar: currentUserAvatar,       
                     )
                   ));
                 },
@@ -293,12 +295,22 @@ class _CallLogsTabState extends ConsumerState<CallLogsTab> {
     );
   }
 
-  IconData _getIcon(String type) {
-    switch (type) {
-      case 'missed': return Icons.call_missed;
-      case 'dialed': return Icons.call_made;
-      case 'received': return Icons.call_received;
-      default: return Icons.call;
+  // ✅ Updated Icon Logic to handle Video
+  IconData _getIcon(String type, String callType) {
+    if (callType == 'video') {
+      switch (type) {
+        case 'missed': return Icons.missed_video_call;
+        case 'dialed': return Icons.videocam_outlined;
+        case 'received': return Icons.videocam;
+        default: return Icons.videocam;
+      }
+    } else {
+      switch (type) {
+        case 'missed': return Icons.call_missed;
+        case 'dialed': return Icons.call_made;
+        case 'received': return Icons.call_received;
+        default: return Icons.call;
+      }
     }
   }
 

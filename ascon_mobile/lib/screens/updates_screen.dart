@@ -5,13 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../viewmodels/updates_view_model.dart';
-import '../services/api_client.dart';
 import 'programme_detail_screen.dart';
 import 'alumni_detail_screen.dart'; 
 
@@ -32,9 +30,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     super.dispose();
   }
 
-  // ✅ NAVIGATE TO PROFILE (Robust ID handling)
   void _viewProfile(Map<String, dynamic> user) {
-    // Attempt to find the ID in various common keys
     final userId = user['_id'] ?? user['userId'] ?? user['id'];
     
     if (userId == null) {
@@ -44,7 +40,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
       return;
     }
     
-    // Normalize data structure for AlumniDetailScreen
     final alumniData = {
       ...user,
       'userId': userId,
@@ -59,7 +54,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     );
   }
 
-  // Text Formatting (Bold, Italic, etc.)
   List<TextSpan> _parseFormattedText(String text, TextStyle baseStyle) {
     final List<TextSpan> spans = [];
     final RegExp exp = RegExp(r'([*_~])(.*?)\1'); 
@@ -116,7 +110,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     }
   }
 
-  // ✅ SHOW LIKES SHEET (With Presence Dot & Clickable Profile)
   void _showLikesSheet(String postId) {
     showModalBottomSheet(
       context: context,
@@ -193,7 +186,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     );
   }
 
-  // ✅ COMMENTS SHEET (With Clickable Avatars + Names + Presence Dot)
   void _showCommentsSheet(String postId) {
     final commentController = TextEditingController();
     bool isPosting = false; 
@@ -246,7 +238,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                       child: Row(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // ✅ CLICKABLE AVATAR + PRESENCE DOT
                                           GestureDetector(
                                             onTap: () => _viewProfile(author),
                                             child: Stack(
@@ -283,7 +274,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                      // ✅ CLICKABLE NAME
                                                       GestureDetector(
                                                         onTap: () => _viewProfile(author),
                                                         child: Text(authorName, style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 13, color: textColor))
@@ -306,7 +296,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                                 ),
                         ),
 
-                        // Input Field
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(color: Theme.of(context).cardColor, border: Border(top: BorderSide(color: Colors.grey.withOpacity(0.2)))),
@@ -360,7 +349,8 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
 
   void _showCreatePostSheet() {
     final TextEditingController textController = TextEditingController();
-    XFile? selectedImage; 
+    // ✅ CHANGED: Support multiple images
+    List<XFile> selectedImages = []; 
     
     showModalBottomSheet(
       context: context,
@@ -372,17 +362,24 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
           builder: (context, setSheetState) {
             final isPosting = ref.watch(updatesProvider).isPosting;
 
-            Future<void> pickImage() async {
+            // ✅ Pick multiple images
+            Future<void> pickImages() async {
               final picker = ImagePicker();
-              final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-              if (pickedFile != null) {
-                setSheetState(() => selectedImage = pickedFile);
+              final pickedFiles = await picker.pickMultiImage(imageQuality: 70);
+              if (pickedFiles.isNotEmpty) {
+                setSheetState(() {
+                  selectedImages.addAll(pickedFiles);
+                  if (selectedImages.length > 5) {
+                    selectedImages = selectedImages.sublist(0, 5); // Max 5 images
+                    ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Max 5 images allowed.")));
+                  }
+                });
               }
             }
 
             Future<void> submitPost() async {
-              if (textController.text.trim().isEmpty && selectedImage == null) return;
-              final error = await ref.read(updatesProvider.notifier).createPost(textController.text.trim(), selectedImage);
+              if (textController.text.trim().isEmpty && selectedImages.isEmpty) return;
+              final error = await ref.read(updatesProvider.notifier).createPost(textController.text.trim(), selectedImages);
               
               if (error == null) {
                 Navigator.pop(sheetContext);
@@ -419,28 +416,43 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                     autofocus: true,
                     decoration: const InputDecoration(hintText: "Share news, achievements...", border: InputBorder.none),
                   ),
-                  if (selectedImage != null)
-                    Stack(
-                      alignment: Alignment.topRight,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: kIsWeb 
-                              ? Image.network(selectedImage!.path, height: 150, width: double.infinity, fit: BoxFit.cover)
-                              : Image.file(File(selectedImage!.path), height: 150, width: double.infinity, fit: BoxFit.cover),
-                        ),
-                        IconButton(
-                          icon: const CircleAvatar(backgroundColor: Colors.black54, radius: 14, child: Icon(Icons.close, size: 16, color: Colors.white)),
-                          onPressed: () => setSheetState(() => selectedImage = null),
-                        ),
-                      ],
+                  
+                  // ✅ MULTIPLE IMAGE PREVIEW
+                  if (selectedImages.isNotEmpty)
+                    SizedBox(
+                      height: 120,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: selectedImages.length,
+                        itemBuilder: (context, index) {
+                          return Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              Container(
+                                margin: const EdgeInsets.only(right: 8),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: kIsWeb 
+                                      ? Image.network(selectedImages[index].path, height: 120, width: 100, fit: BoxFit.cover)
+                                      : Image.file(File(selectedImages[index].path), height: 120, width: 100, fit: BoxFit.cover),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const CircleAvatar(backgroundColor: Colors.black54, radius: 12, child: Icon(Icons.close, size: 14, color: Colors.white)),
+                                onPressed: () => setSheetState(() => selectedImages.removeAt(index)),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
+
                   const Divider(height: 30),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.image_rounded, color: Colors.green)),
-                    title: const Text("Add Photo"),
-                    onTap: pickImage,
+                    title: const Text("Add Photos (Max 5)"),
+                    onTap: pickImages,
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -462,7 +474,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
     final cardColor = Theme.of(context).cardColor;
 
-    // ✅ NO POP SCOPE HERE (Handled by Home)
     return Scaffold(
       backgroundColor: scaffoldBg,
       body: NestedScrollView(
@@ -584,6 +595,7 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
       ),
       
       floatingActionButton: FloatingActionButton(
+        heroTag: 'updates_fab_tag',
         onPressed: _showCreatePostSheet,
         backgroundColor: const Color(0xFFD4AF37),
         child: const Icon(Icons.edit, color: Colors.white),
@@ -644,6 +656,14 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
     final bool isMyPost = (myId != null && postAuthorId == myId);
     final bool canDelete = isAdmin || isMyPost;
     final bool canEdit = isMyPost;
+
+    // ✅ MULTIPLE IMAGE PARSING
+    List<String> images = [];
+    if (post['mediaUrls'] != null && post['mediaUrls'] is List && post['mediaUrls'].isNotEmpty) {
+      images = List<String>.from(post['mediaUrls']);
+    } else if (post['mediaUrl'] != null && post['mediaUrl'].toString().startsWith('http')) {
+      images = [post['mediaUrl']];
+    }
 
     return Container(
       color: cardColor,
@@ -736,33 +756,16 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
               ),
             ),
 
-          if (post['mediaType'] == 'image' && post['mediaUrl'] != null && post['mediaUrl'].toString().startsWith('http'))
+          // ✅ RENDER MULTIPLE IMAGES
+          if (images.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), 
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.of(context, rootNavigator: true).push(
-                    MaterialPageRoute(builder: (context) => FullScreenImage(imageUrl: post['mediaUrl'])),
-                  );
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12), 
-                  child: Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(maxHeight: 320), 
-                    color: isDark ? Colors.black : Colors.grey[100],
-                    child: CachedNetworkImage(
-                      imageUrl: post['mediaUrl'],
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(height: 200, color: Colors.grey[200]),
-                      errorWidget: (context, url, error) => const SizedBox(height: 50),
-                    ),
-                  ),
-                ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: PostImageGallery(images: images, isDark: isDark),
               ),
             ),
 
-          // ✅ CLICKABLE LIKES & COMMENTS COUNTS
           if ((post['likes']?.length ?? 0) > 0 || (post['comments']?.length ?? 0) > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -823,6 +826,78 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
           ),
           
           Container(height: 6, color: isDark ? Colors.black : Colors.grey[200]),
+        ],
+      ),
+    );
+  }
+}
+
+// ✅ NEW WIDGET: Swipable Image Gallery for Posts
+class PostImageGallery extends StatefulWidget {
+  final List<String> images;
+  final bool isDark;
+
+  const PostImageGallery({super.key, required this.images, required this.isDark});
+
+  @override
+  State<PostImageGallery> createState() => _PostImageGalleryState();
+}
+
+class _PostImageGalleryState extends State<PostImageGallery> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 320),
+      color: widget.isDark ? Colors.black : Colors.grey[100],
+      child: Stack(
+        children: [
+          PageView.builder(
+            itemCount: widget.images.length,
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              return GestureDetector(
+                onTap: () {
+                  Navigator.of(context, rootNavigator: true).push(
+                    MaterialPageRoute(builder: (context) => FullScreenImage(imageUrl: widget.images[index])),
+                  );
+                },
+                child: CachedNetworkImage(
+                  imageUrl: widget.images[index],
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(height: 200, color: Colors.grey[200]),
+                  errorWidget: (context, url, error) => const SizedBox(height: 50),
+                ),
+              );
+            },
+          ),
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: 10,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.images.length,
+                  (index) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: _currentIndex == index ? 8 : 5,
+                    height: _currentIndex == index ? 8 : 5,
+                    decoration: BoxDecoration(
+                      color: _currentIndex == index ? Colors.white : Colors.white.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

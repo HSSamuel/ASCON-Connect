@@ -73,7 +73,7 @@ class CallService {
     );
 
     await _engine.enableAudio();
-    await _engine.enableVideo(); // ✅ Enable Video Module
+    // ❌ REMOVED: await _engine.enableVideo(); from here so it doesn't default to video globally
     _isInitialized = true;
   }
 
@@ -87,18 +87,24 @@ class CallService {
       if (responseData['token'] != null) {
         String token = responseData['token'];
 
-        // ✅ Start local camera preview if it's a video call
+        // ✅ DYNAMICALLY HANDLE VIDEO STATE PER CALL
         if (isVideo) {
+           await _engine.enableVideo();
            await _engine.startPreview();
+        } else {
+           await _engine.disableVideo();
         }
 
         await _engine.joinChannel(
           token: token,
           channelId: channelName,
           uid: 0,
-          options: const ChannelMediaOptions(
+          options: ChannelMediaOptions(
             clientRoleType: ClientRoleType.clientRoleBroadcaster,
             channelProfile: ChannelProfileType.channelProfileCommunication,
+            // ✅ CRITICAL FOR WEB: Explicitly tell the engine what tracks to publish
+            publishCameraTrack: isVideo, 
+            publishMicrophoneTrack: true, 
           ),
         );
         return true;
@@ -112,7 +118,9 @@ class CallService {
 
   Future<void> leaveCall() async {
     if (isJoined) {
-      await _engine.stopPreview(); // ✅ Stop camera
+      try {
+        await _engine.stopPreview(); // ✅ Safely stop camera
+      } catch (_) {}
       await _engine.leaveChannel();
       remoteUids.clear(); // ✅ Clear video grid
       isJoined = false;

@@ -203,14 +203,11 @@ const initializeSocket = async (server) => {
     // ==========================================
 
     socket.on("typing", ({ receiverId, conversationId, groupId }) => {
-      // If it's a group, send typing indicator to the whole group room
       if (groupId) {
         socket
           .to(groupId)
           .emit("typing_start", { senderId: userId, conversationId });
-      }
-      // If 1-on-1, send it to the conversation room (both users are inside)
-      else if (conversationId) {
+      } else if (conversationId) {
         socket
           .to(conversationId)
           .emit("typing_start", { senderId: userId, conversationId });
@@ -230,6 +227,40 @@ const initializeSocket = async (server) => {
     });
 
     // ==========================================
+    // --- EMOJI REACTIONS ---
+    // ==========================================
+    socket.on("add_reaction", async ({ messageId, chatId, emoji }) => {
+      try {
+        const msg = await Message.findById(messageId);
+        if (!msg) return;
+
+        // Check if user already reacted with this exact emoji
+        const existingIndex = msg.reactions.findIndex(
+          (r) => r.userId === userId && r.emoji === emoji,
+        );
+
+        if (existingIndex > -1) {
+          // Toggle off
+          msg.reactions.splice(existingIndex, 1);
+        } else {
+          // Optional: Limit to 1 emoji per user per message
+          msg.reactions = msg.reactions.filter((r) => r.userId !== userId);
+          msg.reactions.push({ userId, emoji });
+        }
+
+        await msg.save();
+
+        io.to(chatId).emit("message_reaction_update", {
+          messageId,
+          reactions: msg.reactions,
+          conversationId: chatId,
+        });
+      } catch (error) {
+        logger.error("Reaction Error:", error);
+      }
+    });
+
+    // ==========================================
     // --- AGORA CALL SIGNALING & DB LOGGING ---
     // ==========================================
 
@@ -239,7 +270,6 @@ const initializeSocket = async (server) => {
         let enrichedCallerData = { ...callerData };
 
         try {
-          // ✅ 1. Fetch Real Caller Profile from Database
           const callerProfile = await UserProfile.findOne({
             userId: userId,
           }).select("fullName profilePicture");
@@ -251,12 +281,12 @@ const initializeSocket = async (server) => {
               callerProfile.profilePicture || null;
           }
 
-          // ✅ 2. Save Call to DB (Ignore group calls to keep logs clean)
           if (!callerData.isGroupCall) {
             await CallLog.create({
               caller: userId,
               receiver: targetUserId,
               channelName: channelName,
+              callType: callerData.isVideoCall ? "video" : "voice",
               status: "initiated",
             });
           }
@@ -264,14 +294,12 @@ const initializeSocket = async (server) => {
           logger.error("Error creating CallLog:", error);
         }
 
-        // ✅ 3. Ring the receiver's phone with the correct Database profile data
         socket.to(targetUserId).emit("incoming_call", {
           callerId: userId,
           channelName,
           callerData: enrichedCallerData,
         });
 
-        // ⏱️ SAFEGUARD 1: Stop Ringing if Unanswered
         const ringTimer = setTimeout(async () => {
           logger.info(`Call Ring Timeout triggered for ${channelName}`);
           io.to(targetUserId)
@@ -305,16 +333,14 @@ const initializeSocket = async (server) => {
 
       socket.to(targetUserId).emit("call_answered", { channelName });
 
-      // ⏱️ SAFEGUARD 2: Max Call Duration Enforcer
       const callData = activeCallTimers.get(channelName);
-      if (callData) clearTimeout(callData.timer); // Clear the ringing timer
+      if (callData) clearTimeout(callData.timer);
 
       const ongoingTimer = setTimeout(async () => {
         logger.warn(
           `Max call duration reached for ${channelName}. Force terminating.`,
         );
 
-        // Force kick both users via socket
         io.to(targetUserId)
           .to(userId)
           .emit("call_ended", { channelName, reason: "Max Duration Reached" });
@@ -334,7 +360,6 @@ const initializeSocket = async (server) => {
     });
 
     socket.on("end_call", async ({ targetUserId, channelName }) => {
-      // 🧹 CLEANUP TIMERS ON MANUAL HANGUP
       const callData = activeCallTimers.get(channelName);
       if (callData) {
         clearTimeout(callData.timer);

@@ -82,7 +82,6 @@ class EventsNotifier extends StateNotifier<EventsState> {
   }
 
   Future<bool> deleteEvent(String eventId) async {
-    // Optimistic Update
     final previousEvents = state.events;
     state = state.copyWith(events: state.events.where((e) => (e['_id'] ?? e['id']) != eventId).toList());
 
@@ -95,7 +94,6 @@ class EventsNotifier extends StateNotifier<EventsState> {
     }
   }
 
-  // ✅ ADDED: Delete Programme Logic
   Future<bool> deleteProgramme(String programmeId) async {
     try {
       await _api.delete('/api/admin/programmes/$programmeId');
@@ -105,6 +103,7 @@ class EventsNotifier extends StateNotifier<EventsState> {
     }
   }
 
+  // ✅ UPDATED: Accept List of Images
   Future<String?> createEvent({
     required String title,
     required String description,
@@ -112,7 +111,7 @@ class EventsNotifier extends StateNotifier<EventsState> {
     required String time,
     required String type,
     required DateTime date,
-    XFile? image,
+    List<XFile>? images,
   }) async {
     return _uploadContent(
       endpoint: '/api/events',
@@ -124,18 +123,18 @@ class EventsNotifier extends StateNotifier<EventsState> {
         'type': type,
         'date': date.toIso8601String(),
       },
-      image: image,
+      images: images,
     );
   }
 
-  // ✅ ADDED: Create Programme Logic
+  // ✅ UPDATED: Accept List of Images
   Future<String?> createProgramme({
     required String title,
     required String description,
     required String location,
     required String duration,
     required String fee,
-    required XFile image,
+    List<XFile>? images,
   }) async {
     return _uploadContent(
       endpoint: '/api/admin/programmes',
@@ -146,15 +145,15 @@ class EventsNotifier extends StateNotifier<EventsState> {
         'duration': duration,
         'fee': fee,
       },
-      image: image,
+      images: images,
     );
   }
 
-  // ✅ ADDED: Generic Upload Helper (Handles Images for both Events & Programmes)
+  // ✅ UPDATED: Generic Upload Helper (Handles Multiple Images)
   Future<String?> _uploadContent({
     required String endpoint,
     required Map<String, String> fields,
-    XFile? image,
+    List<XFile>? images,
   }) async {
     state = state.copyWith(isPosting: true);
     try {
@@ -164,12 +163,15 @@ class EventsNotifier extends StateNotifier<EventsState> {
 
       fields.forEach((key, value) => request.fields[key] = value);
 
-      if (image != null) {
-        if (kIsWeb) {
-          var bytes = await image.readAsBytes();
-          request.files.add(http.MultipartFile.fromBytes('image', bytes, filename: image.name));
-        } else {
-          request.files.add(await http.MultipartFile.fromPath('image', image.path));
+      // Loop through and append images array to MultipartRequest
+      if (images != null && images.isNotEmpty) {
+        for (var img in images) {
+          if (kIsWeb) {
+            var bytes = await img.readAsBytes();
+            request.files.add(http.MultipartFile.fromBytes('images', bytes, filename: img.name));
+          } else {
+            request.files.add(await http.MultipartFile.fromPath('images', img.path));
+          }
         }
       }
 
@@ -180,7 +182,7 @@ class EventsNotifier extends StateNotifier<EventsState> {
 
       if (response.statusCode == 201) {
         await loadEvents(silent: true);
-        return null; // Success (No error message)
+        return null;
       } else {
         final errorJson = jsonDecode(respStr);
         return errorJson['message'] ?? "Upload failed";

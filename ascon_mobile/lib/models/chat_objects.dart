@@ -6,7 +6,7 @@ class ChatMessage {
   final String id;
   final String senderId;
   final String? senderName; 
-  final String? senderProfilePic; // ✅ ADDED: Capture Sender Image
+  final String? senderProfilePic; // ✅ Capture Sender Image
   String text; 
   final DateTime createdAt;
   
@@ -28,11 +28,14 @@ class ChatMessage {
   bool isRead; 
   MessageStatus status; 
 
+  // ✅ NEW: Store Emoji Reactions
+  List<dynamic> reactions;
+
   ChatMessage({
     required this.id,
     required this.senderId,
     this.senderName, 
-    this.senderProfilePic, // ✅ ADDED
+    this.senderProfilePic, 
     required this.text,
     required this.createdAt,
     this.type = 'text',
@@ -47,6 +50,7 @@ class ChatMessage {
     this.isEdited = false,
     this.isRead = false,
     this.status = MessageStatus.sent,
+    this.reactions = const [], // ✅ Initialize empty reactions by default
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -86,6 +90,8 @@ class ChatMessage {
       isEdited: json['isEdited'] ?? false,
       isRead: json['isRead'] ?? false,
       status: _parseStatus(json['status'], json['isRead']), 
+      // ✅ Parse reactions array from JSON safely
+      reactions: json['reactions'] != null ? List<dynamic>.from(json['reactions']) : [],
     );
   }
 
@@ -120,6 +126,7 @@ class ChatMessage {
       'isEdited': isEdited,
       'isRead': isRead,
       'status': status.name,
+      'reactions': reactions, // ✅ Convert to JSON
     };
   }
 }

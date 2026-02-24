@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart'; // Added for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -31,19 +32,28 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
   final TextEditingController _durationController = TextEditingController();
   final TextEditingController _feeController = TextEditingController();
 
-  XFile? _selectedImage;
+  // ✅ UPDATED: List to hold multiple images
+  List<XFile> _selectedImages = [];
   final ImagePicker _picker = ImagePicker();
   bool _isSubmitting = false;
 
-  Future<void> _pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) setState(() => _selectedImage = image);
+  // ✅ UPDATED: Use pickMultiImage for multiple selections
+  Future<void> _pickImages() async {
+    final List<XFile> images = await _picker.pickMultiImage();
+    if (images.isNotEmpty) {
+      // Optional: limit to 5 images
+      setState(() {
+        _selectedImages = images.length > 5 ? images.sublist(0, 5) : images;
+      });
+    }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select an image")));
+    
+    // ✅ Check against the new list
+    if (_selectedImages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select at least one image")));
       return;
     }
 
@@ -52,7 +62,7 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
     String? error;
     
     if (widget.type == 'Event') {
-      // ✅ Create Event
+      // ✅ Create Event (Pass images list)
       error = await ref.read(eventsProvider.notifier).createEvent(
         title: _titleController.text,
         description: _descController.text,
@@ -60,17 +70,17 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
         time: _timeController.text,
         type: _eventType,
         date: _selectedDate ?? DateTime.now(),
-        image: _selectedImage,
+        images: _selectedImages, // Updated parameter
       );
     } else {
-      // ✅ Create Programme
+      // ✅ Create Programme (Pass images list)
       error = await ref.read(eventsProvider.notifier).createProgramme(
         title: _titleController.text,
         description: _descController.text,
         location: _locationController.text,
         duration: _durationController.text,
         fee: _feeController.text,
-        image: _selectedImage!,
+        images: _selectedImages, // Updated parameter
       );
       
       // Refresh Dashboard to show new programme
@@ -102,9 +112,9 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Image Picker
+              // 1. Multiple Image Picker UI
               GestureDetector(
-                onTap: _pickImage,
+                onTap: _pickImages,
                 child: Container(
                   height: 180,
                   width: double.infinity,
@@ -112,18 +122,58 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.grey[400]!),
-                    image: _selectedImage != null 
-                        ? DecorationImage(image: FileImage(File(_selectedImage!.path)), fit: BoxFit.cover)
-                        : null
                   ),
-                  child: _selectedImage == null 
+                  child: _selectedImages.isEmpty 
                       ? const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: [Icon(Icons.add_a_photo, size: 40, color: Colors.grey), SizedBox(height: 8), Text("Tap to add cover image")],
+                          children: [
+                            Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey), 
+                            SizedBox(height: 8), 
+                            Text("Tap to select image(s)", style: TextStyle(color: Colors.grey))
+                          ],
                         )
-                      : null,
+                      : ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _selectedImages.length,
+                          padding: const EdgeInsets.all(8),
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Stack(
+                                  children: [
+                                    kIsWeb 
+                                      ? Image.network(_selectedImages[index].path, height: 160, width: 140, fit: BoxFit.cover)
+                                      : Image.file(File(_selectedImages[index].path), height: 160, width: 140, fit: BoxFit.cover),
+                                    // Remove individual image button
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() => _selectedImages.removeAt(index));
+                                        },
+                                        child: CircleAvatar(
+                                          radius: 12,
+                                          backgroundColor: Colors.black.withOpacity(0.6),
+                                          child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                        ),
+                                      ),
+                                    )
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ),
+              if (_selectedImages.isNotEmpty)
+                 Padding(
+                   padding: const EdgeInsets.only(top: 8.0),
+                   child: Text("Tap inside the box to add/change images. (Max 5)", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                 ),
               const SizedBox(height: 20),
 
               // 2. Common Fields
@@ -141,18 +191,15 @@ class _AddContentScreenState extends ConsumerState<AddContentScreen> {
                     Expanded(
                       child: InkWell(
                         onTap: () async {
-                          // ✅ FIX 1: Normalize "Now" to Midnight (00:00:00)
                           final now = DateTime.now();
                           final today = DateTime(now.year, now.month, now.day);
-                          
-                          // ✅ FIX 2: Dynamic Future Date (e.g., 5 years from now)
                           final fiveYearsFromNow = DateTime(now.year + 5, now.month, now.day);
 
                           final date = await showDatePicker(
                             context: context, 
-                            initialDate: _selectedDate ?? today, // Defaults to today if null
-                            firstDate: today, // User can pick today or future
-                            lastDate: fiveYearsFromNow // Dynamically updates forever
+                            initialDate: _selectedDate ?? today, 
+                            firstDate: today, 
+                            lastDate: fiveYearsFromNow
                           );
                           
                           if (date != null) setState(() => _selectedDate = date);

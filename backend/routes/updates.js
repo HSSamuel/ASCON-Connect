@@ -8,20 +8,23 @@ const upload = require("../config/cloudinary");
 const { sendPersonalNotification } = require("../utils/notificationHandler");
 
 // =========================================================
-// 1. CREATE A NEW UPDATE (Text + Optional Image)
+// 1. CREATE A NEW UPDATE (Text + Multiple Images)
 // =========================================================
-router.post("/", verifyToken, upload.single("media"), async (req, res) => {
+router.post("/", verifyToken, upload.array("media", 5), async (req, res) => {
   try {
     const { text } = req.body;
+    let mediaUrls = [];
     let mediaUrl = "";
     let mediaType = "none";
 
-    if (req.file) {
-      mediaUrl = req.file.path;
+    // ✅ Map multiple uploaded files
+    if (req.files && req.files.length > 0) {
+      mediaUrls = req.files.map((file) => file.path);
+      mediaUrl = mediaUrls[0]; // Fallback for older app versions
       mediaType = "image";
     }
 
-    if (!text && !mediaUrl) {
+    if (!text && mediaUrls.length === 0) {
       return res.status(400).json({ message: "Post cannot be empty." });
     }
 
@@ -29,6 +32,7 @@ router.post("/", verifyToken, upload.single("media"), async (req, res) => {
       authorId: req.user._id,
       text: text || "",
       mediaUrl,
+      mediaUrls, // ✅ Save the array
       mediaType,
     });
 

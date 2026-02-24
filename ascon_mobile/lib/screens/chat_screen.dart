@@ -95,7 +95,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _realtimeLastSeen;
   String _groupParticipants = "Tap for info"; 
   String _displayReceiverName = "";
-  List<String> _groupMemberIds = []; // ✅ Added to store Group Targets
+  List<String> _groupMemberIds = []; 
 
   StreamSubscription? _statusSubscription; 
 
@@ -166,7 +166,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         final members = groupData['members'] as List<dynamic>? ?? [];
         if (members.isNotEmpty) {
-          // ✅ Save all IDs to loop for the group call
           _groupMemberIds = members.map((m) {
             if (m is Map) return (m['_id'] ?? m['userId']).toString();
             return m.toString();
@@ -239,8 +238,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  // ✅ UPDATED: Handles both 1-on-1 and Group Calls
-  void _initiateCall({required bool isVideo}) { // ✅ Added parameter
+  void _initiateCall({required bool isVideo}) {
     String uniqueChannel = "call_${DateTime.now().millisecondsSinceEpoch}";
     
     final userProfile = ref.read(profileProvider).userProfile;
@@ -261,7 +259,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       MaterialPageRoute(
         builder: (context) => CallScreen(
           isGroupCall: widget.isGroup, 
-          isVideoCall: isVideo, // ✅ Pass to CallScreen
+          isVideoCall: isVideo, 
           targetIds: targets, 
           remoteName: _displayReceiverName,
           remoteId: widget.isGroup ? null : widget.receiverId, 
@@ -709,19 +707,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 📹 VIDEO CALL BUTTON
                     IconButton(
                       icon: const Icon(Icons.videocam),
                       color: primaryColor,
                       tooltip: widget.isGroup ? 'Group Video Call' : 'Video Call',
-                      onPressed: () => _initiateCall(isVideo: true), // ✅ Pass true
+                      onPressed: () => _initiateCall(isVideo: true), 
                     ),
-                    // 📞 VOICE CALL BUTTON
                     IconButton(
                       icon: const Icon(Icons.call),
                       color: primaryColor,
                       tooltip: widget.isGroup ? 'Group Voice Call' : 'Voice Call',
-                      onPressed: () => _initiateCall(isVideo: false), // ✅ Pass false
+                      onPressed: () => _initiateCall(isVideo: false), 
                     ),
                   ],
                 ),
@@ -798,6 +794,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           downloadingFileId: _downloadingFileId,
                           isAdmin: widget.isGroup && state.groupAdminIds.contains(msg.senderId),
                           showSenderName: widget.isGroup && msg.senderId != state.myUserId,
+                          
+                          // ✅ NEW: Passes specific progress percentage for this file
+                          uploadProgress: state.uploadProgresses[msg.id],
+                          
                           onSwipeReply: (id) {
                             setState(() { _replyingTo = msg; _editingMessage = null; });
                             _focusNode.requestFocus();
@@ -822,6 +822,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           onPauseAudio: (id, _) async { await _audioPlayer.pause(); setState(() => _playingMessageId = null); },
                           onSeekAudio: (pos) => _audioPlayer.seek(pos),
                           onDownloadFile: (url, name) => _downloadAndOpenWith(msg.id, url, name),
+                          
+                          // ✅ NEW: Callback to execute reaction
+                          onReact: (messageId, emoji) {
+                            notifier.sendReaction(messageId, emoji);
+                          },
                         ),
                       ],
                     );

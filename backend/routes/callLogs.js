@@ -30,6 +30,7 @@ router.get("/", verify, async (req, res) => {
         return {
           _id: log._id,
           type: _determineType(log, isCaller),
+          callType: log.callType || "voice",
           remoteId: otherId,
           remoteName: profile ? profile.fullName : "Unknown User",
           remotePic: profile ? profile.profilePicture : "",

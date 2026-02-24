@@ -29,6 +29,11 @@ const programmeSchema = new mongoose.Schema({
     required: false,
     default: "",
   },
+  // ✅ Array to store multiple images
+  images: {
+    type: [String],
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,

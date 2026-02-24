@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
-// import 'package:flutter_riverpod/legacy.dart'; // REMOVED
 
 import '../config.dart';
 import '../services/api_client.dart';
@@ -219,7 +218,8 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
     }
   }
 
-  Future<String?> createPost(String text, XFile? image) async {
+  // ✅ UPDATED: Accept List of Images
+  Future<String?> createPost(String text, List<XFile>? images) async {
     state = state.copyWith(isPosting: true);
     try {
       final token = await _authService.getToken();
@@ -227,12 +227,15 @@ class UpdatesNotifier extends StateNotifier<UpdatesState> {
       request.headers['auth-token'] = token ?? '';
       request.fields['text'] = text;
 
-      if (image != null) {
-        if (kIsWeb) {
-          var bytes = await image.readAsBytes();
-          request.files.add(http.MultipartFile.fromBytes('media', bytes, filename: image.name));
-        } else {
-          request.files.add(await http.MultipartFile.fromPath('media', image.path));
+      // ✅ Map through multiple images
+      if (images != null && images.isNotEmpty) {
+        for (var img in images) {
+          if (kIsWeb) {
+            var bytes = await img.readAsBytes();
+            request.files.add(http.MultipartFile.fromBytes('media', bytes, filename: img.name));
+          } else {
+            request.files.add(await http.MultipartFile.fromPath('media', img.path));
+          }
         }
       }
 

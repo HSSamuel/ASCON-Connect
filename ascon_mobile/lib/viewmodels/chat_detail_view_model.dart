@@ -10,6 +10,7 @@ import '../services/socket_service.dart';
 import '../services/auth_service.dart';
 import '../models/chat_objects.dart';
 import '../config.dart';
+import '../utils/multipart_request_with_progress.dart'; // ✅ Added import
 
 class ChatDetailState {
   final List<ChatMessage> messages;
@@ -23,6 +24,7 @@ class ChatDetailState {
   final String myUserId;
   final List<String> groupAdminIds;
   final bool isKicked;
+  final Map<String, double> uploadProgresses; // ✅ NEW: Tracks upload percentages
 
   const ChatDetailState({
     this.messages = const [],
@@ -36,6 +38,7 @@ class ChatDetailState {
     this.myUserId = "",
     this.groupAdminIds = const [],
     this.isKicked = false,
+    this.uploadProgresses = const {},
   });
 
   ChatDetailState copyWith({
@@ -50,6 +53,7 @@ class ChatDetailState {
     String? myUserId,
     List<String>? groupAdminIds,
     bool? isKicked,
+    Map<String, double>? uploadProgresses,
   }) {
     return ChatDetailState(
       messages: messages ?? this.messages,
@@ -63,6 +67,7 @@ class ChatDetailState {
       myUserId: myUserId ?? this.myUserId,
       groupAdminIds: groupAdminIds ?? this.groupAdminIds,
       isKicked: isKicked ?? this.isKicked,
+      uploadProgresses: uploadProgresses ?? this.uploadProgresses,
     );
   }
 }
@@ -131,7 +136,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     _messageStatusSubscription?.cancel(); 
     sendStopTyping();
     
-    // ✅ Leave rooms to clean up listeners
     if (isGroup && groupId != null) {
       _socket.socket?.emit('leave_room', groupId);
     }
@@ -145,6 +149,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     _socket.socket?.off('typing_start');
     _socket.socket?.off('typing_stop');
     _socket.socket?.off('removed_from_group');
+    _socket.socket?.off('message_reaction_update'); // Clean up reaction listener
     
     super.dispose();
   }
@@ -164,7 +169,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     if (!mounted) return;
 
     if (state.conversationId != null) {
-      // ✅ Join the 1-on-1 conversation room instantly
       _socket.socket?.emit('join_room', state.conversationId);
       await loadMessages(initial: true);
     } else {
@@ -218,7 +222,6 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         
         if (newId != null && mounted) {
           state = state.copyWith(conversationId: newId.toString());
-          // ✅ Join room as soon as we discover it
           _socket.socket?.emit('join_room', newId.toString());
           loadMessages(initial: true);
           return newId.toString();
@@ -307,7 +310,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
         return m;
       }).toList();
-      state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
+      state = state.copyWith(messages: List.from(updated)); 
       return true;
     } catch (e) {
       return false;
@@ -339,6 +342,18 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
     } catch (e) {
       debugPrint("Delete failed: $e");
       refreshMessages(); 
+    }
+  }
+
+  // ✅ NEW: Emit Reaction to Socket
+  void sendReaction(String messageId, String emoji) {
+    if (state.conversationId != null) {
+      _socket.socket?.emit('add_reaction', {
+        'messageId': messageId,
+        'chatId': state.conversationId,
+        'emoji': emoji,
+        'userId': state.myUserId
+      });
     }
   }
 
@@ -383,9 +398,24 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
 
       final url = Uri.parse('$baseUrl/api/chat/message/send');
       
-      var request = http.MultipartRequest('POST', url);
-      request.headers['auth-token'] = token; 
+      // ✅ UPDATED: Use the custom MultipartRequest to track upload progress
+      var request = MultipartRequestWithProgress(
+        'POST', url,
+        onProgress: (bytes, total) {
+          if (!mounted || total == 0) return;
+          final progress = bytes / total;
+          
+          // Throttle state updates so UI doesn't freeze
+          final currentP = state.uploadProgresses[tempId] ?? 0.0;
+          if (progress - currentP > 0.05 || progress == 1.0) {
+             final newMap = Map<String, double>.from(state.uploadProgresses);
+             newMap[tempId] = progress;
+             state = state.copyWith(uploadProgresses: newMap);
+          }
+        }
+      );
 
+      request.headers['auth-token'] = token; 
       request.fields['text'] = text ?? ""; 
       request.fields['type'] = type;
       if (replyToId != null) request.fields['replyToId'] = replyToId;
@@ -420,12 +450,16 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
           
           if (data['newConversationId'] != null) {
              state = state.copyWith(conversationId: data['newConversationId']);
-             // ✅ Join the newly created room immediately
              _socket.socket?.emit('join_room', data['newConversationId']);
           }
 
           final updated = state.messages.map((m) => m.id == tempId ? realMessage : m).toList();
-          state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
+          
+          // ✅ Cleanup Progress Map
+          final newProgressMap = Map<String, double>.from(state.uploadProgresses);
+          newProgressMap.remove(tempId);
+
+          state = state.copyWith(messages: List.from(updated), uploadProgresses: newProgressMap); 
           return null; 
         } catch (e) {
           debugPrint("Send Parse Error: $e");
@@ -444,7 +478,8 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
   void _markMessageError(String tempId) {
     if (!mounted) return;
     final updated = state.messages.map((m) => m.id == tempId ? (m..status = MessageStatus.error) : m).toList();
-    state = state.copyWith(messages: List.from(updated));
+    final newProgressMap = Map<String, double>.from(state.uploadProgresses)..remove(tempId);
+    state = state.copyWith(messages: List.from(updated), uploadProgresses: newProgressMap);
   }
 
   void markUnreadAsRead() {
@@ -464,7 +499,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
         }
         return m;
       }).toList();
-      state = state.copyWith(messages: List.from(updated)); // ✅ Forced deep refresh
+      state = state.copyWith(messages: List.from(updated)); 
     }
   }
 
@@ -493,6 +528,24 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
       }
     });
 
+    // ✅ NEW: Listen for real-time Emoji reactions
+    socket.on('message_reaction_update', (data) {
+      if (!mounted) return;
+      if (data['conversationId'] == state.conversationId) {
+        final msgId = data['messageId'];
+        final reactions = List<dynamic>.from(data['reactions']);
+
+        final updated = state.messages.map((m) {
+          if (m.id == msgId) {
+            m.reactions = reactions; // Update the message object
+          }
+          return m;
+        }).toList();
+        
+        state = state.copyWith(messages: List.from(updated));
+      }
+    });
+
     _messageStatusSubscription = _socket.messageStatusStream.listen((event) {
       if (!mounted) return;
       
@@ -507,7 +560,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               }
               return m;
             }).toList();
-            state = state.copyWith(messages: List.from(updated)); // ✅ Triggers instant blue tick refresh
+            state = state.copyWith(messages: List.from(updated)); 
          }
       } else if (event['type'] == 'status_update') {
          final data = event['data'];
@@ -519,7 +572,7 @@ class ChatDetailNotifier extends StateNotifier<ChatDetailState> {
               }
               return m;
             }).toList();
-            state = state.copyWith(messages: List.from(updated)); // ✅ Triggers instant double tick refresh
+            state = state.copyWith(messages: List.from(updated)); 
          }
       }
     });

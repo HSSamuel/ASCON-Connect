@@ -11,7 +11,6 @@ import 'chat_screen.dart';
 import 'call_screen.dart'; 
 import '../widgets/full_screen_image.dart';
 
-// ✅ CHANGED to ConsumerWidget
 class CallLogDetailScreen extends ConsumerWidget {
   final String name;
   final String? avatar;
@@ -26,8 +25,33 @@ class CallLogDetailScreen extends ConsumerWidget {
     required this.logs,
   });
 
+  // ✅ HELPER METHOD TO START EITHER VOICE OR VIDEO CALL
+  void _startCall(BuildContext context, WidgetRef ref, bool isVideo) {
+    if (callerId != null) {
+      final userProfile = ref.read(profileProvider).userProfile;
+      final currentUserName = userProfile?['fullName'] ?? "Alumni User";
+      final currentUserAvatar = userProfile?['profilePicture'];
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CallScreen(
+            remoteId: callerId!,
+            remoteName: name,
+            remoteAvatar: avatar, 
+            channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
+            isIncoming: false,
+            isVideoCall: isVideo, // ✅ Correctly triggers Video or Voice
+            currentUserName: currentUserName,      
+            currentUserAvatar: currentUserAvatar,  
+          ),
+        ),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) { // ✅ Added WidgetRef ref
+  Widget build(BuildContext context, WidgetRef ref) { 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -59,48 +83,39 @@ class CallLogDetailScreen extends ConsumerWidget {
                 if (callerId != null) ...[
                   const SizedBox(height: 24),
                   
-                  // ACTION BUTTONS 
+                  // ACTION BUTTONS (Voice, Video, Message)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0), // ✅ Widened to fit 3 buttons
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Button 1: Call
+                        // Button 1: Voice Call
                         Expanded(
                           child: _buildActionButton(
                             context, 
                             icon: Icons.call, 
-                            label: "Call", 
+                            label: "Voice", 
                             color: const Color(0xFF1B5E3A),
-                            onTap: () {
-                              if (callerId != null) {
-                                // ✅ FETCH CURRENT USER DETAILS
-                                final userProfile = ref.read(profileProvider).userProfile;
-                                final currentUserName = userProfile?['fullName'] ?? "Alumni User";
-                                final currentUserAvatar = userProfile?['profilePicture'];
-
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => CallScreen(
-                                      remoteId: callerId!,
-                                      remoteName: name,
-                                      remoteAvatar: avatar, // ✅ Passed avatar for UI
-                                      channelName: "call_${DateTime.now().millisecondsSinceEpoch}",
-                                      isIncoming: false,
-                                      currentUserName: currentUserName,      // ✅ FIXED
-                                      currentUserAvatar: currentUserAvatar,  // ✅ FIXED
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
+                            onTap: () => _startCall(context, ref, false),
                           ),
                         ),
                         
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         
-                        // Button 2: Message
+                        // ✅ NEW Button 2: Video Call
+                        Expanded(
+                          child: _buildActionButton(
+                            context, 
+                            icon: Icons.videocam, 
+                            label: "Video", 
+                            color: const Color(0xFF1B5E3A),
+                            onTap: () => _startCall(context, ref, true),
+                          ),
+                        ),
+
+                        const SizedBox(width: 12),
+                        
+                        // Button 3: Message
                         Expanded(
                           child: _buildActionButton(
                             context, 
@@ -136,18 +151,22 @@ class CallLogDetailScreen extends ConsumerWidget {
               separatorBuilder: (c, i) => Divider(height: 1, indent: 50, color: Colors.grey.withOpacity(0.1)),
               itemBuilder: (context, index) {
                 final log = logs[index];
+                final String callType = log['callType'] ?? 'voice'; // ✅ Fetch Call Type
+
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Row(
                     children: [
-                      Icon(_getIcon(log['type']), color: _getIconColor(log['type']), size: 20),
+                      // ✅ Dynamic Icon (Voice vs Video)
+                      Icon(_getIcon(log['type'], callType), color: _getIconColor(log['type']), size: 20),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // ✅ Dynamic Label (Voice vs Video)
                             Text(
-                              _getTypeLabel(log['type']),
+                              _getTypeLabel(log['type'], callType),
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             Text(
@@ -185,9 +204,9 @@ class CallLogDetailScreen extends ConsumerWidget {
         alignment: Alignment.center, 
         child: Column(
           children: [
-            Icon(icon, color: color, size: 28),
+            Icon(icon, color: color, size: 24), // ✅ Slightly smaller to prevent overflow
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold))
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)) // ✅ Adjusted font size
           ],
         ),
       ),
@@ -247,12 +266,22 @@ class CallLogDetailScreen extends ConsumerWidget {
     );
   }
 
-  IconData _getIcon(String type) {
-    switch (type) {
-      case 'missed': return Icons.call_missed;
-      case 'dialed': return Icons.call_made;
-      case 'received': return Icons.call_received;
-      default: return Icons.call;
+  // ✅ UPDATED: Supports Video Call Icons
+  IconData _getIcon(String type, String callType) {
+    if (callType == 'video') {
+      switch (type) {
+        case 'missed': return Icons.missed_video_call;
+        case 'dialed': return Icons.videocam_outlined;
+        case 'received': return Icons.videocam;
+        default: return Icons.videocam;
+      }
+    } else {
+      switch (type) {
+        case 'missed': return Icons.call_missed;
+        case 'dialed': return Icons.call_made;
+        case 'received': return Icons.call_received;
+        default: return Icons.call;
+      }
     }
   }
 
@@ -265,12 +294,14 @@ class CallLogDetailScreen extends ConsumerWidget {
     }
   }
 
-  String _getTypeLabel(String type) {
+  // ✅ UPDATED: Supports Video Call Labels
+  String _getTypeLabel(String type, String callType) {
+    final bool isVideo = callType == 'video';
     switch (type) {
-      case 'missed': return "Missed Call";
-      case 'dialed': return "Outgoing Call";
-      case 'received': return "Incoming Call";
-      default: return "Call";
+      case 'missed': return isVideo ? "Missed Video Call" : "Missed Call";
+      case 'dialed': return isVideo ? "Outgoing Video Call" : "Outgoing Call";
+      case 'received': return isVideo ? "Incoming Video Call" : "Incoming Call";
+      default: return isVideo ? "Video Call" : "Call";
     }
   }
 

@@ -341,23 +341,24 @@ router.put("/users/:id/verify", verifyEditor, async (req, res) => {
 // 2. EVENT MANAGEMENT
 // ==========================================
 
+// ✅ UPDATED: Create Event (Multiple Images)
 router.post(
   "/events",
   verifyEditor,
-  adminUpload.single("image"), // ✅ Updated to adminUpload
+  adminUpload.array("images", 5), // Allow up to 5 images
   async (req, res) => {
-    const { error } = eventSchema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
-
     try {
       const { title, description, date, time, type, location } = req.body;
 
-      // ✅ Extract Image URL from Cloudinary (or text body fallback)
-      let imageUrl = req.body.image || "";
-      if (req.file) {
-        imageUrl = req.file.path;
+      // Extract Image URLs
+      let imageUrls = [];
+      if (req.files && req.files.length > 0) {
+        imageUrls = req.files.map(file => file.path);
+      } else if (req.body.image) {
+        imageUrls = [req.body.image]; // Fallback
       }
+
+      const mainImage = imageUrls.length > 0 ? imageUrls[0] : "";
 
       const newEvent = new Event({
         title,
@@ -365,7 +366,8 @@ router.post(
         date: date ? new Date(date) : undefined,
         time,
         type: type || "News",
-        image: imageUrl, // ✅ Save File URL
+        image: mainImage,    // For backward compatibility with mobile app
+        images: imageUrls,   // New array of images
         location,
       });
       await newEvent.save();
@@ -384,21 +386,19 @@ router.post(
   },
 );
 
+// ✅ UPDATED: Update Event (Multiple Images)
 router.put(
   "/events/:id",
   verifyEditor,
-  adminUpload.single("image"), // ✅ Added middleware here too!
+  adminUpload.array("images", 5),
   async (req, res) => {
-    const { error } = eventSchema.validate(req.body);
-    if (error)
-      return res.status(400).json({ message: error.details[0].message });
-
     try {
       const updateData = { ...req.body };
 
-      // ✅ Update image only if a new file is uploaded
-      if (req.file) {
-        updateData.image = req.file.path;
+      // Update images only if new files are uploaded
+      if (req.files && req.files.length > 0) {
+        updateData.images = req.files.map(file => file.path);
+        updateData.image = updateData.images[0]; // Update fallback image
       }
 
       const updatedEvent = await Event.findByIdAndUpdate(

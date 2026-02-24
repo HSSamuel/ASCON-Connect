@@ -21,6 +21,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   late Map<String, dynamic> _event;
   bool _isLoading = false;
   final DataService _dataService = DataService();
+  int _currentImageIndex = 0; // ✅ For the image carousel indicator
 
   @override
   void initState() {
@@ -50,7 +51,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  // ✅ HELPER: Handles both HTTP URLs and Base64 Strings
   Widget _buildSafeImage(String? imageUrl, {BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return Container(color: Colors.grey[800]);
@@ -79,7 +79,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
-  // ✅ FULL SCREEN NAVIGATOR
   void _openFullScreenImage(String imageUrl) {
     if (imageUrl.isEmpty) return;
     Navigator.push(
@@ -99,7 +98,16 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     final dividerColor = Theme.of(context).dividerColor;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final String image = _event['image'] ?? _event['imageUrl'] ?? '';
+    // ✅ Process Multiple Images safely
+    List<String> images = [];
+    if (_event['images'] != null && _event['images'] is List && _event['images'].isNotEmpty) {
+      images = List<String>.from(_event['images']);
+    } else if (_event['image'] != null && _event['image'].toString().isNotEmpty) {
+      images = [_event['image'].toString()];
+    } else if (_event['imageUrl'] != null && _event['imageUrl'].toString().isNotEmpty) {
+      images = [_event['imageUrl'].toString()];
+    }
+
     final String title = _event['title'] ?? 'Event Details';
     
     final String location = (_event['location'] != null && _event['location'].toString().isNotEmpty)
@@ -141,7 +149,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ? const Center(child: CircularProgressIndicator()) 
         : CustomScrollView(
         slivers: [
-          // 1. APP BAR IMAGE (NOW CLICKABLE)
           SliverAppBar(
             expandedHeight: 280.0,
             pinned: true,
@@ -180,11 +187,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // ✅ MAKE IMAGE TAPPABLE
-                  GestureDetector(
-                    onTap: () => _openFullScreenImage(image),
-                    child: _buildSafeImage(image),
-                  ),
+                  // ✅ MULTIPLE IMAGES CAROUSEL
+                  if (images.isNotEmpty)
+                    PageView.builder(
+                      itemCount: images.length,
+                      onPageChanged: (index) {
+                        setState(() {
+                          _currentImageIndex = index;
+                        });
+                      },
+                      itemBuilder: (context, index) {
+                        return GestureDetector(
+                          onTap: () => _openFullScreenImage(images[index]),
+                          child: _buildSafeImage(images[index]),
+                        );
+                      },
+                    )
+                  else
+                    Container(color: Colors.grey[800]), // Fallback if no images
+                    
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -194,13 +215,37 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ),
                     ),
                   ),
-                  // ✅ "VIEW PHOTO" BADGE
-                  if (image.isNotEmpty)
+
+                  // ✅ PAGE INDICATOR FOR MULTIPLE IMAGES
+                  if (images.length > 1)
                     Positioned(
-                      bottom: 40, // Just above the curved container
+                      bottom: 30,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(images.length, (index) {
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: _currentImageIndex == index ? 12 : 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: _currentImageIndex == index ? Colors.white : Colors.white.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+
+                  // "VIEW PHOTO" BADGE
+                  if (images.isNotEmpty)
+                    Positioned(
+                      bottom: 40,
                       right: 16,
                       child: GestureDetector(
-                        onTap: () => _openFullScreenImage(image),
+                        onTap: () => _openFullScreenImage(images[_currentImageIndex]),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
@@ -251,7 +296,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                   const SizedBox(height: 20),
                   
-                  // EVENT TYPE BADGE
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
@@ -262,14 +306,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // TITLE
                   Text(
                     title,
                     style: GoogleFonts.lato(fontSize: 24, fontWeight: FontWeight.w800, color: textColor, height: 1.2),
                   ),
                   const SizedBox(height: 24),
                   
-                  // INFO ROWS
                   _buildInfoRow(context, Icons.calendar_today_outlined, "Date", formattedDate),
                   
                   Padding(
@@ -281,7 +323,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   
                   const SizedBox(height: 30),
                   
-                  // DESCRIPTION
                   Text("About Event", style: GoogleFonts.lato(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   
@@ -314,7 +355,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                           eventId: eventId, 
                           eventTitle: title,
                           eventType: eventType,
-                          eventImage: image,
+                          eventImage: images.isNotEmpty ? images.first : '',
                         ),
                       ),
                     );
@@ -476,7 +517,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 }
 
-// ✅ NEW: Full Screen Image Viewer Widget
 class FullScreenImageViewer extends StatelessWidget {
   final String imageUrl;
 

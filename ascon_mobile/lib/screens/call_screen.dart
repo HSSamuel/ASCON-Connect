@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
 import 'package:google_fonts/google_fonts.dart';
 import 'package:audioplayers/audioplayers.dart'; 
-import 'package:agora_rtc_engine/agora_rtc_engine.dart'; // ✅ Added for Video Views
+import 'package:agora_rtc_engine/agora_rtc_engine.dart'; 
 import '../services/call_service.dart';
 import '../services/socket_service.dart';
 
 class CallScreen extends StatefulWidget {
   final bool isGroupCall;          
-  final bool isVideoCall;          // ✅ NEW: Video flag
+  final bool isVideoCall;          
   final List<String>? targetIds;   
   final String remoteName;
   final String? remoteId;          
@@ -21,7 +22,7 @@ class CallScreen extends StatefulWidget {
   const CallScreen({
     super.key, 
     this.isGroupCall = false, 
-    this.isVideoCall = false,      // ✅ NEW: Defaults to false (Audio)
+    this.isVideoCall = false,      
     this.targetIds,
     required this.remoteName, 
     this.remoteId,
@@ -43,7 +44,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   
   String _status = "Connecting...";
   bool _isMuted = false;
-  bool _isVideoOff = false; // ✅ Track Video State
+  bool _isVideoOff = false; 
   bool _isSpeakerOn = false;
   bool _isConnected = false;
   bool _hasAccepted = false;
@@ -60,7 +61,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     
-    // Auto-enable speaker for video calls
     if (widget.isVideoCall) _isSpeakerOn = true; 
 
     _pulseController = AnimationController(
@@ -81,7 +81,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     }
   }
 
-  // ... (Keep _playRingtone, _playDialingSound, _stopAudio exact same) ...
   void _playRingtone() async {
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
     await _audioPlayer.play(AssetSource('sounds/ringtone.mp3'));
@@ -97,16 +96,18 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   }
 
   void _startOutgoingCall() async {
-    bool success = await _callService.joinCall(channelName: widget.channelName, isVideo: widget.isVideoCall); // ✅ Passed isVideo flag
+    bool success = await _callService.joinCall(channelName: widget.channelName, isVideo: widget.isVideoCall); 
     
     if (success) {
-      if (widget.isVideoCall) _callService.toggleSpeaker(true); // Force speaker
+      if (widget.isVideoCall && !kIsWeb) {
+        _callService.toggleSpeaker(true); 
+      }
 
       Map<String, dynamic> callerPayload = {
         'callerName': widget.currentUserName ?? "Unknown User", 
         'callerAvatar': widget.currentUserAvatar,
         'isGroupCall': widget.isGroupCall,
-        'isVideoCall': widget.isVideoCall, // ✅ Send Video Flag securely to receiver
+        'isVideoCall': widget.isVideoCall, 
         'groupName': widget.remoteName 
       };
 
@@ -135,7 +136,10 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     }
     
     await _callService.joinCall(channelName: widget.channelName, isVideo: widget.isVideoCall);
-    if (widget.isVideoCall) _callService.toggleSpeaker(true); 
+    
+    if (widget.isVideoCall && !kIsWeb) {
+      _callService.toggleSpeaker(true); 
+    }
   }
 
   void _listenToEvents() {
@@ -228,9 +232,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack( // ✅ Used Stack to place Video under Controls
+      body: Stack( 
         children: [
-          // ✅ 1. BACKGROUND (Video or Gradient)
           if (widget.isVideoCall && _isConnected)
             _buildVideoGrid()
           else
@@ -243,7 +246,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
               ),
             ),
 
-          // ✅ 2. FOREGROUND (UI & Controls)
           SafeArea(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -281,7 +283,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
 
                 const Spacer(flex: 3),
                 
-                // ✅ CONTROLS UI
+                // CONTROLS UI
                 Padding(
                   padding: const EdgeInsets.only(bottom: 30.0),
                   child: widget.isIncoming && !_hasAccepted 
@@ -302,7 +304,19 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildSmallBtn(Icons.flip_camera_ios, "Flip", () => _callService.switchCamera()),
+                              // ✅ FIX: Corrected SnackBar parenthesis
+                              _buildSmallBtn(Icons.flip_camera_ios, "Flip", () {
+                                if (kIsWeb) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Camera flip is managed by browser."),
+                                      duration: Duration(seconds: 2),
+                                    )
+                                  );
+                                  return;
+                                }
+                                _callService.switchCamera();
+                              }),
                               const SizedBox(width: 40),
                               _buildSmallBtn(_isVideoOff ? Icons.videocam_off : Icons.videocam, _isVideoOff ? "Video Off" : "Video On", () {
                                 setState(() => _isVideoOff = !_isVideoOff);
@@ -333,11 +347,22 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                               }
                               _endCallUI("Call Ended");
                             }),
+                            
+                            // ✅ FIX: Corrected SnackBar parenthesis
                             _buildControlButton(
                               icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
                               label: "Speaker",
                               isActive: _isSpeakerOn,
                               onTap: () {
+                                if (kIsWeb) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Speaker is managed by browser/device audio."),
+                                      duration: Duration(seconds: 2),
+                                    )
+                                  );
+                                  return;
+                                }
                                 setState(() => _isSpeakerOn = !_isSpeakerOn);
                                 _callService.toggleSpeaker(_isSpeakerOn);
                               },
@@ -351,7 +376,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
             ),
           ),
 
-          // ✅ 3. LOCAL VIDEO (Picture-in-Picture)
           if (widget.isVideoCall && _isConnected && !_isVideoOff)
              Positioned(
                right: 16,
@@ -369,7 +393,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                    child: AgoraVideoView(
                      controller: VideoViewController(
                        rtcEngine: _callService.engine,
-                       canvas: const VideoCanvas(uid: 0), // 0 means local camera
+                       canvas: const VideoCanvas(uid: 0), 
                      ),
                    ),
                  ),
@@ -380,7 +404,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ✅ HANDLES FULL SCREEN AND GRID FOR GROUP VIDEO
   Widget _buildVideoGrid() {
     List<int> uids = _callService.remoteUids.toList();
 
@@ -398,7 +421,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       );
     }
 
-    // Wrap in a GridView if more than 1 remote user
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: uids.length > 2 ? 2 : 1,
@@ -421,7 +443,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ... (Keep _buildPulsingAvatar, _buildActionCircle, _buildControlButton exact same) ...
   Widget _buildPulsingAvatar() {
     final bool hasValidAvatar = widget.remoteAvatar != null && widget.remoteAvatar!.isNotEmpty;
     Widget avatar = CircleAvatar(

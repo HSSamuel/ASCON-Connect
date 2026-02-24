@@ -34,7 +34,13 @@ class EventCard extends StatelessWidget {
 
     final String title = event['title']?.toString() ?? 'No Title';
     final String type = event['type'] ?? 'News';
-    final String imageUrl = event['image'] ?? event['imageUrl'] ?? '';
+    
+    // ✅ Safely extract from multiple sources
+    String imageUrl = event['image'] ?? event['imageUrl'] ?? '';
+    if (imageUrl.isEmpty && event['images'] != null && event['images'] is List && event['images'].isNotEmpty) {
+      imageUrl = event['images'][0].toString();
+    }
+
     final String eventId = (event['_id'] ?? event['id'] ?? '').toString();
 
     return Container(
@@ -69,13 +75,11 @@ class EventCard extends StatelessWidget {
               ),
             ),
             
-            // Interaction Layer
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () {
-                    // ✅ Navigate using root navigator to hide bottom bar
                     final Map<String, dynamic> safeEventData = {
                       ...event,
                       '_id': eventId,

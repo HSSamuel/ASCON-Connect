@@ -1,5 +1,14 @@
 const mongoose = require("mongoose");
 
+// ✅ NEW: Schema for Reactions
+const reactionSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    emoji: { type: String, required: true },
+  },
+  { _id: false }
+);
+
 const messageSchema = new mongoose.Schema(
   {
     conversationId: { type: String, required: true },
@@ -11,12 +20,10 @@ const messageSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      // ✅ Added 'poll' to allowed types
       enum: ["text", "image", "audio", "file", "poll"],
       default: "text",
     },
 
-    // ✅ NEW: Message Status Tracking
     status: {
       type: String,
       enum: ["sent", "delivered", "read"],
@@ -27,7 +34,6 @@ const messageSchema = new mongoose.Schema(
     fileUrl: { type: String, default: "" },
     fileName: { type: String, default: "" },
 
-    // ✅ Reference to Poll if type === 'poll'
     pollId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Poll",
@@ -40,14 +46,17 @@ const messageSchema = new mongoose.Schema(
       default: null,
     },
 
-    isRead: { type: Boolean, default: false }, // Kept for backward compatibility
+    isRead: { type: Boolean, default: false },
     isEdited: { type: Boolean, default: false },
 
-    // Soft Delete (Delete for Everyone)
     isDeleted: { type: Boolean, default: false },
-
-    // Hidden For Specific Users (Delete for Me)
     deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: "UserAuth" }],
+
+    // ✅ NEW: Array to store emoji reactions
+    reactions: {
+      type: [reactionSchema],
+      default: [],
+    },
   },
   { timestamps: true },
 );

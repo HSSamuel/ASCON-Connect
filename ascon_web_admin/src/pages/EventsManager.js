@@ -24,8 +24,8 @@ function EventsManager({ canEdit }) {
   const [editingId, setEditingId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ NEW: File State
-  const [selectedFile, setSelectedFile] = useState(null);
+  // ✅ UPDATED: State to handle multiple files
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const [toast, setToast] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
@@ -37,6 +37,7 @@ function EventsManager({ canEdit }) {
     description: "",
     type: "News",
     image: "",
+    images: [], // ✅ Added images array to state
     location: "",
     date: "",
     time: "",
@@ -65,9 +66,9 @@ function EventsManager({ canEdit }) {
   const handleInputChange = (e) => {
     const { name, value, files } = e.target;
 
-    // ✅ UPDATED: Handle File Selection
-    if (name === "image" && files) {
-      setSelectedFile(files[0]);
+    // ✅ UPDATED: Handle Multiple File Selection
+    if (name === "images" && files) {
+      setSelectedFiles(Array.from(files));
     } else {
       setEventForm({ ...eventForm, [name]: value });
     }
@@ -89,12 +90,13 @@ function EventsManager({ canEdit }) {
   const resetForm = () => {
     setEditingId(null);
     setShowForm(false);
-    setSelectedFile(null); // Clear file
+    setSelectedFiles([]); // ✅ Clear files
     setEventForm({
       title: "",
       description: "",
       type: "News",
       image: "",
+      images: [],
       location: "",
       date: "",
       time: "",
@@ -103,12 +105,13 @@ function EventsManager({ canEdit }) {
 
   const handleEdit = (event) => {
     setEditingId(event._id);
-    setSelectedFile(null); // Reset file selection on edit
+    setSelectedFiles([]); // ✅ Reset file selection on edit
     setEventForm({
       title: event.title,
       description: event.description,
       type: event.type,
       image: event.image || "",
+      images: event.images || [], // ✅ Load existing images
       location: event.location || "",
       date: event.date ? new Date(event.date).toISOString().split("T")[0] : "",
       time: event.time || "",
@@ -124,7 +127,6 @@ function EventsManager({ canEdit }) {
     setIsSubmitting(true);
 
     try {
-      // ✅ UPDATED: Use FormData for File Uploads
       const formData = new FormData();
       formData.append("title", eventForm.title);
       formData.append("description", eventForm.description);
@@ -133,14 +135,20 @@ function EventsManager({ canEdit }) {
       formData.append("time", eventForm.time);
       formData.append("location", eventForm.location);
 
-      if (selectedFile) {
-        formData.append("image", selectedFile);
+      // ✅ UPDATED: Append Multiple Files
+      if (selectedFiles.length > 0) {
+        selectedFiles.forEach((file) => {
+          formData.append("images", file);
+        });
       } else {
-        // Retain existing image string if no new file
-        formData.append("image", eventForm.image);
+        // Retain existing images if no new files are uploaded
+        if (eventForm.images && eventForm.images.length > 0) {
+          eventForm.images.forEach((img) => formData.append("images", img));
+        } else if (eventForm.image) {
+          formData.append("images", eventForm.image); // Fallback
+        }
       }
 
-      // Important: Allow axios to set the Content-Type header with the boundary
       const config = { headers: { "Content-Type": "multipart/form-data" } };
 
       if (editingId) {
@@ -284,7 +292,7 @@ function EventsManager({ canEdit }) {
                 onChange={handleInputChange}
               />
 
-              {/* ✅ UPDATED: File Input for Image */}
+              {/* ✅ UPDATED: Input for Multiple Files */}
               <div
                 style={{
                   gridColumn: "1 / -1",
@@ -294,12 +302,13 @@ function EventsManager({ canEdit }) {
                 }}
               >
                 <label style={{ fontSize: "0.9em", color: "#666" }}>
-                  Event Banner Image
+                  Event Banner Images (Select up to 5)
                 </label>
                 <input
                   type="file"
-                  name="image"
+                  name="images"
                   accept="image/*"
+                  multiple // ✅ Allows multiple selection
                   onChange={handleInputChange}
                   style={{
                     padding: "8px",
@@ -307,20 +316,44 @@ function EventsManager({ canEdit }) {
                     borderRadius: "4px",
                   }}
                 />
-                {/* Show existing image link if editing and no new file selected */}
-                {editingId && !selectedFile && eventForm.image && (
-                  <small style={{ color: "#666" }}>
-                    Current Image:{" "}
-                    <a
-                      href={eventForm.image}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: "#1B5E3A" }}
+
+                {/* Image Previews */}
+                {editingId &&
+                  !selectedFiles.length &&
+                  eventForm.images?.length > 0 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                        marginTop: "10px",
+                      }}
                     >
-                      View
-                    </a>
-                  </small>
-                )}
+                      <small style={{ color: "#666", width: "100%" }}>
+                        Current Images:
+                      </small>
+                      {eventForm.images.map((img, idx) => (
+                        <a
+                          key={idx}
+                          href={img}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <img
+                            src={img}
+                            alt={`Event ${idx}`}
+                            style={{
+                              width: "60px",
+                              height: "60px",
+                              objectFit: "cover",
+                              borderRadius: "4px",
+                              border: "1px solid #ddd",
+                            }}
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
               </div>
 
               <textarea
@@ -414,7 +447,7 @@ function EventsManager({ canEdit }) {
                   <tr key={event._id}>
                     <td>
                       <img
-                        src={event.image}
+                        src={event.image || (event.images && event.images[0])}
                         alt=""
                         style={thumbnailStyle}
                         onError={(e) => {
