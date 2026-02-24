@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
+import 'package:flutter/rendering.dart'; // ✅ ADDED for ScrollDirection & UserScrollNotification
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,15 +47,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hasUnreadMessages = false;
   final ApiClient _api = ApiClient();
   
-  // ✅ ADDED: Cache current user ID to prevent self-notification
   String? _currentUserId; 
   DateTime? _lastPressedAt;
+
+  // ✅ ADDED: State to track if the bottom nav should be visible
+  bool _isBottomNavVisible = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadCurrentUser(); // ✅ Load ID first
+    _loadCurrentUser(); 
     _refreshUnreadState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstTimeWelcome());
@@ -66,7 +69,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  // ✅ NEW: Get User ID for logic checks
   Future<void> _loadCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -140,7 +142,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final socket = SocketService().socket;
     if (socket == null) return;
     
-    // Clean up old listeners to prevent duplicates
     try {
       socket.off('new_message');
       socket.off('messages_read'); 
@@ -150,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     socket.on('new_message', (data) {
       if (!mounted) return;
       
-      // ✅ FIX: Don't show red dot for my own messages
       if (data != null && data['message'] != null) {
         final senderId = data['message']['sender'] is Map 
             ? data['message']['sender']['_id'] 
@@ -249,6 +249,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await _handleBackPress();
       },
       child: Scaffold(
+        extendBody: true, // ✅ CRITICAL: Allows list to scroll behind the nav bar smoothly
         appBar: showAppBar 
           ? AppBar(
               title: Text("Dashboard", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : primaryColor)),
@@ -302,45 +303,69 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             )
           : null, 
 
-        body: widget.navigationShell,
+        // ✅ ADDED: NotificationListener wraps the body to detect vertical scrolls
+        body: NotificationListener<UserScrollNotification>(
+          onNotification: (notification) {
+            // Only react to vertical scrolling (ignores horizontal lists)
+            if (notification.metrics.axis == Axis.vertical) {
+              if (notification.direction == ScrollDirection.forward) {
+                if (!_isBottomNavVisible) setState(() => _isBottomNavVisible = true);
+              } else if (notification.direction == ScrollDirection.reverse) {
+                if (_isBottomNavVisible) setState(() => _isBottomNavVisible = false);
+              }
+            }
+            return false; // Return false so scroll events can continue propagating
+          },
+          child: widget.navigationShell,
+        ),
 
+        // ✅ ADDED: AnimatedSlide for the FAB
         floatingActionButton: isKeyboardOpen 
           ? null 
-          : SizedBox(
-              width: 42, height: 42, 
-              child: FloatingActionButton(
-                heroTag: "main_dashboard_fab",
-                onPressed: () => _goBranch(2), 
-                backgroundColor: uiIndex == 2 ? primaryColor : Colors.grey,
-                elevation: 3.0, 
-                shape: const CircleBorder(),
-                child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 20),
+          : AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset: _isBottomNavVisible ? Offset.zero : const Offset(0, 2.5),
+              child: SizedBox(
+                width: 42, height: 42, 
+                child: FloatingActionButton(
+                  heroTag: "main_dashboard_fab",
+                  onPressed: () => _goBranch(2), 
+                  backgroundColor: uiIndex == 2 ? primaryColor : Colors.grey,
+                  elevation: 3.0, 
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.dynamic_feed, color: Colors.white, size: 20),
+                ),
               ),
             ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         
+        // ✅ ADDED: AnimatedSlide for the BottomAppBar
         bottomNavigationBar: isKeyboardOpen 
           ? null 
-          : SizedBox(
-              height: 56, 
-              child: BottomAppBar(
-                shape: const CircularNotchedRectangle(),
-                notchMargin: 5.0, 
-                color: navBarColor,
-                elevation: 8, 
-                shadowColor: Colors.black.withOpacity(0.1),
-                clipBehavior: Clip.antiAlias,
-                padding: EdgeInsets.zero,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    _buildNavItem(label: "Home", icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: uiIndex),
-                    _buildNavItem(label: "Events", icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: uiIndex),
-                    const SizedBox(width: 42), 
-                    _buildNavItem(label: "Directory", icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: uiIndex),
-                    _buildNavItem(label: "Profile", icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: uiIndex),
-                  ],
+          : AnimatedSlide(
+              duration: const Duration(milliseconds: 300),
+              offset: _isBottomNavVisible ? Offset.zero : const Offset(0, 1.5),
+              child: SizedBox(
+                height: 56, 
+                child: BottomAppBar(
+                  shape: const CircularNotchedRectangle(),
+                  notchMargin: 5.0, 
+                  color: navBarColor,
+                  elevation: 8, 
+                  shadowColor: Colors.black.withOpacity(0.1),
+                  clipBehavior: Clip.antiAlias,
+                  padding: EdgeInsets.zero,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      _buildNavItem(label: "Home", icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, index: 0, color: primaryColor, currentIndex: uiIndex),
+                      _buildNavItem(label: "Events", icon: Icons.event_outlined, activeIcon: Icons.event, index: 1, color: primaryColor, currentIndex: uiIndex),
+                      const SizedBox(width: 42), 
+                      _buildNavItem(label: "Directory", icon: Icons.list_alt, activeIcon: Icons.list, index: 3, color: primaryColor, currentIndex: uiIndex),
+                      _buildNavItem(label: "Profile", icon: Icons.person_outline, activeIcon: Icons.person, index: 4, color: primaryColor, currentIndex: uiIndex),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -440,18 +465,15 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
     }
   }
 
-  // ✅ OPTIMIZED IMAGE BUILDER
   Widget _buildSafeImage(String? imageUrl, {IconData fallbackIcon = Icons.image, BoxFit fit = BoxFit.cover}) {
     if (imageUrl == null || imageUrl.isEmpty) {
       return _buildPlaceholder(fallbackIcon);
     }
 
-    // 1. Google/Profile Urls
     if (imageUrl.contains('profile/picture/1') || imageUrl.contains('googleusercontent.com')) {
        return _buildPlaceholder(fallbackIcon);
     }
 
-    // 2. Web Network Images
     if (kIsWeb && imageUrl.startsWith('http')) {
        return Image.network(
          imageUrl,
@@ -464,21 +486,17 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
        );
     }
 
-    // 3. Mobile Cached Images (Fastest)
     if (imageUrl.startsWith('http')) {
       return CachedNetworkImage(
         imageUrl: imageUrl, 
         fit: fit,
-        // ✅ Add memCache for smoother scrolling of large lists
         memCacheWidth: 300, 
         placeholder: (context, url) => Container(color: Colors.grey[200]),
         errorWidget: (context, url, error) => _buildPlaceholder(Icons.broken_image),
       );
     }
 
-    // 4. Base64 (The Performance Bottleneck)
     try {
-      // ✅ Check if it's actually Base64 before trying to decode
       if (imageUrl.length > 100 && !imageUrl.startsWith('http')) {
         String cleanBase64 = imageUrl;
         if (cleanBase64.contains(',')) cleanBase64 = cleanBase64.split(',').last;
@@ -486,13 +504,11 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
         return Image.memory(
           base64Decode(cleanBase64), 
           fit: fit,
-          gaplessPlayback: true, // ✅ Prevents flickering when list updates
+          gaplessPlayback: true, 
           errorBuilder: (c, e, s) => _buildPlaceholder(Icons.broken_image),
         );
       }
-    } catch (e) {
-      // Fallthrough
-    }
+    } catch (e) {}
     
     return _buildPlaceholder(fallbackIcon);
   }
@@ -694,7 +710,7 @@ class _DashboardViewState extends ConsumerState<DashboardView> {
                     itemBuilder: (context, index) => _buildNewsUpdateCard(context, dashboardState.programmes[index]),
                   ),
 
-                const SizedBox(height: 30),
+                const SizedBox(height: 100), // ✅ ADDED: Extra bottom padding so users can scroll to the absolute bottom cleanly even if the nav bar is animating.
               ],
             ),
           ),

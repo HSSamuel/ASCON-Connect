@@ -106,12 +106,23 @@ const initializeSocket = async (server) => {
         return next(new Error("Authentication error: Token required"));
       }
 
+      // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded._id;
 
+      // ✅ ENHANCEMENT: Verify user actually exists in the database
+      const user = await UserAuth.findById(decoded._id).select("_id");
+      if (!user) {
+        logger.warn(
+          `Blocked socket connection for deleted/invalid user: ${decoded._id}`,
+        );
+        return next(new Error("Authentication error: User no longer exists"));
+      }
+
+      socket.userId = decoded._id;
       return next();
     } catch (err) {
-      return next(new Error("Authentication error: Invalid Token"));
+      logger.error(`Socket Auth Error: ${err.message}`);
+      return next(new Error("Authentication error: Invalid or Expired Token"));
     }
   });
 
@@ -443,4 +454,16 @@ const getIO = () => {
   return io;
 };
 
-module.exports = { initializeSocket, getIO };
+// ✅ Cleanup function for graceful shutdown
+const closeSocket = async () => {
+  if (io) {
+    io.close();
+    logger.info("🛑 Socket.io server closed.");
+  }
+  if (redisClient && redisClient.isOpen) {
+    await redisClient.quit();
+    logger.info("🛑 Redis client disconnected.");
+  }
+};
+
+module.exports = { initializeSocket, getIO, closeSocket };

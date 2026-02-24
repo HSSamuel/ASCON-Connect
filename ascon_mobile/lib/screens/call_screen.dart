@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:io' show Platform; // ✅ Safely imported for platform checks
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // ✅ Required for kIsWeb
+import 'package:flutter/foundation.dart'; 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:audioplayers/audioplayers.dart'; 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart'; 
@@ -45,7 +46,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   String _status = "Connecting...";
   bool _isMuted = false;
   bool _isVideoOff = false; 
-  bool _isSpeakerOn = false;
+  String _selectedAudioRoute = 'Earpiece'; 
   bool _isConnected = false;
   bool _hasAccepted = false;
   int _activeGroupUsers = 0; 
@@ -61,7 +62,11 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     
-    if (widget.isVideoCall) _isSpeakerOn = true; 
+    if (widget.isVideoCall) {
+      _selectedAudioRoute = 'Speaker'; 
+    } else {
+      _selectedAudioRoute = 'Earpiece';
+    }
 
     _pulseController = AnimationController(
       vsync: this,
@@ -99,8 +104,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     bool success = await _callService.joinCall(channelName: widget.channelName, isVideo: widget.isVideoCall); 
     
     if (success) {
-      if (widget.isVideoCall && !kIsWeb) {
-        _callService.toggleSpeaker(true); 
+      if (!kIsWeb) {
+        _callService.setAudioRoute(_selectedAudioRoute); 
       }
 
       Map<String, dynamic> callerPayload = {
@@ -137,8 +142,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     
     await _callService.joinCall(channelName: widget.channelName, isVideo: widget.isVideoCall);
     
-    if (widget.isVideoCall && !kIsWeb) {
-      _callService.toggleSpeaker(true); 
+    if (!kIsWeb) {
+      _callService.setAudioRoute(_selectedAudioRoute); 
     }
   }
 
@@ -215,6 +220,60 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     String minutes = twoDigits(_callDuration.inMinutes.remainder(60));
     String seconds = twoDigits(_callDuration.inSeconds.remainder(60));
     return _callDuration.inHours > 0 ? "${twoDigits(_callDuration.inHours)}:$minutes:$seconds" : "$minutes:$seconds";
+  }
+
+  Future<void> _showDeviceSelectorDialog() async {
+    List<AudioDeviceInfo> devices = await _callService.getPlaybackDevices();
+    
+    if (devices.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No specific audio devices found by browser/OS.")),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2C2C2C),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text("Select Audio Output", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: devices.length,
+              itemBuilder: (context, index) {
+                final device = devices[index];
+                return ListTile(
+                  leading: const Icon(Icons.speaker, color: Colors.white70),
+                  title: Text(device.deviceName ?? "Unknown Device", style: const TextStyle(color: Colors.white)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  onTap: () {
+                    if (device.deviceId != null) {
+                      _callService.setPlaybackDevice(device.deviceId!);
+                      setState(() => _selectedAudioRoute = 'Speaker'); 
+                    }
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: Colors.redAccent)),
+            )
+          ],
+        );
+      }
+    );
   }
 
   @override
@@ -304,7 +363,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // ✅ FIX: Corrected SnackBar parenthesis
                               _buildSmallBtn(Icons.flip_camera_ios, "Flip", () {
                                 if (kIsWeb) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -348,25 +406,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                               _endCallUI("Call Ended");
                             }),
                             
-                            // ✅ FIX: Corrected SnackBar parenthesis
-                            _buildControlButton(
-                              icon: _isSpeakerOn ? Icons.volume_up : Icons.volume_down,
-                              label: "Speaker",
-                              isActive: _isSpeakerOn,
-                              onTap: () {
-                                if (kIsWeb) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Speaker is managed by browser/device audio."),
-                                      duration: Duration(seconds: 2),
-                                    )
-                                  );
-                                  return;
-                                }
-                                setState(() => _isSpeakerOn = !_isSpeakerOn);
-                                _callService.toggleSpeaker(_isSpeakerOn);
-                              },
-                            ),
+                            // ✅ Audio Route UI (Intelligently detects Desktop vs Mobile)
+                            _buildAudioRouteMenu(),
                           ],
                         ),
                       ],
@@ -476,26 +517,112 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildControlButton({required IconData icon, required String label, required bool isActive, required VoidCallback onTap}) {
+  Widget _buildControlIcon({required IconData icon, required String label, required bool isActive}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: isActive ? Colors.white : Colors.white.withOpacity(0.1),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Icon(icon, color: isActive ? Colors.black : Colors.white, size: 28),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.white : Colors.white.withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white24),
           ),
+          child: Icon(icon, color: isActive ? Colors.black : Colors.white, size: 28),
         ),
         const SizedBox(height: 10),
         Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.white60, fontSize: 14)),
       ],
     );
+  }
+
+  Widget _buildControlButton({required IconData icon, required String label, required bool isActive, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: _buildControlIcon(icon: icon, label: label, isActive: isActive),
+    );
+  }
+
+  Widget _buildAudioRouteMenu() {
+    bool isDesktopOrWeb = kIsWeb;
+    if (!kIsWeb) {
+      isDesktopOrWeb = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    }
+
+    IconData getIcon() {
+      if (_selectedAudioRoute == 'Speaker') return Icons.volume_up;
+      if (_selectedAudioRoute == 'Bluetooth') return Icons.bluetooth_audio;
+      return Icons.hearing;
+    }
+
+    if (isDesktopOrWeb) {
+      return _buildControlButton(
+        icon: Icons.speaker,
+        label: "Audio",
+        isActive: _selectedAudioRoute == 'Speaker',
+        onTap: _showDeviceSelectorDialog,
+      );
+    } else {
+      return PopupMenuButton<String>(
+        color: const Color(0xFF2C2C2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // Sharper corners
+        // ✅ CRITICAL FIX: Add constraints to force the container to shrink horizontally
+        constraints: const BoxConstraints(
+          minWidth: 110, // Forces the minimum width to be much smaller
+          maxWidth: 130, // Prevents the box from getting too wide
+        ),
+        offset: const Offset(0, -110), // Adjusted offset for shorter menu
+        onSelected: (String result) {
+          setState(() {
+            _selectedAudioRoute = result;
+          });
+          _callService.setAudioRoute(result);
+        },
+        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+          const PopupMenuItem<String>(
+            value: 'Speaker',
+            height: 32, // ✅ Strongly reduced height 
+            padding: EdgeInsets.symmetric(horizontal: 10), // ✅ Tighter side padding
+            child: Row(
+              children: [
+                Icon(Icons.volume_up, color: Colors.white, size: 16), // ✅ Small Icon
+                SizedBox(width: 8), 
+                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 13)), // ✅ Small Text
+              ],
+            ),
+          ),
+          const PopupMenuItem<String>(
+            value: 'Earpiece',
+            height: 32, 
+            padding: EdgeInsets.symmetric(horizontal: 10), 
+            child: Row(
+              children: [
+                Icon(Icons.hearing, color: Colors.white, size: 16), 
+                SizedBox(width: 8),
+                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 13)), 
+              ],
+            ),
+          ),
+          const PopupMenuItem<String>(
+            value: 'Bluetooth',
+            height: 32, 
+            padding: EdgeInsets.symmetric(horizontal: 10), 
+            child: Row(
+              children: [
+                Icon(Icons.bluetooth_audio, color: Colors.white, size: 16), 
+                SizedBox(width: 8),
+                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 13)), 
+              ],
+            ),
+          ),
+        ],
+        child: _buildControlIcon(
+          icon: getIcon(),
+          label: _selectedAudioRoute,
+          isActive: _selectedAudioRoute == 'Speaker',
+        ),
+      );
+    }
   }
 
   Widget _buildSmallBtn(IconData icon, String label, VoidCallback onTap, {bool isActive = false}) {

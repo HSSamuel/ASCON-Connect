@@ -66,6 +66,7 @@ dependencies:
   timeago: ^3.7.1
   wakelock_plus: ^1.2.8
   agora_rtc_engine: ^6.5.3
+  audio_session: ^0.2.2
 
 dev_dependencies:
   flutter_test:

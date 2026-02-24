@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:ascon_mobile/services/api_client.dart';
+import 'package:audio_session/audio_session.dart';
 
 enum CallEvent { ringing, connected, callEnded, error, userJoined, userOffline }
 
@@ -29,7 +31,6 @@ class CallService {
     if (_isInitialized) return;
 
     if (!kIsWeb) {
-      // ✅ Added Camera Permission
       await [Permission.microphone, Permission.camera].request();
     }
 
@@ -55,13 +56,13 @@ class CallService {
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
           debugPrint("📞 Remote user answered! UID: $remoteUid");
-          remoteUids.add(remoteUid); // ✅ Save their ID to show their video
+          remoteUids.add(remoteUid); 
           _callEventController.add(CallEvent.connected);
           _callEventController.add(CallEvent.userJoined);
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
           debugPrint("📞 Remote user left! UID: $remoteUid");
-          remoteUids.remove(remoteUid); // ✅ Remove their video
+          remoteUids.remove(remoteUid); 
           _callEventController.add(CallEvent.callEnded);
           _callEventController.add(CallEvent.userOffline);
         },
@@ -73,7 +74,6 @@ class CallService {
     );
 
     await _engine.enableAudio();
-    // ❌ REMOVED: await _engine.enableVideo(); from here so it doesn't default to video globally
     _isInitialized = true;
   }
 
@@ -87,7 +87,6 @@ class CallService {
       if (responseData['token'] != null) {
         String token = responseData['token'];
 
-        // ✅ DYNAMICALLY HANDLE VIDEO STATE PER CALL
         if (isVideo) {
            await _engine.enableVideo();
            await _engine.startPreview();
@@ -102,7 +101,6 @@ class CallService {
           options: ChannelMediaOptions(
             clientRoleType: ClientRoleType.clientRoleBroadcaster,
             channelProfile: ChannelProfileType.channelProfileCommunication,
-            // ✅ CRITICAL FOR WEB: Explicitly tell the engine what tracks to publish
             publishCameraTrack: isVideo, 
             publishMicrophoneTrack: true, 
           ),
@@ -119,10 +117,10 @@ class CallService {
   Future<void> leaveCall() async {
     if (isJoined) {
       try {
-        await _engine.stopPreview(); // ✅ Safely stop camera
+        await _engine.stopPreview(); 
       } catch (_) {}
       await _engine.leaveChannel();
-      remoteUids.clear(); // ✅ Clear video grid
+      remoteUids.clear(); 
       isJoined = false;
     }
   }
@@ -135,7 +133,102 @@ class CallService {
     if (_isInitialized) await _engine.setEnableSpeakerphone(isSpeakerOn);
   }
 
-  // ✅ New Video Methods
+  // ✅ NEW: Fetch available audio output devices (Web/Windows)
+  Future<List<AudioDeviceInfo>> getPlaybackDevices() async {
+    if (!_isInitialized) return [];
+    try {
+      return await _engine.getAudioDeviceManager().enumeratePlaybackDevices();
+    } catch (e) {
+      debugPrint("Error fetching audio devices: $e");
+      return [];
+    }
+  }
+
+  // ✅ NEW: Route audio to a specific device ID (Web/Windows)
+  Future<void> setPlaybackDevice(String deviceId) async {
+    if (!_isInitialized) return;
+    try {
+      await _engine.getAudioDeviceManager().setPlaybackDevice(deviceId);
+      debugPrint("✅ Audio routed to device: $deviceId");
+    } catch (e) {
+      debugPrint("Error setting playback device: $e");
+    }
+  }
+
+  // ✅ FIXED: Advanced Native Audio Routing 
+  Future<void> setAudioRoute(String route) async {
+    if (!_isInitialized) return;
+
+    try {
+      if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS)) {
+        if (route == 'Speaker') {
+          await _engine.setEnableSpeakerphone(true);
+        } else {
+          await _engine.setEnableSpeakerphone(false);
+        }
+        return; 
+      }
+
+      final session = await AudioSession.instance;
+
+      if (route == 'Speaker') {
+        await session.configure(AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker | AVAudioSessionCategoryOptions.allowBluetooth,
+          avAudioSessionMode: AVAudioSessionMode.videoChat,
+          avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+          avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.speech,
+            flags: AndroidAudioFlags.none,
+            usage: AndroidAudioUsage.voiceCommunication,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: true,
+        ));
+        await _engine.setEnableSpeakerphone(true);
+      } 
+      else if (route == 'Earpiece') {
+        await session.configure(AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.none,
+          avAudioSessionMode: AVAudioSessionMode.voiceChat,
+          avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+          avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.speech,
+            flags: AndroidAudioFlags.none,
+            usage: AndroidAudioUsage.voiceCommunication,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: true,
+        ));
+        await _engine.setEnableSpeakerphone(false);
+      } 
+      else if (route == 'Bluetooth') {
+        await session.configure(AudioSessionConfiguration(
+          avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+          avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.allowBluetooth, 
+          avAudioSessionMode: AVAudioSessionMode.voiceChat,
+          avAudioSessionRouteSharingPolicy: AVAudioSessionRouteSharingPolicy.defaultPolicy,
+          avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+          androidAudioAttributes: const AndroidAudioAttributes(
+            contentType: AndroidAudioContentType.speech,
+            flags: AndroidAudioFlags.none,
+            usage: AndroidAudioUsage.voiceCommunication,
+          ),
+          androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+          androidWillPauseWhenDucked: true,
+        ));
+        await _engine.setEnableSpeakerphone(false);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error setting native audio route: $e");
+      }
+    }
+  }
+
   Future<void> toggleVideo(bool isVideoOff) async {
     if (_isInitialized) {
       await _engine.muteLocalVideoStream(isVideoOff);

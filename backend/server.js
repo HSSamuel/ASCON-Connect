@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
 const compression = require("compression");
 const swaggerJsDoc = require("swagger-jsdoc");
 const swaggerUi = require("swagger-ui-express");
@@ -16,7 +17,7 @@ const validateEnv = require("./utils/validateEnv");
 const errorHandler = require("./utils/errorMiddleware");
 const logger = require("./utils/logger");
 
-const { initializeSocket } = require("./services/socketService");
+const { initializeSocket, closeSocket } = require("./services/socketService");
 
 // 1. Initialize the App
 const app = express();
@@ -36,6 +37,25 @@ app.use(
     stream: { write: (message) => logger.info(message.trim()) },
   }),
 );
+
+// ==========================================
+// 🛡️ RATE LIMITING
+// ==========================================
+// 1. Global API Rate Limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 150, // Limit each IP to 150 requests per window
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
+  standardHeaders: true, 
+  legacyHeaders: false,
+});
+
+// 2. Stricter Limiter for Authentication Routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit each IP to 20 auth attempts per window
+  message: { error: "Too many authentication attempts, please try again later." },
+});
 
 // ==========================================
 // 📖 API DOCUMENTATION
@@ -110,6 +130,8 @@ app.use(async (req, res, next) => {
 // ==========================================
 // 3. ROUTES
 // ==========================================
+app.use("/api/", apiLimiter);
+app.use("/api/auth", authLimiter);
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/directory", require("./routes/directory"));
 app.use("/api/admin", require("./routes/admin"));
@@ -167,3 +189,44 @@ mongoose
   .catch((err) => {
     logger.error("❌ Database Connection Failed:", err);
   });
+
+// ==========================================
+// 5. GRACEFUL SHUTDOWN HANDLING
+// ==========================================
+const gracefulShutdown = async (signal) => {
+  logger.info(`\n⚠️ ${signal} received. Initiating graceful shutdown...`);
+
+  // 1. Stop accepting new HTTP requests
+  server.close(async () => {
+    logger.info("🛑 HTTP server stopped accepting new requests.");
+
+    try {
+      // 2. Close Socket.io & Redis connections
+      if (typeof closeSocket === "function") {
+        await closeSocket();
+      }
+
+      // 3. Close MongoDB connection cleanly
+      if (mongoose.connection.readyState === 1) {
+        await mongoose.connection.close(false);
+        logger.info("🛑 MongoDB connection cleanly closed.");
+      }
+
+      logger.info("✅ Graceful shutdown completed. Exiting process.");
+      process.exit(0);
+    } catch (error) {
+      logger.error("❌ Error occurred during graceful shutdown:", error);
+      process.exit(1);
+    }
+  });
+
+  // Force shutdown if it takes longer than 10 seconds
+  setTimeout(() => {
+    logger.error("⏳ Graceful shutdown timed out. Forcing exit.");
+    process.exit(1);
+  }, 10000);
+};
+
+// Listen for termination signals from OS / Hosting platform (Render/Heroku/Docker)
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));   // Ctrl+C in terminal
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM")); // Docker/Server termination

@@ -2699,3 +2699,11 @@
 {"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-24 07:53:57"}
 {"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-24 07:53:58"}
 {"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-24 07:53:58"}
+{"level":"info","message":"🌍 Mode: production","timestamp":"2026-02-24 10:18:05"}
+{"level":"info","message":"✅ Environment Variables Validated","timestamp":"2026-02-24 10:18:05"}
+{"level":"info","message":"🔥 Firebase Admin Initialized Successfully","timestamp":"2026-02-24 10:18:08"}
+{"level":"info","message":"⏳ Attempting to connect to MongoDB...","timestamp":"2026-02-24 10:18:09"}
+{"level":"info","message":"✅ Connected to MongoDB Successfully!","timestamp":"2026-02-24 10:18:12"}
+{"level":"info","message":"🧹 Reset all user statuses to Offline","timestamp":"2026-02-24 10:18:15"}
+{"level":"info","message":"📞 Cleaned up 0 stuck calls.","timestamp":"2026-02-24 10:18:16"}
+{"level":"info","message":"🚀 Server is running on port 5000","timestamp":"2026-02-24 10:18:16"}
