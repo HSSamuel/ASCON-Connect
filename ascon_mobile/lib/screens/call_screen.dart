@@ -569,8 +569,8 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
       // 📱 Mobile: Renders the PopupMenuButton with Bluetooth/Earpiece options
       return PopupMenuButton<String>(
         color: const Color(0xFF2C2C2C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        offset: const Offset(0, -160),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)), // ⬇️ Reduced from 12 to 8
+        offset: const Offset(0, -140), // ⬇️ Adjusted offset for the smaller menu
         onSelected: (String result) {
           setState(() {
             _selectedAudioRoute = result;
@@ -580,31 +580,34 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
           const PopupMenuItem<String>(
             value: 'Speaker',
+            height: 20, // ⬇️ Forces the item container to be shorter (Default is 48)
             child: Row(
               children: [
-                Icon(Icons.volume_up, color: Colors.white, size: 22),
-                SizedBox(width: 12),
-                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 16)),
+                Icon(Icons.volume_up, color: Colors.white, size: 14), // ⬇️ Reduced icon size
+                SizedBox(width: 4), // ⬇️ Reduced spacing
+                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 8)), // ⬇️ Reduced font size
               ],
             ),
           ),
           const PopupMenuItem<String>(
             value: 'Earpiece',
+            height: 20, // ⬇️ Compact height
             child: Row(
               children: [
-                Icon(Icons.hearing, color: Colors.white, size: 22),
-                SizedBox(width: 12),
-                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 16)),
+                Icon(Icons.hearing, color: Colors.white, size: 18), 
+                SizedBox(width: 8),
+                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 13)),
               ],
             ),
           ),
           const PopupMenuItem<String>(
             value: 'Bluetooth',
+            height: 15, // ⬇️ Compact height
             child: Row(
               children: [
-                Icon(Icons.bluetooth_audio, color: Colors.white, size: 22),
-                SizedBox(width: 12),
-                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 16)),
+                Icon(Icons.bluetooth_audio, color: Colors.white, size: 18),
+                SizedBox(width: 8),
+                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 13)),
               ],
             ),
           ),
