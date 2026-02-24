@@ -222,6 +222,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     return _callDuration.inHours > 0 ? "${twoDigits(_callDuration.inHours)}:$minutes:$seconds" : "$minutes:$seconds";
   }
 
+  // ✅ NEW: Displays the Web/Desktop Audio Device Selector
   Future<void> _showDeviceSelectorDialog() async {
     List<AudioDeviceInfo> devices = await _callService.getPlaybackDevices();
     
@@ -543,6 +544,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
+  // ✅ FIXED: Routes differently based on Desktop/Web vs Mobile
   Widget _buildAudioRouteMenu() {
     bool isDesktopOrWeb = kIsWeb;
     if (!kIsWeb) {
@@ -556,6 +558,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     }
 
     if (isDesktopOrWeb) {
+      // 💻 Web & Desktop: Renders a normal button that opens the Device Selector Dialog
       return _buildControlButton(
         icon: Icons.speaker,
         label: "Audio",
@@ -563,15 +566,11 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         onTap: _showDeviceSelectorDialog,
       );
     } else {
+      // 📱 Mobile: Renders the PopupMenuButton with Bluetooth/Earpiece options
       return PopupMenuButton<String>(
         color: const Color(0xFF2C2C2C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // Sharper corners
-        // ✅ CRITICAL FIX: Add constraints to force the container to shrink horizontally
-        constraints: const BoxConstraints(
-          minWidth: 110, // Forces the minimum width to be much smaller
-          maxWidth: 130, // Prevents the box from getting too wide
-        ),
-        offset: const Offset(0, -110), // Adjusted offset for shorter menu
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        offset: const Offset(0, -160),
         onSelected: (String result) {
           setState(() {
             _selectedAudioRoute = result;
@@ -581,37 +580,31 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
           const PopupMenuItem<String>(
             value: 'Speaker',
-            height: 32, // ✅ Strongly reduced height 
-            padding: EdgeInsets.symmetric(horizontal: 10), // ✅ Tighter side padding
             child: Row(
               children: [
-                Icon(Icons.volume_up, color: Colors.white, size: 16), // ✅ Small Icon
-                SizedBox(width: 8), 
-                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 13)), // ✅ Small Text
+                Icon(Icons.volume_up, color: Colors.white, size: 22),
+                SizedBox(width: 12),
+                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
           ),
           const PopupMenuItem<String>(
             value: 'Earpiece',
-            height: 32, 
-            padding: EdgeInsets.symmetric(horizontal: 10), 
             child: Row(
               children: [
-                Icon(Icons.hearing, color: Colors.white, size: 16), 
-                SizedBox(width: 8),
-                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 13)), 
+                Icon(Icons.hearing, color: Colors.white, size: 22),
+                SizedBox(width: 12),
+                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
           ),
           const PopupMenuItem<String>(
             value: 'Bluetooth',
-            height: 32, 
-            padding: EdgeInsets.symmetric(horizontal: 10), 
             child: Row(
               children: [
-                Icon(Icons.bluetooth_audio, color: Colors.white, size: 16), 
-                SizedBox(width: 8),
-                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 13)), 
+                Icon(Icons.bluetooth_audio, color: Colors.white, size: 22),
+                SizedBox(width: 12),
+                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 16)),
               ],
             ),
           ),
