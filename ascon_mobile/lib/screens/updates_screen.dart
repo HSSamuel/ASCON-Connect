@@ -568,7 +568,6 @@ class _UpdatesScreenState extends ConsumerState<UpdatesScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(_isSearching ? "Search Results" : "Recent Updates", style: GoogleFonts.lato(fontWeight: FontWeight.bold, fontSize: 16)),
                       if (updateState.showMediaOnly)
                         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text("Media Only", style: TextStyle(fontSize: 12, color: primaryColor))),
                     ],
