@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -11,9 +10,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config.dart';
 import '../config/storage_config.dart';
 import '../main.dart';
-import '../router.dart'; // ✅ Added Router Import
-import '../screens/login_screen.dart';
-import 'package:flutter/material.dart';
+import '../router.dart';
 import 'api_client.dart';
 import 'notification_service.dart';
 import 'socket_service.dart';
@@ -77,9 +74,7 @@ class AuthService {
     try {
       if (kIsWeb) {
         String? vapidKey = dotenv.env['FIREBASE_VAPID_KEY'];
-        if (vapidKey == null || vapidKey.isEmpty) {
-          return null;
-        }
+        if (vapidKey == null || vapidKey.isEmpty) return null;
         return await FirebaseMessaging.instance.getToken(vapidKey: vapidKey);
       } else {
         return await FirebaseMessaging.instance.getToken();
@@ -92,8 +87,6 @@ class AuthService {
   Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final String? fcmToken = await _getFcmToken();
-
-      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/login', {
         'email': email,
         'password': password,
@@ -102,9 +95,7 @@ class AuthService {
 
       if (result['success']) {
         final data = result['data'];
-        await _saveUserSession(data['token'], data['user'],
-            refreshToken: data['refreshToken']);
-
+        await _saveUserSession(data['token'], data['user'], refreshToken: data['refreshToken']);
         await NotificationService().init();
         await NotificationService().syncToken(retry: true);
       }
@@ -126,8 +117,6 @@ class AuthService {
   }) async {
     try {
       final String? fcmToken = await _getFcmToken();
-
-      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/register', {
         'fullName': fullName,
         'email': email,
@@ -142,13 +131,10 @@ class AuthService {
 
       if (result['success'] && result['data']['token'] != null) {
         final data = result['data'];
-        await _saveUserSession(data['token'], data['user'] ?? {},
-            refreshToken: data['refreshToken']);
-
+        await _saveUserSession(data['token'], data['user'] ?? {}, refreshToken: data['refreshToken']);
         await NotificationService().init();
         await NotificationService().syncToken(retry: true);
       }
-
       return result;
     } catch (e) {
       return {'success': false, 'message': _cleanError(e)};
@@ -163,11 +149,9 @@ class AuthService {
         try {
           final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
           if (googleUser == null) return {'success': false, 'message': 'Sign in cancelled'};
-
           final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
           tokenToSend = googleAuth.idToken ?? googleAuth.accessToken;
         } catch (e) {
-          debugPrint("Google Sign In Error: $e");
           return {'success': false, 'message': 'Google Sign-In failed'};
         }
       }
@@ -175,8 +159,6 @@ class AuthService {
       if (tokenToSend == null) return {'success': false, 'message': 'No Google Token'};
 
       final String? fcmToken = await _getFcmToken();
-
-      // ✅ FIX: requiresAuth: false
       final result = await _api.post('/api/auth/google', {
         'token': tokenToSend,
         'fcmToken': fcmToken ?? "",
@@ -184,9 +166,7 @@ class AuthService {
 
       if (result['success']) {
         final data = result['data'];
-        await _saveUserSession(data['token'], data['user'],
-            refreshToken: data['refreshToken']);
-
+        await _saveUserSession(data['token'], data['user'], refreshToken: data['refreshToken']);
         await NotificationService().init();
         await NotificationService().syncToken(retry: true);
       }
@@ -198,17 +178,13 @@ class AuthService {
 
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     try {
-      // ✅ FIX: requiresAuth: false ensures no bad token is sent
-      return await _api.post(
-        '/api/auth/forgot-password', 
-        {'email': email},
-        requiresAuth: false 
-      );
+      return await _api.post('/api/auth/forgot-password', {'email': email}, requiresAuth: false);
     } catch (e) {
       return {'success': false, 'message': _cleanError(e)};
     }
   }
 
+  // ✅ THE MISSING METHOD RESTORED
   Future<List<dynamic>> getProgrammes() async {
     try {
       final result = await _api.get('/api/admin/programmes');
@@ -227,15 +203,13 @@ class AuthService {
   Future<void> markWelcomeSeen() async {
     try {
       await _api.put('/api/profile/welcome-seen', {});
-    } catch (e) { /* Ignore */ }
+    } catch (e) {}
   }
 
   Future<String?> _performSilentRefresh() async {
     try {
       String? refreshToken = await _secureStorage.read(key: 'refresh_token');
-      if (refreshToken == null) {
-        return null;
-      }
+      if (refreshToken == null) return null;
 
       final result = await http.post(
         Uri.parse('${AppConfig.baseUrl}/api/auth/refresh'),
@@ -251,7 +225,6 @@ class AuthService {
           _tokenCache = newToken;
           await _secureStorage.write(key: 'auth_token', value: newToken);
           _api.setAuthToken(newToken);
-          debugPrint("✅ Session Refreshed");
           return newToken;
         }
       } else {
@@ -264,8 +237,7 @@ class AuthService {
     return null;
   }
 
-  Future<void> _saveUserSession(String token, Map<String, dynamic> user,
-      {String? refreshToken}) async {
+  Future<void> _saveUserSession(String token, Map<String, dynamic> user, {String? refreshToken}) async {
     try {
       _tokenCache = token;
       _api.setAuthToken(token);
@@ -275,6 +247,8 @@ class AuthService {
         await _secureStorage.write(key: 'refresh_token', value: refreshToken);
       }
 
+      await _secureStorage.write(key: 'cached_user', value: jsonEncode(user));
+
       final userId = user['id'] ?? user['_id'];
       if (userId != null) {
         await _secureStorage.write(key: 'userId', value: userId);
@@ -282,12 +256,8 @@ class AuthService {
       }
 
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cached_user', jsonEncode(user));
-
-      if (user['fullName'] != null)
-        await prefs.setString('user_name', user['fullName']);
-      if (user['alumniId'] != null)
-        await prefs.setString('alumni_id', user['alumniId']);
+      if (user['fullName'] != null) await prefs.setString('user_name', user['fullName']);
+      if (user['alumniId'] != null) await prefs.setString('alumni_id', user['alumniId']);
     } catch (e) {
       debugPrint("⚠️ Session Save Error: $e");
     }
@@ -300,6 +270,7 @@ class AuthService {
       String? token = await _secureStorage.read(key: 'auth_token');
       String? refreshToken = await _secureStorage.read(key: 'refresh_token');
 
+      // Migration fallback
       if (token == null) {
         final prefs = await SharedPreferences.getInstance();
         token = prefs.getString('auth_token');
@@ -311,13 +282,11 @@ class AuthService {
 
       if (token == null) return null;
 
-      bool isExpired = JwtDecoder.isExpired(token) ||
-          JwtDecoder.getRemainingTime(token).inSeconds < 60;
+      bool isExpired = JwtDecoder.isExpired(token) || JwtDecoder.getRemainingTime(token).inSeconds < 60;
 
       if (isExpired && refreshToken != null) {
         try {
-          final result = await _api
-              .post('/api/auth/refresh', {'refreshToken': refreshToken});
+          final result = await _api.post('/api/auth/refresh', {'refreshToken': refreshToken});
           if (result['success']) {
             final newToken = result['data']['token'];
             _tokenCache = newToken;
@@ -325,9 +294,7 @@ class AuthService {
             _api.setAuthToken(newToken);
             return newToken;
           }
-        } catch (e) {
-          // Silent fail
-        }
+        } catch (e) {}
         return null;
       }
 
@@ -345,8 +312,7 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>?> getCachedUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userData = prefs.getString('cached_user');
+    final userData = await _secureStorage.read(key: 'cached_user');
     return userData != null ? jsonDecode(userData) : null;
   }
 
@@ -367,6 +333,7 @@ class AuthService {
       await _secureStorage.delete(key: 'auth_token');
       await _secureStorage.delete(key: 'refresh_token');
       await _secureStorage.delete(key: 'userId');
+      await _secureStorage.delete(key: 'cached_user');
 
       if (clearBiometrics) {
         await _secureStorage.delete(key: 'biometric_email');
@@ -381,14 +348,12 @@ class AuthService {
 
     if (kIsWeb) await Future.delayed(const Duration(milliseconds: 200));
 
-    // ✅ FIXED: Use GoRouter for logout navigation to prevent black screen context issues
     appRouter.go('/login');
   }
 
   String _cleanError(Object e) {
     String error = e.toString();
-    if (error.contains("SocketException") ||
-        error.contains("Network is unreachable")) {
+    if (error.contains("SocketException") || error.contains("Network is unreachable")) {
       return "No internet connection. Please check your network.";
     }
     if (error.contains("TimeoutException")) {

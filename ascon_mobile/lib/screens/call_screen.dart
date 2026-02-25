@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform; // ✅ Safely imported for platform checks
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'; 
 import 'package:google_fonts/google_fonts.dart';
@@ -222,7 +221,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     return _callDuration.inHours > 0 ? "${twoDigits(_callDuration.inHours)}:$minutes:$seconds" : "$minutes:$seconds";
   }
 
-  // ✅ NEW: Displays the Web/Desktop Audio Device Selector
   Future<void> _showDeviceSelectorDialog() async {
     List<AudioDeviceInfo> devices = await _callService.getPlaybackDevices();
     
@@ -407,7 +405,7 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
                               _endCallUI("Call Ended");
                             }),
                             
-                            // ✅ Audio Route UI (Intelligently detects Desktop vs Mobile)
+                            // Audio Route UI
                             _buildAudioRouteMenu(),
                           ],
                         ),
@@ -544,11 +542,12 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ✅ FIXED: Routes differently based on Desktop/Web vs Mobile
-  Widget _buildAudioRouteMenu() {
+ Widget _buildAudioRouteMenu() {
     bool isDesktopOrWeb = kIsWeb;
     if (!kIsWeb) {
-      isDesktopOrWeb = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+      isDesktopOrWeb = defaultTargetPlatform == TargetPlatform.windows || 
+                       defaultTargetPlatform == TargetPlatform.linux || 
+                       defaultTargetPlatform == TargetPlatform.macOS;
     }
 
     IconData getIcon() {
@@ -558,7 +557,6 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
     }
 
     if (isDesktopOrWeb) {
-      // 💻 Web & Desktop: Renders a normal button that opens the Device Selector Dialog
       return _buildControlButton(
         icon: Icons.speaker,
         label: "Audio",
@@ -566,59 +564,51 @@ class _CallScreenState extends State<CallScreen> with TickerProviderStateMixin {
         onTap: _showDeviceSelectorDialog,
       );
     } else {
-      // 📱 Mobile: Renders the PopupMenuButton with Bluetooth/Earpiece options
-      return PopupMenuButton<String>(
-        color: const Color(0xFF2C2C2C),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)), // ⬇️ Reduced from 12 to 8
-        offset: const Offset(0, -140), // ⬇️ Adjusted offset for the smaller menu
-        onSelected: (String result) {
-          setState(() {
-            _selectedAudioRoute = result;
-          });
-          _callService.setAudioRoute(result);
+      return _buildControlButton(
+        icon: getIcon(),
+        label: _selectedAudioRoute,
+        isActive: _selectedAudioRoute == 'Speaker',
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: const Color(0xFF2C2C2C),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            builder: (context) {
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildAudioListItem('Speaker', Icons.volume_up),
+                      _buildAudioListItem('Earpiece', Icons.hearing),
+                      _buildAudioListItem('Bluetooth', Icons.bluetooth_audio),
+                    ],
+                  ),
+                ),
+              );
+            }
+          );
         },
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-          const PopupMenuItem<String>(
-            value: 'Speaker',
-            height: 20, // ⬇️ Forces the item container to be shorter (Default is 48)
-            child: Row(
-              children: [
-                Icon(Icons.volume_up, color: Colors.white, size: 14), // ⬇️ Reduced icon size
-                SizedBox(width: 4), // ⬇️ Reduced spacing
-                Text('Speaker', style: TextStyle(color: Colors.white, fontSize: 8)), // ⬇️ Reduced font size
-              ],
-            ),
-          ),
-          const PopupMenuItem<String>(
-            value: 'Earpiece',
-            height: 20, // ⬇️ Compact height
-            child: Row(
-              children: [
-                Icon(Icons.hearing, color: Colors.white, size: 18), 
-                SizedBox(width: 8),
-                Text('Earpiece', style: TextStyle(color: Colors.white, fontSize: 13)),
-              ],
-            ),
-          ),
-          const PopupMenuItem<String>(
-            value: 'Bluetooth',
-            height: 15, // ⬇️ Compact height
-            child: Row(
-              children: [
-                Icon(Icons.bluetooth_audio, color: Colors.white, size: 18),
-                SizedBox(width: 8),
-                Text('Bluetooth', style: TextStyle(color: Colors.white, fontSize: 13)),
-              ],
-            ),
-          ),
-        ],
-        child: _buildControlIcon(
-          icon: getIcon(),
-          label: _selectedAudioRoute,
-          isActive: _selectedAudioRoute == 'Speaker',
-        ),
       );
     }
+  }
+
+  Widget _buildAudioListItem(String route, IconData icon) {
+    return ListTile(
+      dense: true, 
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 0),
+      leading: Icon(icon, color: Colors.white, size: 20),
+      title: Text(route, style: const TextStyle(color: Colors.white, fontSize: 13)),
+      onTap: () {
+        setState(() => _selectedAudioRoute = route);
+        _callService.setAudioRoute(route);
+        Navigator.pop(context);
+      }
+    );
   }
 
   Widget _buildSmallBtn(IconData icon, String label, VoidCallback onTap, {bool isActive = false}) {

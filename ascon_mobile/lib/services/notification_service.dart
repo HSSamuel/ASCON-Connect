@@ -19,11 +19,49 @@ import '../screens/facility_detail_screen.dart';
 import '../screens/mentorship_dashboard_screen.dart';
 import '../services/socket_service.dart';
 
-// ✅ Background Handler (Standard Notifications Only)
+// ✅ Background Handler (Handles Terminated & Data-Only Notifications)
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint("🌙 Background Message: ${message.messageId}");
-  // We rely on standard FCM handling to show the notification tray item.
+  
+  // If the payload has no 'notification' block, it's a data-only message.
+  // We must manually show the notification so the phone rings/vibrates when killed.
+  if (message.notification == null && message.data.isNotEmpty) {
+    
+    final FlutterLocalNotificationsPlugin localNotifications = FlutterLocalNotificationsPlugin();
+    
+    // Initialize standard settings for background execution
+    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('ic_notification');
+    const InitializationSettings initSettings = InitializationSettings(android: androidSettings);
+    await localNotifications.initialize(initSettings);
+
+    // Determine if it's a call or regular message
+    bool isCall = message.data['type'] == 'call_offer';
+    String channelId = isCall ? AppConfig.callChannelId : AppConfig.notificationChannelId;
+    String channelName = isCall ? AppConfig.callChannelName : AppConfig.notificationChannelName;
+    String title = isCall ? "Incoming Call" : "New Message";
+    String callerName = message.data['callerName'] ?? 'Someone';
+    String body = isCall ? "$callerName is calling you" : "You have a new message";
+
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      importance: Importance.max,
+      priority: Priority.high,
+      color: const Color(0xFF1B5E3A),
+      icon: 'ic_notification',
+      enableVibration: true,
+      playSound: true, 
+    );
+
+    await localNotifications.show(
+      message.hashCode,
+      title,
+      body,
+      NotificationDetails(android: androidDetails),
+      payload: jsonEncode(message.data),
+    );
+  }
 }
 
 class NotificationService {
@@ -76,7 +114,7 @@ class NotificationService {
         AppConfig.callChannelId,
         AppConfig.callChannelName,
         description: AppConfig.callChannelDesc,
-        importance: Importance.max, // ✅ Correct: Importance controls priority on Android 8+
+        importance: Importance.max, // ✅ Controls priority on Android 8+
         enableVibration: true,
         playSound: true,
       );
@@ -237,7 +275,7 @@ class NotificationService {
       channelId,
       channelName,
       importance: Importance.max,
-      priority: Priority.high, // ✅ This is correct (parameter exists for Details, not Channel)
+      priority: Priority.high, 
       color: const Color(0xFF1B5E3A),
       icon: 'ic_notification',
       enableVibration: true,

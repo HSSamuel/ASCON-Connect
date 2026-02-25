@@ -53,6 +53,12 @@ router.get("/", verifyToken, async (req, res) => {
     // Aggregation Pipeline
     const alumniList = await UserProfile.aggregate([
       { $match: profileMatch },
+
+      // ✅ OPTIMIZATION: Exclude the currently logged-in user right at the database level!
+      {
+        $match: { userId: { $ne: new mongoose.Types.ObjectId(req.user._id) } },
+      },
+
       // Join with Auth table to check verification & online status
       {
         $lookup: {
@@ -85,6 +91,8 @@ router.get("/", verifyToken, async (req, res) => {
           yearOfAttendance: -1,
         },
       },
+
+      // Limits the payload size sent over the network
       { $limit: 50 },
 
       // Project final fields
@@ -279,6 +287,7 @@ router.get("/near-me", verifyToken, async (req, res) => {
       },
       { $unwind: "$settings" },
       { $match: { "settings.isLocationVisible": true } },
+      { $limit: 30 }, // Pagination limit you approved earlier
       {
         $project: {
           _id: "$userId",
@@ -380,7 +389,6 @@ router.get("/celebrations", verifyToken, async (req, res) => {
     const month = today.getMonth() + 1;
     const currentYear = today.getFullYear();
 
-    // ✅ FIX 1: Correctly join UserSettings BEFORE accessing fields
     const birthdays = await UserProfile.aggregate([
       {
         $match: {
@@ -395,7 +403,6 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           as: "settings",
         },
       },
-      // ✅ FIX: Keep users even if they don't have a settings doc yet
       {
         $unwind: {
           path: "$settings",
@@ -409,7 +416,6 @@ router.get("/celebrations", verifyToken, async (req, res) => {
           jobTitle: 1,
           dobDay: { $dayOfMonth: "$dateOfBirth" },
           dobMonth: { $month: "$dateOfBirth" },
-          // ✅ FIX: Default to TRUE if settings is missing
           isVisible: { $ifNull: ["$settings.isBirthdayVisible", true] },
         },
       },

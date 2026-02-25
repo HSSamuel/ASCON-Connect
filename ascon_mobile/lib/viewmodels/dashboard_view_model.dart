@@ -11,7 +11,7 @@ class DashboardState {
   final List<dynamic> events;
   final List<dynamic> programmes;
   final List<dynamic> topAlumni;
-  final List<dynamic> birthdays; // ✅ Added birthdays list
+  final List<dynamic> birthdays; 
   final String profileImage;
   final String programme;
   final String year;
@@ -26,7 +26,7 @@ class DashboardState {
     this.events = const [],
     this.programmes = const [],
     this.topAlumni = const [],
-    this.birthdays = const [], // ✅ Initialize birthdays
+    this.birthdays = const [], 
     this.profileImage = "",
     this.programme = "Member",
     this.year = "....",
@@ -42,7 +42,7 @@ class DashboardState {
     List<dynamic>? events,
     List<dynamic>? programmes,
     List<dynamic>? topAlumni,
-    List<dynamic>? birthdays, // ✅ Add to copyWith
+    List<dynamic>? birthdays, 
     String? profileImage,
     String? programme,
     String? year,
@@ -57,7 +57,7 @@ class DashboardState {
       events: events ?? this.events,
       programmes: programmes ?? this.programmes,
       topAlumni: topAlumni ?? this.topAlumni,
-      birthdays: birthdays ?? this.birthdays, // ✅ Update birthdays
+      birthdays: birthdays ?? this.birthdays, 
       profileImage: profileImage ?? this.profileImage,
       programme: programme ?? this.programme,
       year: year ?? this.year,
@@ -84,7 +84,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
       final String? myId = await _authService.currentUserId;
 
-      // ✅ Fetch birthdays concurrently with other data (Index 4)
       final results = await Future.wait([
         _dataService.fetchEvents(),                  
         _authService.getProgrammes(),                
@@ -143,6 +142,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       // 4. Process Directory (Top Alumni)
       var fetchedAlumni = List.from(results[3] as List);
 
+      // ✅ Ensure the current user is strictly removed from the backend payload list before taking 20
       if (myId != null) {
         fetchedAlumni.removeWhere((user) {
           final id = user['_id'] ?? user['userId'];
@@ -151,9 +151,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
       
       fetchedAlumni.shuffle(); 
-      final topAlumni = fetchedAlumni.take(8).toList(); 
+      // ✅ FIXED: Now takes up to 20 random users instead of 8
+      final topAlumni = fetchedAlumni.take(20).toList(); 
 
-      // 5. ✅ Process Birthdays
+      // 5. Process Birthdays
       List<dynamic> fetchedBirthdays = [];
       final celebrationResult = results[4];
       if (celebrationResult is Map) {
@@ -169,7 +170,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
           events: fetchedEvents,
           programmes: fetchedProgrammes,
           topAlumni: topAlumni,
-          birthdays: fetchedBirthdays, // ✅ Update State
+          birthdays: fetchedBirthdays, 
           profileImage: profileImage,
           programme: programme,
           year: year,

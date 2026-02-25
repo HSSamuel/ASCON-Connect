@@ -49,7 +49,7 @@ const notificationSchema = new mongoose.Schema({
 
 // ✅ AUTO-DELETE
 // This creates a TTL (Time To Live) index.
-// MongoDB will automatically delete documents 43200 seconds (12 hours) after 'createdAt'.
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 43200 });
+// MongoDB will automatically delete documents 86400 seconds (24 hours) after 'createdAt'.
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
 
 module.exports = mongoose.model("Notification", notificationSchema);
